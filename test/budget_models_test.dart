@@ -22,6 +22,13 @@ void main() {
           'safe_daily_limit': 69.95,
           'today_spending': 50,
           'is_over_daily_limit': false,
+          'planned_recurring_total': 350,
+          'actual_recurring_total': 25,
+          'skipped_recurring_total': 50,
+          'skipped_recurring_count': 2,
+          'today_recurring_expected_total': 25,
+          'today_recurring_purchased_total': 25,
+          'today_recurring_skipped_count': 0,
         },
         'active_subscriptions': [
           {
@@ -32,7 +39,7 @@ void main() {
             'end_date': '2026-06-30',
             'notify_days_before': 3,
             'is_active': true,
-          }
+          },
         ],
         'recent_expenses': [
           {
@@ -43,7 +50,7 @@ void main() {
             'note': null,
             'expense_date': '2026-06-20',
             'source': 'manual',
-          }
+          },
         ],
       };
 
@@ -58,6 +65,9 @@ void main() {
       expect(ov.summary!.daysTotal, 30);
       expect(ov.summary!.remainingMoney, closeTo(699.50, 0.001));
       expect(ov.summary!.isOverDailyLimit, isFalse);
+      expect(ov.summary!.plannedRecurringTotal, 350);
+      expect(ov.summary!.actualRecurringTotal, 25);
+      expect(ov.summary!.skippedRecurringCount, 2);
 
       expect(ov.activeSubscriptions.length, 1);
       expect(ov.activeSubscriptions.first.name, 'عشاء');
@@ -81,6 +91,47 @@ void main() {
       expect(ov.summary, isNull);
       expect(ov.activeSubscriptions, isEmpty);
       expect(ov.recentExpenses, isEmpty);
+    });
+  });
+
+  group('recurring purchase models', () {
+    test('parse recurring purchase', () {
+      final item = RecurringPurchase.fromJson({
+        'id': 'rp-1',
+        'name': 'حليب',
+        'price': 25,
+        'frequency': 'every_n_days',
+        'interval_days': 2,
+        'start_date': '2026-07-01',
+        'end_date': '2026-07-14',
+        'reminder_time': '08:00',
+        'note': null,
+        'is_active': true,
+      });
+
+      expect(item.name, 'حليب');
+      expect(item.price, 25);
+      expect(item.intervalDays, 2);
+      expect(item.reminderTime, '08:00');
+    });
+
+    test('parse today checklist status', () {
+      final item = TodayRecurringPurchase.fromJson({
+        'recurring_purchase_id': 'rp-1',
+        'occurrence_id': null,
+        'name': 'خبز',
+        'price': 50,
+        'frequency': 'daily',
+        'interval_days': null,
+        'reminder_time': null,
+        'note': null,
+        'occurrence_date': '2026-07-01',
+        'status': 'unmarked',
+        'expense_id': null,
+      });
+
+      expect(item.status, 'unmarked');
+      expect(item.occurrenceDate, DateTime(2026, 7, 1));
     });
   });
 }

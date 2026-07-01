@@ -44,14 +44,15 @@
 
 ## Budget formula (Gate 4+)
 
-- `manual_spent` = sum of expenses where source = 'manual' linked to the active plan
+- `actual_spent` = sum of expenses where source in ('manual', 'recurring_purchase') linked to the active plan
 - `subscription_total` = sum of active subscriptions whose period overlaps the budget period
-- `remaining_money` = total_money − manual_spent − subscription_total (can be negative)
+- `remaining_money` = total_money − actual_spent − subscription_total (can be negative)
 - `safe_daily_limit` = remaining_money / max(days_remaining, 1)
-- `today_spending` = sum of manual expenses for today
+- `today_spending` = sum of manual + recurring_purchase expenses for today
 - `is_over_daily_limit` = today_spending > safe_daily_limit AND days_remaining > 0
 
 Subscriptions are never inserted into expenses. They are tracked in a separate `subscriptions` table.
+Recurring purchases are planned only until marked "تم الشراء"; purchased occurrences create one real `expenses` row, skipped occurrences do not deduct.
 
 ## Applying migrations
 
@@ -236,6 +237,19 @@ to re-apply (`create or replace`).
 Apply via: Supabase Dashboard → SQL Editor → paste file → Run.
 Depends on 001–008 already applied.
 
+### 010_recurring_purchases_foundation.sql
+Additive-only. Does NOT modify 001–009. Adds recurring personal purchases, mark-only
+occurrences, `recurring_purchase` expense source, and replaces `get_budget_overview`
+to include recurring actual spending.
+Apply via: Supabase Dashboard → SQL Editor → paste file → Run.
+Depends on 001–009 already applied.
+
+Gate 7 limitations:
+
+- Reminder time is stored and shown in the app only. No push notifications, scheduler, or background jobs.
+- Frequencies: daily, every N days, weekly. Monthly recurrence is postponed.
+- Recurring purchase plans are expected/planned only; only purchased occurrences affect actual budget.
+
 ## Manual tests (Gate 6.2)
 
 After applying 006_member_reactivation_fix.sql:
@@ -306,6 +320,24 @@ After applying 009_member_counts_and_reactivation_turn_fix.sql:
    history still shows their name.
 7. Public non-member can open a public team but does not see the member list.
 8. Private non-member is denied.
+
+## Manual tests (Gate 7)
+
+After applying 010_recurring_purchases_foundation.sql:
+
+1. Create daily recurring purchase for 14 days: milk 25 MRU.
+2. Verify today's list shows milk.
+3. Mark purchased and verify one occurrence row is created.
+4. Verify one expense row is created with `source = 'recurring_purchase'`.
+5. Verify budget today spending and remaining money update.
+6. Mark purchased again and verify no duplicate expense is created.
+7. Mark skipped and verify the linked recurring expense is removed and budget updates.
+8. Confirm another user cannot read, mark, or update the purchase.
+9. Create every-2-days purchase and verify it appears only on matching dates.
+10. Create weekly purchase and verify it appears only on the same weekday as start date.
+11. Try marking a date outside range and expect failure.
+12. Verify reminder time displays in the app, with no push notification.
+13. Verify /budget/recurring route refresh works after production deploy.
 
 ## Gates
 

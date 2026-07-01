@@ -18,6 +18,7 @@ class BudgetScreen extends StatefulWidget {
 class _BudgetScreenState extends State<BudgetScreen> {
   late final BudgetService _budget;
   BudgetOverview? _overview;
+  List<TodayRecurringPurchase> _todayRecurring = [];
   bool _isLoading = true;
   String? _error;
 
@@ -35,9 +36,37 @@ class _BudgetScreenState extends State<BudgetScreen> {
     });
     try {
       final ov = await _budget.getOverview();
-      if (mounted) setState(() { _overview = ov; _isLoading = false; });
+      final today = await _budget.getTodayRecurringPurchases();
+      if (mounted) {
+        setState(() {
+          _overview = ov;
+          _todayRecurring = today;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() { _error = _arabicError(e); _isLoading = false; });
+      if (mounted) {
+        setState(() {
+          _error = _arabicError(e);
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _markRecurring(
+    TodayRecurringPurchase item,
+    String status,
+  ) async {
+    try {
+      await _budget.markRecurringPurchaseOccurrence(
+        recurringPurchaseId: item.recurringPurchaseId,
+        occurrenceDate: item.occurrenceDate,
+        status: status,
+      );
+      _load();
+    } catch (e) {
+      if (mounted) _showError(_arabicError(e));
     }
   }
 
@@ -53,7 +82,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   Future<void> _deactivateSub(String id) async {
-    final ok = await _confirm('إلغاء الاشتراك', 'هل تريد إلغاء تفعيل هذا الاشتراك؟');
+    final ok = await _confirm(
+      'إلغاء الاشتراك',
+      'هل تريد إلغاء تفعيل هذا الاشتراك؟',
+    );
     if (!ok) return;
     try {
       await _budget.deactivateSubscription(id);
@@ -70,8 +102,14 @@ class _BudgetScreenState extends State<BudgetScreen> {
         title: Text(title),
         content: Text(body),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
-          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('تأكيد')),
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('تأكيد'),
+          ),
         ],
       ),
     );
@@ -87,11 +125,15 @@ class _BudgetScreenState extends State<BudgetScreen> {
     return ZadScaffold(
       title: 'ميزانيتي',
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)))
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
+            )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const TipCard('هنا تعرف كم بقي من مالك وكم يمكنك أن تصرف كل يوم بأمان.'),
+                const TipCard(
+                  'هنا تعرف كم بقي من مالك وكم يمكنك أن تصرف كل يوم بأمان.',
+                ),
                 if (_error != null) _ErrorBox(_error!),
                 if (_overview != null) ..._body(_overview!),
                 const SizedBox(height: 16),
@@ -109,9 +151,16 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton(
-                  onPressed: () =>
-                      context.push('/budget/subscription/new').then((_) => _load()),
+                  onPressed: () => context
+                      .push('/budget/subscription/new')
+                      .then((_) => _load()),
                   child: const Text('إضافة اشتراك'),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: () =>
+                      context.push('/budget/recurring').then((_) => _load()),
+                  child: const Text('المشتريات المتكررة'),
                 ),
               ],
             ),
@@ -131,68 +180,183 @@ class _BudgetScreenState extends State<BudgetScreen> {
         widgets.add(_WarningBox('انتهت مدة هذه الخطة.'));
       }
       if (s.remainingMoney < 0) {
-        widgets.add(_WarningBox(
-          'انتهى المال المخطط أو أصبح أقل من الصفر.',
-          color: Colors.orange.shade700,
-        ));
+        widgets.add(
+          _WarningBox(
+            'انتهى المال المخطط أو أصبح أقل من الصفر.',
+            color: Colors.orange.shade700,
+          ),
+        );
       }
       if (s.isOverDailyLimit) {
-        widgets.add(_WarningBox('صرفت اليوم أكثر من الحد الآمن. حاول تقليل المصاريف.'));
+        widgets.add(
+          _WarningBox('صرفت اليوم أكثر من الحد الآمن. حاول تقليل المصاريف.'),
+        );
       }
 
-      widgets.add(Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              _row('إجمالي الميزانية', '${plan.totalMoney.toStringAsFixed(2)} MRU'),
-              _row('المتبقي', '${s.remainingMoney.toStringAsFixed(2)} MRU',
-                  color: s.remainingMoney < 0 ? Colors.red : const Color(0xFF2E7D32)),
-              _row('الحد اليومي الآمن',
-                  '${s.safeDailyLimit < 0 ? 0 : s.safeDailyLimit.toStringAsFixed(2)} MRU'),
-              _row('مصروف اليوم', '${s.todaySpending.toStringAsFixed(2)} MRU'),
-              _row('الأيام المتبقية', '${s.daysRemaining} / ${s.daysTotal}'),
-              if (plan.note != null && plan.note!.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(plan.note!,
-                      style: const TextStyle(fontSize: 13, color: Colors.grey)),
+      widgets.add(
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _row(
+                  'إجمالي الميزانية',
+                  '${plan.totalMoney.toStringAsFixed(2)} MRU',
                 ),
-            ],
+                _row(
+                  'المتبقي',
+                  '${s.remainingMoney.toStringAsFixed(2)} MRU',
+                  color: s.remainingMoney < 0
+                      ? Colors.red
+                      : const Color(0xFF2E7D32),
+                ),
+                _row(
+                  'الحد اليومي الآمن',
+                  '${s.safeDailyLimit < 0 ? 0 : s.safeDailyLimit.toStringAsFixed(2)} MRU',
+                ),
+                _row(
+                  'مصروف اليوم',
+                  '${s.todaySpending.toStringAsFixed(2)} MRU',
+                ),
+                _row('الأيام المتبقية', '${s.daysRemaining} / ${s.daysTotal}'),
+                if (plan.note != null && plan.note!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      plan.note!,
+                      style: const TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
-      ));
+      );
+
+      widgets.add(const SizedBox(height: 16));
+      widgets.add(
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _row(
+                  'المتوقع من المشتريات المتكررة',
+                  '${s.plannedRecurringTotal.toStringAsFixed(2)} MRU',
+                ),
+                _row(
+                  'تم شراؤه فعلاً',
+                  '${s.actualRecurringTotal.toStringAsFixed(2)} MRU',
+                ),
+                _row(
+                  'لم يتم شراؤه',
+                  '${s.skippedRecurringTotal.toStringAsFixed(2)} MRU (${s.skippedRecurringCount})',
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    widgets.add(const SizedBox(height: 16));
+    widgets.add(_sectionTitle('مشتريات اليوم'));
+    if (_todayRecurring.isEmpty) {
+      widgets.add(
+        const Card(
+          child: Padding(
+            padding: EdgeInsets.all(12),
+            child: Text('لا توجد مشتريات متكررة اليوم'),
+          ),
+        ),
+      );
+    } else {
+      for (final item in _todayRecurring) {
+        widgets.add(
+          Card(
+            margin: const EdgeInsets.only(bottom: 6),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    item.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${item.price.toStringAsFixed(2)} MRU'
+                    '${item.reminderTime == null ? '' : '  •  تذكير: ${item.reminderTime}'}',
+                  ),
+                  const SizedBox(height: 6),
+                  Text('الحالة: ${_statusText(item.status)}'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ElevatedButton(
+                        onPressed: item.status == 'purchased'
+                            ? null
+                            : () => _markRecurring(item, 'purchased'),
+                        child: const Text('تم الشراء'),
+                      ),
+                      OutlinedButton(
+                        onPressed: item.status == 'skipped'
+                            ? null
+                            : () => _markRecurring(item, 'skipped'),
+                        child: const Text('لم أشترِ'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
     }
 
     if (ov.activeSubscriptions.isNotEmpty) {
       widgets.add(const SizedBox(height: 16));
       widgets.add(_sectionTitle('الاشتراكات الفعالة'));
       for (final sub in ov.activeSubscriptions) {
-        widgets.add(Card(
-          margin: const EdgeInsets.only(bottom: 6),
-          child: ListTile(
-            title: Text(sub.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(
-              '${sub.amount.toStringAsFixed(2)} MRU  •  ${_fmtDate(sub.startDate)} ← ${_fmtDate(sub.endDate)}',
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 20),
-                  tooltip: 'تعديل',
-                  onPressed: () =>
-                      context.push('/budget/subscription/new', extra: sub).then((_) => _load()),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.cancel_outlined, size: 20, color: Colors.red),
-                  tooltip: 'إلغاء',
-                  onPressed: () => _deactivateSub(sub.id),
-                ),
-              ],
+        widgets.add(
+          Card(
+            margin: const EdgeInsets.only(bottom: 6),
+            child: ListTile(
+              title: Text(
+                sub.name,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                '${sub.amount.toStringAsFixed(2)} MRU  •  ${_fmtDate(sub.startDate)} ← ${_fmtDate(sub.endDate)}',
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 20),
+                    tooltip: 'تعديل',
+                    onPressed: () => context
+                        .push('/budget/subscription/new', extra: sub)
+                        .then((_) => _load()),
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.cancel_outlined,
+                      size: 20,
+                      color: Colors.red,
+                    ),
+                    tooltip: 'إلغاء',
+                    onPressed: () => _deactivateSub(sub.id),
+                  ),
+                ],
+              ),
             ),
           ),
-        ));
+        );
       }
     }
 
@@ -200,32 +364,45 @@ class _BudgetScreenState extends State<BudgetScreen> {
       widgets.add(const SizedBox(height: 16));
       widgets.add(_sectionTitle('المصاريف الأخيرة'));
       for (final exp in ov.recentExpenses) {
-        widgets.add(Card(
-          margin: const EdgeInsets.only(bottom: 6),
-          child: ListTile(
-            title: Text(exp.itemName, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(
-              '${exp.amount.toStringAsFixed(2)} MRU  •  ${_fmtDate(exp.expenseDate)}'
-              '${exp.category != null ? "  •  ${exp.category}" : ""}',
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 20),
-                  tooltip: 'تعديل',
-                  onPressed: () =>
-                      context.push('/budget/expense/new', extra: exp).then((_) => _load()),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
-                  tooltip: 'حذف',
-                  onPressed: () => _deleteExpense(exp.id),
-                ),
-              ],
+        widgets.add(
+          Card(
+            margin: const EdgeInsets.only(bottom: 6),
+            child: ListTile(
+              title: Text(
+                exp.itemName,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                '${exp.amount.toStringAsFixed(2)} MRU  •  ${_fmtDate(exp.expenseDate)}'
+                '${exp.category != null ? "  •  ${exp.category}" : ""}'
+                '${exp.source == "recurring_purchase" ? "  •  متكرر" : ""}',
+              ),
+              trailing: exp.source == 'manual'
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 20),
+                          tooltip: 'تعديل',
+                          onPressed: () => context
+                              .push('/budget/expense/new', extra: exp)
+                              .then((_) => _load()),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            size: 20,
+                            color: Colors.red,
+                          ),
+                          tooltip: 'حذف',
+                          onPressed: () => _deleteExpense(exp.id),
+                        ),
+                      ],
+                    )
+                  : null,
             ),
           ),
-        ));
+        );
       }
     }
 
@@ -233,31 +410,52 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   Widget _sectionTitle(String title) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-      );
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      title,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+    ),
+  );
 
   Widget _row(String label, String value, {Color? color}) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label),
-            Text(value,
-                style: TextStyle(fontWeight: FontWeight.bold, color: color)),
-          ],
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(child: Text(label)),
+        const SizedBox(width: 8),
+        Text(
+          value,
+          style: TextStyle(fontWeight: FontWeight.bold, color: color),
         ),
-      );
+      ],
+    ),
+  );
 
   static String _fmtDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  static String _statusText(String status) {
+    if (status == 'purchased') {
+      return 'تم الشراء';
+    }
+    if (status == 'skipped') {
+      return 'لم يتم الشراء';
+    }
+    return 'لم يحدد بعد';
+  }
+
   static String _arabicError(Object e) {
     final msg = e.toString().toLowerCase();
-    if (msg.contains('invalid session')) return 'انتهت جلستك — يرجى إعادة تسجيل الدخول';
-    if (msg.contains('expense_date outside')) return 'التاريخ خارج نطاق الميزانية';
-    if (msg.contains('not found') || msg.contains('not deletable')) return 'العنصر غير موجود';
+    if (msg.contains('invalid session')) {
+      return 'انتهت جلستك — يرجى إعادة تسجيل الدخول';
+    }
+    if (msg.contains('expense_date outside')) {
+      return 'التاريخ خارج نطاق الميزانية';
+    }
+    if (msg.contains('not found') || msg.contains('not deletable')) {
+      return 'العنصر غير موجود';
+    }
     if (e is PostgrestException) return 'خطأ: ${e.message}';
     return 'حدث خطأ — تحقق من اتصالك بالإنترنت';
   }

@@ -10,6 +10,8 @@ import '../../features/budget/presentation/budget_screen.dart';
 import '../../features/budget/presentation/budget_plan_form_screen.dart';
 import '../../features/budget/presentation/expense_form_screen.dart';
 import '../../features/budget/presentation/subscription_form_screen.dart';
+import '../../features/budget/presentation/recurring_purchases_screen.dart';
+import '../../features/budget/presentation/recurring_purchase_form_screen.dart';
 import '../../features/budget/domain/budget_models.dart';
 import '../../features/teams/presentation/teams_screen.dart';
 import '../../features/teams/presentation/team_form_screen.dart';
@@ -31,11 +33,23 @@ class AppRouter {
     initialLocation: '/',
     routes: [
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
-      GoRoute(path: '/login', builder: (_, _) => LoginScreen(authService: authService)),
-      GoRoute(path: '/register', builder: (_, _) => RegisterScreen(authService: authService)),
+      GoRoute(
+        path: '/login',
+        builder: (_, _) => LoginScreen(authService: authService),
+      ),
+      GoRoute(
+        path: '/register',
+        builder: (_, _) => RegisterScreen(authService: authService),
+      ),
       GoRoute(path: '/forgot-pin', builder: (_, _) => const ForgotPinScreen()),
-      GoRoute(path: '/home', builder: (_, _) => HomeScreen(authService: authService)),
-      GoRoute(path: '/budget', builder: (_, _) => BudgetScreen(authService: authService)),
+      GoRoute(
+        path: '/home',
+        builder: (_, _) => HomeScreen(authService: authService),
+      ),
+      GoRoute(
+        path: '/budget',
+        builder: (_, _) => BudgetScreen(authService: authService),
+      ),
       GoRoute(
         path: '/budget/setup',
         builder: (_, state) => BudgetPlanFormScreen(
@@ -57,7 +71,21 @@ class AppRouter {
           existingSub: state.extra as AppSubscription?,
         ),
       ),
-      GoRoute(path: '/teams', builder: (_, _) => TeamsScreen(authService: authService)),
+      GoRoute(
+        path: '/budget/recurring',
+        builder: (_, _) => RecurringPurchasesScreen(authService: authService),
+      ),
+      GoRoute(
+        path: '/budget/recurring/new',
+        builder: (_, state) => RecurringPurchaseFormScreen(
+          authService: authService,
+          existing: state.extra as RecurringPurchase?,
+        ),
+      ),
+      GoRoute(
+        path: '/teams',
+        builder: (_, _) => TeamsScreen(authService: authService),
+      ),
       GoRoute(
         path: '/teams/new',
         builder: (_, _) => TeamFormScreen(authService: authService),
@@ -84,7 +112,10 @@ class AppRouter {
           teamId: state.pathParameters['id']!,
         ),
       ),
-      GoRoute(path: '/notifications', builder: (_, _) => const NotificationsScreen()),
+      GoRoute(
+        path: '/notifications',
+        builder: (_, _) => const NotificationsScreen(),
+      ),
       GoRoute(path: '/admin', builder: (_, _) => const AdminScreen()),
     ],
   );
