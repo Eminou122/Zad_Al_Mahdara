@@ -307,14 +307,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
                 const SizedBox(height: 8),
-                ...d.members.map(
-                  (m) => _MemberTile(
-                    member: m,
+                ...d.members.asMap().entries.map(
+                  (entry) => _MemberTile(
+                    displayPosition: entry.key + 1,
+                    member: entry.value,
                     canManage: d.canEdit,
-                    busy: _busyMembers.contains(m.memberId),
-                    onDeactivate: () => _deactivate(m),
-                    onReactivate: () => _reactivate(m),
-                    onRemove: () => _remove(m),
+                    busy: _busyMembers.contains(entry.value.memberId),
+                    onDeactivate: () => _deactivate(entry.value),
+                    onReactivate: () => _reactivate(entry.value),
+                    onRemove: () => _remove(entry.value),
                   ),
                 ),
               ] else if (!d.isMember)
@@ -517,6 +518,7 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _MemberTile extends StatelessWidget {
+  final int displayPosition;
   final TeamMember member;
   final bool canManage;
   final bool busy;
@@ -524,6 +526,7 @@ class _MemberTile extends StatelessWidget {
   final VoidCallback onReactivate;
   final VoidCallback onRemove;
   const _MemberTile({
+    required this.displayPosition,
     required this.member,
     required this.canManage,
     required this.busy,
@@ -548,7 +551,7 @@ class _MemberTile extends StatelessWidget {
       leading: CircleAvatar(
         backgroundColor: const Color(0xFF2E7D32),
         child: Text(
-          '${member.position}',
+          '$displayPosition',
           style: const TextStyle(color: Colors.white),
         ),
       ),
