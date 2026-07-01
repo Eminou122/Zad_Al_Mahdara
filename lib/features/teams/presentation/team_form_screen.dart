@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/utils/error_text.dart';
 import '../../../core/widgets/zad_scaffold.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
@@ -40,7 +41,9 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
       final e = widget.existing!;
       _nameCtrl.text = e.name;
       _noteCtrl.text = e.note ?? '';
-      _teamType = e.teamType;
+      _teamType = selectableTeamTypeLabels.containsKey(e.teamType)
+          ? e.teamType
+          : 'lunch';
       _status = e.status;
       _isPublic = e.isPublic;
     }
@@ -86,7 +89,7 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = userErrorText(e);
           _saving = false;
         });
       }
@@ -119,7 +122,7 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
               labelText: 'نوع الفريق',
               border: OutlineInputBorder(),
             ),
-            items: teamTypeLabels.entries
+            items: selectableTeamTypeLabels.entries
                 .map(
                   (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
                 )

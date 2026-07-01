@@ -244,6 +244,25 @@ to include recurring actual spending.
 Apply via: Supabase Dashboard → SQL Editor → paste file → Run.
 Depends on 001–009 already applied.
 
+### 011_external_students_foundation.sql
+Additive-only. Does NOT modify 001–010. Adds accountless external students for team
+rotation through RPC-only access: `external_students`, nullable `team_members.profile_id`,
+`team_members.external_student_id`, mixed account/external member detail, and same-phone
+same-team-type validation.
+Apply via: Supabase Dashboard → SQL Editor → paste file → Run.
+Depends on 001–010 already applied.
+
+Gate 8 scope:
+
+- External students have display name + unique 8-digit phone, but no login account.
+- External students can be added, shown, deactivated, reactivated, removed, and included
+  in turn rotation.
+- No invitations, accept/reject, chat, notifications, shopping/cook tax, service role,
+  Supabase Auth, full-phone RPC returns, or broad table policies.
+- Future gate: when a user registers with a matching phone, link `external_students`
+  to `profiles` only after careful conflict checks. Gate 8 does not auto-link, merge,
+  or convert memberships.
+
 Gate 7 limitations:
 
 - Reminder time is stored and shown in the app only. No push notifications, scheduler, or background jobs.
@@ -339,6 +358,28 @@ After applying 010_recurring_purchases_foundation.sql:
 12. Verify reminder time displays in the app, with no push notification.
 13. Verify /budget/recurring route refresh works after production deploy.
 
+## Manual tests (Gate 8)
+
+After applying 011_external_students_foundation.sql:
+
+1. Leader adds external student.
+2. External student appears in team detail as بدون حساب.
+3. External student appears in turn rotation.
+4. Start/complete turn with external member.
+5. Turn history keeps external display name.
+6. Deactivate external member; skipped by turns.
+7. Reactivate external member; returns to rotation.
+8. Remove external member; hidden from list, history remains.
+9. Duplicate external phone rejected/reused safely.
+10. Same phone cannot be active/non-removed in two lunch teams.
+11. Same phone can be in lunch + dinner.
+12. Existing account phone cannot be created as external.
+13. Account member cannot be added to two active teams of same type.
+14. Team type update blocked if same-phone conflict would happen.
+15. Non-leader cannot create/add external student.
+16. Public non-member cannot see member list.
+17. Private non-member denied.
+
 ## Gates
 
 | Gate | Scope |
@@ -355,3 +396,4 @@ After applying 010_recurring_purchases_foundation.sql:
 | 6.4 ✅ | Single active member turn wrap fix |
 | 6.5 ✅ | Member counts + reactivation turn recompute |
 | 7 | Deploy to Vercel |
+| 8 | External students / accountless team members |

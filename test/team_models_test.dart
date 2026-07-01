@@ -2,6 +2,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zad_al_mahdara/features/teams/domain/team_models.dart';
 
 void main() {
+  group('team type labels', () {
+    test('only MVP team types are selectable', () {
+      expect(selectableTeamTypeLabels.keys, ['breakfast', 'lunch', 'dinner']);
+      expect(selectableTeamTypeLabels.containsKey('tea'), false);
+      expect(selectableTeamTypeLabels.containsKey('other'), false);
+    });
+
+    test('old team types still display if returned by DB', () {
+      expect(teamTypeLabels['tea'], 'الشاي');
+      expect(teamTypeLabels['other'], 'أخرى');
+    });
+  });
+
   group('TeamSummary.fromJson', () {
     test('parses my-team entry', () {
       final t = TeamSummary.fromJson({
@@ -112,6 +125,48 @@ void main() {
         'joined_at': '2026-01-15T10:00:00Z',
       });
       expect(m.isActive, false);
+    });
+
+    test('parses account member fields', () {
+      final m = TeamMember.fromJson({
+        'member_id': 'm4',
+        'profile_id': 'p4',
+        'external_student_id': null,
+        'display_name': 'أحمد',
+        'phone_masked': '49****35',
+        'member_kind': 'account',
+        'has_account': true,
+        'role': 'member',
+        'position': 4,
+        'is_active': true,
+        'joined_at': '2026-01-15T10:00:00Z',
+      });
+      expect(m.profileId, 'p4');
+      expect(m.externalStudentId, isNull);
+      expect(m.memberKind, 'account');
+      expect(m.hasAccount, true);
+      expect(m.phoneMasked, '49****35');
+    });
+
+    test('parses external member fields', () {
+      final m = TeamMember.fromJson({
+        'member_id': 'm5',
+        'profile_id': null,
+        'external_student_id': 'e5',
+        'display_name': 'سالم',
+        'phone_masked': '22****88',
+        'member_kind': 'external',
+        'has_account': false,
+        'role': 'member',
+        'position': 5,
+        'is_active': true,
+        'joined_at': '2026-01-15T10:00:00Z',
+      });
+      expect(m.profileId, isNull);
+      expect(m.externalStudentId, 'e5');
+      expect(m.memberKind, 'external');
+      expect(m.hasAccount, false);
+      expect(m.phoneMasked, '22****88');
     });
 
     test('defaults is_active to true when field is missing', () {

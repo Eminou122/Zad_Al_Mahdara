@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/utils/error_text.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
 import '../domain/team_models.dart';
@@ -47,7 +48,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = userErrorText(e);
           _loading = false;
         });
       }

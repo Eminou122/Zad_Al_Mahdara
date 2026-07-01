@@ -6,6 +6,12 @@ const teamTypeLabels = {
   'other': 'أخرى',
 };
 
+const selectableTeamTypeLabels = {
+  'breakfast': 'الفطور',
+  'lunch': 'الغداء',
+  'dinner': 'العشاء',
+};
+
 const teamStatusLabels = {'open': 'مفتوح', 'closed': 'مغلق', 'full': 'مكتمل'};
 
 class TeamSummary {
@@ -53,8 +59,12 @@ class TeamSummary {
 
 class TeamMember {
   final String memberId;
-  final String profileId;
+  final String? profileId;
+  final String? externalStudentId;
   final String displayName;
+  final String? phoneMasked;
+  final String memberKind;
+  final bool hasAccount;
   final String role;
   final int position;
   final bool isActive;
@@ -62,8 +72,12 @@ class TeamMember {
 
   const TeamMember({
     required this.memberId,
-    required this.profileId,
+    this.profileId,
+    this.externalStudentId,
     required this.displayName,
+    this.phoneMasked,
+    required this.memberKind,
+    required this.hasAccount,
     required this.role,
     required this.position,
     required this.isActive,
@@ -72,8 +86,12 @@ class TeamMember {
 
   factory TeamMember.fromJson(Map<String, dynamic> j) => TeamMember(
     memberId: j['member_id'] as String,
-    profileId: j['profile_id'] as String,
+    profileId: j['profile_id'] as String?,
+    externalStudentId: j['external_student_id'] as String?,
     displayName: j['display_name'] as String,
+    phoneMasked: j['phone_masked'] as String?,
+    memberKind: j['member_kind'] as String? ?? 'account',
+    hasAccount: j['has_account'] as bool? ?? j['profile_id'] != null,
     role: j['role'] as String,
     position: (j['position'] as num).toInt(),
     isActive: j['is_active'] as bool? ?? true,

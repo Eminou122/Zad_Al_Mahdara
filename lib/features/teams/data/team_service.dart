@@ -95,11 +95,11 @@ class TeamService {
         .toList();
   }
 
-  Future<void> addTeamMember({
+  Future<TeamDetail> addTeamMember({
     required String teamId,
     required String profileId,
   }) async {
-    await _c.rpc(
+    final res = await _c.rpc(
       'add_team_member',
       params: {
         'p_session_token': _token,
@@ -107,13 +107,31 @@ class TeamService {
         'p_user_id': profileId,
       },
     );
+    return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
   }
 
-  Future<void> deactivateTeamMember({
+  Future<TeamDetail> upsertExternalStudentAndAddToTeam({
+    required String teamId,
+    required String displayName,
+    required String phoneNumber,
+  }) async {
+    final res = await _c.rpc(
+      'upsert_external_student_and_add_to_team',
+      params: {
+        'p_session_token': _token,
+        'p_team_id': teamId,
+        'p_display_name': displayName,
+        'p_phone_number': phoneNumber,
+      },
+    );
+    return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
+  }
+
+  Future<TeamDetail> deactivateTeamMember({
     required String teamId,
     required String memberId,
   }) async {
-    await _c.rpc(
+    final res = await _c.rpc(
       'deactivate_team_member',
       params: {
         'p_session_token': _token,
@@ -121,13 +139,14 @@ class TeamService {
         'p_member_id': memberId,
       },
     );
+    return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
   }
 
-  Future<void> removeTeamMember({
+  Future<TeamDetail> removeTeamMember({
     required String teamId,
     required String memberId,
   }) async {
-    await _c.rpc(
+    final res = await _c.rpc(
       'remove_team_member',
       params: {
         'p_session_token': _token,
@@ -135,13 +154,14 @@ class TeamService {
         'p_member_id': memberId,
       },
     );
+    return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
   }
 
-  Future<void> reactivateTeamMember({
+  Future<TeamDetail> reactivateTeamMember({
     required String teamId,
     required String memberId,
   }) async {
-    await _c.rpc(
+    final res = await _c.rpc(
       'reactivate_team_member',
       params: {
         'p_session_token': _token,
@@ -149,5 +169,6 @@ class TeamService {
         'p_member_id': memberId,
       },
     );
+    return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
   }
 }

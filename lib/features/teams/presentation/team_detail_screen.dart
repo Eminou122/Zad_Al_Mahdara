@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/utils/error_text.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
 import '../data/team_turn_service.dart';
@@ -27,6 +28,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
   bool _loading = true;
   bool _turnLoading = false;
   String? _error;
+  final Set<String> _busyMembers = {};
 
   @override
   void initState() {
@@ -46,7 +48,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = userErrorText(e);
           _loading = false;
         });
       }
@@ -59,6 +61,47 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       setState(() {
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _refreshTurnState() async {
+    try {
+      final turnState = await _turnSvc.getTurnState(widget.teamId);
+      if (mounted) setState(() => _turnState = turnState);
+    } catch (_) {}
+  }
+
+  void _setMemberBusy(String memberId, bool busy) {
+    setState(() {
+      if (busy) {
+        _busyMembers.add(memberId);
+      } else {
+        _busyMembers.remove(memberId);
+      }
+    });
+  }
+
+  Future<void> _applyMemberUpdate(
+    TeamMember member,
+    Future<TeamDetail> Function() action,
+  ) async {
+    _setMemberBusy(member.memberId, true);
+    try {
+      final detail = await action();
+      if (mounted) {
+        setState(() {
+          _detail = detail;
+          _busyMembers.remove(member.memberId);
+        });
+        await _refreshTurnState();
+      }
+    } catch (e) {
+      if (mounted) {
+        _setMemberBusy(member.memberId, false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
     }
   }
 
@@ -83,19 +126,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       ),
     );
     if (ok != true) return;
-    try {
-      await _svc.deactivateTeamMember(
+    await _applyMemberUpdate(
+      m,
+      () => _svc.deactivateTeamMember(
         teamId: widget.teamId,
         memberId: m.memberId,
-      );
-      await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
-      }
-    }
+      ),
+    );
   }
 
   Future<void> _remove(TeamMember m) async {
@@ -119,16 +156,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       ),
     );
     if (ok != true) return;
-    try {
-      await _svc.removeTeamMember(teamId: widget.teamId, memberId: m.memberId);
-      await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
-      }
-    }
+    await _applyMemberUpdate(
+      m,
+      () => _svc.removeTeamMember(teamId: widget.teamId, memberId: m.memberId),
+    );
   }
 
   Future<void> _reactivate(TeamMember m) async {
@@ -150,19 +181,13 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
       ),
     );
     if (ok != true) return;
-    try {
-      await _svc.reactivateTeamMember(
+    await _applyMemberUpdate(
+      m,
+      () => _svc.reactivateTeamMember(
         teamId: widget.teamId,
         memberId: m.memberId,
-      );
-      await _load();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
-      }
-    }
+      ),
+    );
   }
 
   Future<void> _startTurn() async {
@@ -180,7 +205,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         setState(() => _turnLoading = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(_errMsg(e))));
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
       }
     }
   }
@@ -200,15 +225,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
         setState(() => _turnLoading = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(_errMsg(e))));
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
       }
     }
-  }
-
-  String _errMsg(Object e) {
-    final s = e.toString();
-    final m = RegExp(r'message: ([^,)]+)').firstMatch(s);
-    return m?.group(1)?.trim() ?? s;
   }
 
   @override
@@ -292,6 +311,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                   (m) => _MemberTile(
                     member: m,
                     canManage: d.canEdit,
+                    busy: _busyMembers.contains(m.memberId),
                     onDeactivate: () => _deactivate(m),
                     onReactivate: () => _reactivate(m),
                     onRemove: () => _remove(m),
@@ -499,12 +519,14 @@ class _InfoRow extends StatelessWidget {
 class _MemberTile extends StatelessWidget {
   final TeamMember member;
   final bool canManage;
+  final bool busy;
   final VoidCallback onDeactivate;
   final VoidCallback onReactivate;
   final VoidCallback onRemove;
   const _MemberTile({
     required this.member,
     required this.canManage,
+    required this.busy,
     required this.onDeactivate,
     required this.onReactivate,
     required this.onRemove,
@@ -515,6 +537,11 @@ class _MemberTile extends StatelessWidget {
     final isLeader = member.role == 'leader';
     final roleLabel = isLeader ? 'قائد' : 'عضو';
     final showActions = canManage && !isLeader;
+    final parts = [
+      if (!member.hasAccount) 'بدون حساب',
+      if (member.phoneMasked != null) member.phoneMasked!,
+      member.isActive ? roleLabel : '$roleLabel · غير نشط',
+    ];
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -527,10 +554,16 @@ class _MemberTile extends StatelessWidget {
       ),
       title: Text(member.displayName),
       subtitle: Text(
-        member.isActive ? roleLabel : '$roleLabel · غير نشط',
+        parts.join(' · '),
         style: member.isActive ? null : const TextStyle(color: Colors.grey),
       ),
-      trailing: !showActions
+      trailing: busy
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : !showActions
           ? null
           : Row(
               mainAxisSize: MainAxisSize.min,
