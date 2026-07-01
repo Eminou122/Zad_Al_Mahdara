@@ -1,0 +1,22 @@
+name: zad_al_mahdara
+description: "زاد المحظرة — منصة الطلاب الموريتانيين"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.7.0
+  go_router: ^14.0.0
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
