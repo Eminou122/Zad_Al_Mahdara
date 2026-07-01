@@ -49,3 +49,5 @@ app.*.map.json
 *.env
 dart_defines.json
 dart_defines*.json
+.vercel
+.env*.local
