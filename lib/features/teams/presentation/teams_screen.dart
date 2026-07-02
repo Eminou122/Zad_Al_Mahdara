@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
+import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_badge.dart';
 import '../../../core/widgets/zad_empty_state.dart';
 import '../../../core/widgets/zad_info_banner.dart';
@@ -86,9 +87,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
             ),
             const Divider(height: 1),
             if (_loading)
-              const Expanded(
-                child: Center(child: CircularProgressIndicator()),
-              )
+              const Expanded(child: Center(child: CircularProgressIndicator()))
             else if (_error != null)
               Expanded(
                 child: Center(
@@ -109,18 +108,17 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   Widget _tab(String label, bool selected, VoidCallback onTap) => Expanded(
-        child: TextButton(
-          onPressed: onTap,
-          style: TextButton.styleFrom(
-            foregroundColor:
-                selected ? ZadTokens.primary : ZadTokens.textMuted,
-            textStyle: TextStyle(
-              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-          child: Text(label),
+    child: TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        foregroundColor: selected ? ZadTokens.primary : ZadTokens.textMuted,
+        textStyle: TextStyle(
+          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
         ),
-      );
+      ),
+      child: Text(label),
+    ),
+  );
 
   Widget _buildList() {
     final items = _showPublic ? _public : _mine;
@@ -136,9 +134,11 @@ class _TeamsScreenState extends State<TeamsScreen> {
               vertical: ZadTokens.s6,
             ),
             children: [
-              ZadEmptyState(
-                icon: _showPublic ? Icons.public_off : Icons.group_outlined,
-                message: _showPublic ? 'لا توجد فرق عامة' : 'لا توجد فرق بعد',
+              ZadAnimatedEntry(
+                child: ZadEmptyState(
+                  icon: _showPublic ? Icons.public_off : Icons.group_outlined,
+                  message: _showPublic ? 'لا توجد فرق عامة' : 'لا توجد فرق بعد',
+                ),
               ),
             ],
           );
@@ -149,10 +149,16 @@ class _TeamsScreenState extends State<TeamsScreen> {
             vertical: ZadTokens.s3,
           ),
           itemCount: items.length,
-          itemBuilder: (_, i) => _TeamCard(
-            team: items[i],
-            onTap: () =>
-                context.push('/teams/${items[i].id}').then((_) => _load()),
+          // Stagger only the first screenful; later rows appear instantly
+          // while scrolling. Entry state persists, so the "فرقي/عامة" toggle
+          // swaps content without replaying the animation.
+          itemBuilder: (_, i) => ZadAnimatedEntry(
+            delay: Duration(milliseconds: i < 6 ? 40 * i : 0),
+            child: _TeamCard(
+              team: items[i],
+              onTap: () =>
+                  context.push('/teams/${items[i].id}').then((_) => _load()),
+            ),
           ),
         );
       },
@@ -176,9 +182,19 @@ class _TeamCard extends StatelessWidget {
           padding: const EdgeInsets.all(ZadTokens.s3),
           child: Row(
             children: [
-              Icon(
-                team.isPublic ? Icons.group : Icons.lock_outline,
-                color: ZadTokens.primary,
+              Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: ZadTokens.primary.withValues(alpha: 0.10),
+                ),
+                child: Icon(
+                  team.isPublic ? Icons.group : Icons.lock_outline,
+                  size: 22,
+                  color: ZadTokens.primary,
+                ),
               ),
               const SizedBox(width: ZadTokens.s3),
               Expanded(

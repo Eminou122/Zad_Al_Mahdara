@@ -25,13 +25,13 @@ class SpendingProgressCard extends StatelessWidget {
     final barColor = s.remainingMoney < 0
         ? ZadTokens.danger
         : ratio >= 0.8
-            ? ZadTokens.warning
-            : ZadTokens.primary;
+        ? ZadTokens.warning
+        : ZadTokens.primary;
     final todayColor = s.isOverDailyLimit
         ? ZadTokens.danger
         : (s.safeDailyLimit > 0 && s.todaySpending >= 0.8 * s.safeDailyLimit)
-            ? ZadTokens.warning
-            : ZadTokens.text;
+        ? ZadTokens.warning
+        : ZadTokens.text;
 
     // One status banner only — worst condition wins.
     final String status;
@@ -60,31 +60,44 @@ class SpendingProgressCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('المصروف',
-                  style: TextStyle(color: ZadTokens.textMuted, fontSize: 13)),
+              const Text(
+                'المصروف',
+                style: TextStyle(color: ZadTokens.textMuted, fontSize: 13),
+              ),
               Text(
                 '${s.totalSpent.toStringAsFixed(2)} / ${total.toStringAsFixed(2)} MRU',
                 style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 13),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
               ),
             ],
           ),
           const SizedBox(height: ZadTokens.s2),
           ClipRRect(
             borderRadius: BorderRadius.circular(ZadTokens.radiusSm),
-            child: LinearProgressIndicator(
-              value: ratio,
-              minHeight: 10,
-              color: barColor,
-              backgroundColor: ZadTokens.goldSoft.withValues(alpha: 0.5),
+            // Bar fills 0 → ratio once on load; retargets smoothly on data
+            // change. Value is display-only, calculations untouched.
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: ratio),
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, _) => LinearProgressIndicator(
+                value: value,
+                minHeight: 10,
+                color: barColor,
+                backgroundColor: ZadTokens.goldSoft.withValues(alpha: 0.5),
+              ),
             ),
           ),
           const SizedBox(height: ZadTokens.s3),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('مصروف اليوم',
-                  style: TextStyle(color: ZadTokens.textMuted, fontSize: 13)),
+              const Text(
+                'مصروف اليوم',
+                style: TextStyle(color: ZadTokens.textMuted, fontSize: 13),
+              ),
               Text(
                 '${s.todaySpending.toStringAsFixed(2)} MRU',
                 style: TextStyle(

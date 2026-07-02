@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
+import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_scaffold.dart';
@@ -149,49 +150,60 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   List<Widget> _body(BudgetOverview ov) {
     return [
-      BudgetSummaryCard(
-        plan: ov.budgetPlan,
-        summary: ov.summary,
-        onSetup: _goSetup,
+      ZadAnimatedEntry(
+        child: BudgetSummaryCard(
+          plan: ov.budgetPlan,
+          summary: ov.summary,
+          onSetup: _goSetup,
+        ),
       ),
       if (ov.budgetPlan != null && ov.summary != null) ...[
         const SizedBox(height: ZadTokens.s3),
-        SpendingProgressCard(plan: ov.budgetPlan!, summary: ov.summary!),
+        ZadAnimatedEntry(
+          delay: const Duration(milliseconds: 60),
+          child: SpendingProgressCard(
+            plan: ov.budgetPlan!,
+            summary: ov.summary!,
+          ),
+        ),
       ],
       const ZadSectionHeader('إجراءات سريعة'),
-      GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: ZadTokens.s3,
-        crossAxisSpacing: ZadTokens.s3,
-        // 1.75 leaves room for two-line Arabic labels at 320px width.
-        childAspectRatio: 1.75,
-        children: [
-          BudgetQuickActionCard(
-            icon: Icons.add_circle_outline,
-            label: 'إضافة مصروف',
-            onTap: () =>
-                context.push('/budget/expense/new').then((_) => _load()),
-          ),
-          BudgetQuickActionCard(
-            icon: Icons.tune_outlined,
-            label: 'إعداد الميزانية',
-            onTap: _goSetup,
-          ),
-          BudgetQuickActionCard(
-            icon: Icons.autorenew_outlined,
-            label: 'الاشتراكات',
-            onTap: () =>
-                context.push('/budget/subscription/new').then((_) => _load()),
-          ),
-          BudgetQuickActionCard(
-            icon: Icons.shopping_basket_outlined,
-            label: 'المشتريات المتكررة',
-            onTap: () =>
-                context.push('/budget/recurring').then((_) => _load()),
-          ),
-        ],
+      ZadAnimatedEntry(
+        delay: const Duration(milliseconds: 120),
+        child: GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: ZadTokens.s3,
+          crossAxisSpacing: ZadTokens.s3,
+          // 1.35 fits the 34px icon disk + two-line Arabic labels at 320px width.
+          childAspectRatio: 1.35,
+          children: [
+            BudgetQuickActionCard(
+              icon: Icons.add_circle_outline,
+              label: 'إضافة مصروف',
+              onTap: () =>
+                  context.push('/budget/expense/new').then((_) => _load()),
+            ),
+            BudgetQuickActionCard(
+              icon: Icons.tune_outlined,
+              label: 'إعداد الميزانية',
+              onTap: _goSetup,
+            ),
+            BudgetQuickActionCard(
+              icon: Icons.autorenew_outlined,
+              label: 'الاشتراكات',
+              onTap: () =>
+                  context.push('/budget/subscription/new').then((_) => _load()),
+            ),
+            BudgetQuickActionCard(
+              icon: Icons.shopping_basket_outlined,
+              label: 'المشتريات المتكررة',
+              onTap: () =>
+                  context.push('/budget/recurring').then((_) => _load()),
+            ),
+          ],
+        ),
       ),
       const ZadSectionHeader('مشتريات اليوم'),
       if (_todayRecurring.isEmpty)

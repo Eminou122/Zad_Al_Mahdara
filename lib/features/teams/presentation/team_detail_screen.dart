@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/routing/route_observer.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
+import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_badge.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_confirm.dart';
@@ -139,7 +140,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     final ok = await zadConfirm(
       context,
       title: 'تعطيل العضو',
-      body: 'سيبقى العضو ظاهراً في الفريق كغير نشط، ولن يدخل في الأدوار القادمة.',
+      body:
+          'سيبقى العضو ظاهراً في الفريق كغير نشط، ولن يدخل في الأدوار القادمة.',
       confirmLabel: 'تعطيل',
     );
     if (!ok) return;
@@ -226,9 +228,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (_error != null) {
       return Scaffold(
@@ -249,8 +249,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final side =
-                ((constraints.maxWidth - ZadTokens.contentMaxWidth) / 2)
-                    .clamp(ZadTokens.s4, double.infinity);
+                ((constraints.maxWidth - ZadTokens.contentMaxWidth) / 2).clamp(
+                  ZadTokens.s4,
+                  double.infinity,
+                );
             return RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -259,37 +261,39 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                   vertical: ZadTokens.s4,
                 ),
                 children: [
-                  ZadCard(
-                    highlighted: true,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          spacing: ZadTokens.s2,
-                          runSpacing: ZadTokens.s1,
-                          children: [
-                            ZadBadge(
-                              teamTypeLabels[team.teamType] ?? team.teamType,
-                              gold: true,
-                            ),
-                            ZadBadge(
-                              teamStatusLabels[team.status] ?? team.status,
-                            ),
-                            ZadBadge(team.isPublic ? 'عام' : 'خاص'),
-                          ],
-                        ),
-                        const SizedBox(height: ZadTokens.s3),
-                        const Divider(height: 1),
-                        const SizedBox(height: ZadTokens.s3),
-                        _InfoRow('القائد', team.leaderName),
-                        _InfoRow(
-                          'الأعضاء',
-                          '${team.memberCount} '
-                          '(نشط ${team.activeMemberCount} · '
-                          'غير نشط ${team.inactiveMemberCount})',
-                        ),
-                        if (team.note != null) _InfoRow('ملاحظة', team.note!),
-                      ],
+                  ZadAnimatedEntry(
+                    child: ZadCard(
+                      highlighted: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: ZadTokens.s2,
+                            runSpacing: ZadTokens.s1,
+                            children: [
+                              ZadBadge(
+                                teamTypeLabels[team.teamType] ?? team.teamType,
+                                gold: true,
+                              ),
+                              ZadBadge(
+                                teamStatusLabels[team.status] ?? team.status,
+                              ),
+                              ZadBadge(team.isPublic ? 'عام' : 'خاص'),
+                            ],
+                          ),
+                          const SizedBox(height: ZadTokens.s3),
+                          const Divider(height: 1),
+                          const SizedBox(height: ZadTokens.s3),
+                          _InfoRow('القائد', team.leaderName),
+                          _InfoRow(
+                            'الأعضاء',
+                            '${team.memberCount} '
+                                '(نشط ${team.activeMemberCount} · '
+                                'غير نشط ${team.inactiveMemberCount})',
+                          ),
+                          if (team.note != null) _InfoRow('ملاحظة', team.note!),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: ZadTokens.s4),
@@ -311,31 +315,42 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                           child: ElevatedButton.icon(
                             icon: const Icon(Icons.person_add),
                             label: const Text('إضافة عضو'),
-                            onPressed: () => context
-                                .push('/teams/${widget.teamId}/add-member'),
+                            onPressed: () => context.push(
+                              '/teams/${widget.teamId}/add-member',
+                            ),
                           ),
                         ),
                       ],
                     ),
                   const SizedBox(height: ZadTokens.s4),
-                  _TurnCard(
-                    state: _turnState,
-                    loading: _turnLoading,
-                    isMember: d.isMember,
-                    onStart: _startTurn,
-                    onComplete: _completeTurn,
+                  ZadAnimatedEntry(
+                    delay: const Duration(milliseconds: 60),
+                    child: _TurnCard(
+                      state: _turnState,
+                      loading: _turnLoading,
+                      isMember: d.isMember,
+                      onStart: _startTurn,
+                      onComplete: _completeTurn,
+                    ),
                   ),
                   if (d.isMember && d.members.isNotEmpty) ...[
                     const ZadSectionHeader('الأعضاء'),
+                    // Light stagger on the first rows only; row-level busy
+                    // state lives inside _MemberTile and is unaffected.
                     ...d.members.asMap().entries.map(
-                      (entry) => _MemberTile(
-                        displayPosition: entry.key + 1,
-                        member: entry.value,
-                        canManage: d.canEdit,
-                        busy: _busyMembers.contains(entry.value.memberId),
-                        onDeactivate: () => _deactivate(entry.value),
-                        onReactivate: () => _reactivate(entry.value),
-                        onRemove: () => _remove(entry.value),
+                      (entry) => ZadAnimatedEntry(
+                        delay: Duration(
+                          milliseconds: entry.key < 6 ? 30 * entry.key : 0,
+                        ),
+                        child: _MemberTile(
+                          displayPosition: entry.key + 1,
+                          member: entry.value,
+                          canManage: d.canEdit,
+                          busy: _busyMembers.contains(entry.value.memberId),
+                          onDeactivate: () => _deactivate(entry.value),
+                          onReactivate: () => _reactivate(entry.value),
+                          onRemove: () => _remove(entry.value),
+                        ),
                       ),
                     ),
                   ] else if (!d.isMember)
@@ -431,7 +446,56 @@ class _TurnCard extends StatelessWidget {
             ),
           ],
         ] else ...[
-          _InfoRow('المسؤول اليوم', today.displayName),
+          // Today's turn holder highlighted (Stitch-inspired tinted row).
+          Container(
+            padding: const EdgeInsets.all(ZadTokens.s3),
+            decoration: BoxDecoration(
+              color: ZadTokens.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(ZadTokens.radiusSm),
+              border: Border.all(
+                color: ZadTokens.primary.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: ZadTokens.primary,
+                  child: Text(
+                    today.displayName.isEmpty
+                        ? '؟'
+                        : today.displayName.characters.first,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: ZadTokens.s3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'المسؤول اليوم',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: ZadTokens.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        today.displayName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
           if (today.status == 'pending' && s.canManageTurns) ...[
             const SizedBox(height: 10),
             SizedBox(
@@ -564,8 +628,9 @@ class _MemberTile extends StatelessWidget {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: ZadTokens.s3),
         leading: CircleAvatar(
-          backgroundColor:
-              member.isActive ? ZadTokens.primary : ZadTokens.textMuted,
+          backgroundColor: member.isActive
+              ? ZadTokens.primary
+              : ZadTokens.textMuted,
           child: Text(
             '$displayPosition',
             style: const TextStyle(color: Colors.white),

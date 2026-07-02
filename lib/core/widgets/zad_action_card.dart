@@ -38,9 +38,21 @@ class ZadActionCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(ZadTokens.s3),
           child: Column(
+            // min: sizes to content when used full-width outside a grid cell;
+            // grid cells impose tight constraints, so they render unchanged.
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 24, color: color),
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withValues(alpha: 0.12),
+                ),
+                child: Icon(icon, size: 20, color: color),
+              ),
               const SizedBox(height: ZadTokens.s1 + 2),
               Text(
                 title,

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/utils/auth_helpers.dart';
 import '../../../core/widgets/tip_card.dart';
+import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_logo_badge.dart';
 import '../../../services/auth_service.dart';
@@ -77,7 +78,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         setState(() => _error = msg);
       }
     } catch (_) {
-      if (mounted) setState(() => _error = 'حدث خطأ — تحقق من اتصالك بالإنترنت');
+      if (mounted) {
+        setState(() => _error = 'حدث خطأ — تحقق من اتصالك بالإنترنت');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -90,70 +93,74 @@ class _RegisterScreenState extends State<RegisterScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Center(child: ZadLogoBadge(size: 90)),
-              const SizedBox(height: 16),
-              const TipCard('أدخل اسمك ورقم هاتفك، واختر رمزاً سرياً من 4 أرقام تحفظه جيداً'),
-              if (_error != null)
-                ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
-              TextField(
-                controller: _nameCtrl,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'الاسم الكامل'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _phoneCtrl,
-                keyboardType: TextInputType.phone,
-                maxLength: 8,
-                decoration: const InputDecoration(
-                  labelText: 'رقم الهاتف (8 أرقام)',
-                  counterText: '',
+          child: ZadAnimatedEntry(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Center(child: ZadLogoBadge(size: 90)),
+                const SizedBox(height: 16),
+                const TipCard(
+                  'أدخل اسمك ورقم هاتفك، واختر رمزاً سرياً من 4 أرقام تحفظه جيداً',
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _pinCtrl,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                decoration: const InputDecoration(
-                  labelText: 'الرمز السري (4 أرقام)',
-                  counterText: '',
+                if (_error != null)
+                  ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
+                TextField(
+                  controller: _nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(labelText: 'الاسم الكامل'),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _confirmCtrl,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                decoration: const InputDecoration(
-                  labelText: 'تأكيد الرمز السري',
-                  counterText: '',
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  maxLength: 8,
+                  decoration: const InputDecoration(
+                    labelText: 'رقم الهاتف (8 أرقام)',
+                    counterText: '',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: _loading ? null : _submit,
-                child: _loading
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('تسجيل'),
-              ),
-              TextButton(
-                onPressed: () => context.go('/login'),
-                child: const Text('لديّ حساب — دخول'),
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _pinCtrl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'الرمز السري (4 أرقام)',
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirmCtrl,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'تأكيد الرمز السري',
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: _loading ? null : _submit,
+                  child: _loading
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('تسجيل'),
+                ),
+                TextButton(
+                  onPressed: () => context.go('/login'),
+                  child: const Text('لديّ حساب — دخول'),
+                ),
+              ],
+            ),
           ),
         ),
       ),

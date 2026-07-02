@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/widgets/zad_action_card.dart';
-import '../../../core/widgets/zad_card.dart';
+import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_confirm.dart';
 import '../../../core/widgets/zad_logo_badge.dart';
 import '../../../core/widgets/zad_scaffold.dart';
@@ -29,70 +29,51 @@ class HomeScreen extends StatelessWidget {
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ZadCard(
-                highlighted: true,
-                child: Row(
-                  children: [
-                    const ZadLogoBadge(size: 56),
-                    const SizedBox(width: ZadTokens.s3),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name.isNotEmpty ? 'مرحباً، $name' : 'مرحباً بك',
-                            style: Theme.of(context).textTheme.titleMedium,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: ZadTokens.s1),
-                          const Text(
-                            'زادك اليومي لتنظيم الميزانية وأدوار المحظرة',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: ZadTokens.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
+              // Green hero welcome card (Stitch-inspired), white on primary.
+              ZadAnimatedEntry(
+                child: Container(
+                  padding: const EdgeInsets.all(ZadTokens.s4),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [ZadTokens.primaryDark, ZadTokens.primary],
+                      begin: AlignmentDirectional.topStart,
+                      end: AlignmentDirectional.bottomEnd,
                     ),
-                  ],
+                    borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+                    boxShadow: ZadTokens.cardShadow,
+                  ),
+                  child: Row(
+                    children: [
+                      const ZadLogoBadge(size: 56),
+                      const SizedBox(width: ZadTokens.s3),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name.isNotEmpty ? 'مرحباً، $name' : 'مرحباً بك',
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(color: Colors.white),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: ZadTokens.s1),
+                            const Text(
+                              'زادك اليومي لتنظيم الميزانية وأدوار المحظرة',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const ZadSectionHeader('أقسام التطبيق'),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: ZadTokens.s3,
-                crossAxisSpacing: ZadTokens.s3,
-                // 1.75 leaves room for two-line Arabic labels at 320px width.
-                childAspectRatio: 1.75,
-                children: [
-                  ZadActionCard(
-                    icon: Icons.account_balance_wallet_outlined,
-                    title: 'ميزانيتي',
-                    onTap: () => context.push('/budget'),
-                  ),
-                  ZadActionCard(
-                    icon: Icons.group_outlined,
-                    title: 'الفرق',
-                    onTap: () => context.push('/teams'),
-                  ),
-                  ZadActionCard(
-                    icon: Icons.notifications_outlined,
-                    title: 'الإشعارات',
-                    onTap: () => context.push('/notifications'),
-                  ),
-                  if (authService.isAdmin)
-                    ZadActionCard(
-                      icon: Icons.admin_panel_settings_outlined,
-                      title: 'الإدارة',
-                      accent: true,
-                      onTap: () => context.push('/admin'),
-                    ),
-                ],
-              ),
+              _sectionGrid(context, isAdmin: authService.isAdmin),
               const SizedBox(height: ZadTokens.s5),
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
@@ -115,6 +96,72 @@ class HomeScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  /// Admin: 2x2 grid of 4 cards. Normal user: 2 cards + full-width
+  /// notifications card, so the grid never shows an empty slot.
+  Widget _sectionGrid(BuildContext context, {required bool isAdmin}) {
+    // Very small stagger (40ms steps) so the cards settle in calmly.
+    final budget = ZadAnimatedEntry(
+      delay: const Duration(milliseconds: 40),
+      child: ZadActionCard(
+        icon: Icons.account_balance_wallet_outlined,
+        title: 'ميزانيتي',
+        onTap: () => context.push('/budget'),
+      ),
+    );
+    final teams = ZadAnimatedEntry(
+      delay: const Duration(milliseconds: 80),
+      child: ZadActionCard(
+        icon: Icons.group_outlined,
+        title: 'الفرق',
+        onTap: () => context.push('/teams'),
+      ),
+    );
+    final notifications = ZadAnimatedEntry(
+      delay: const Duration(milliseconds: 120),
+      child: ZadActionCard(
+        icon: Icons.notifications_outlined,
+        title: 'الإشعارات',
+        onTap: () => context.push('/notifications'),
+      ),
+    );
+
+    Widget grid(List<Widget> children) => GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: ZadTokens.s3,
+      crossAxisSpacing: ZadTokens.s3,
+      // 1.55 fits the 34px icon disk + one-line labels at 320px width.
+      childAspectRatio: 1.55,
+      children: children,
+    );
+
+    if (isAdmin) {
+      return grid([
+        budget,
+        teams,
+        notifications,
+        ZadAnimatedEntry(
+          delay: const Duration(milliseconds: 160),
+          child: ZadActionCard(
+            icon: Icons.admin_panel_settings_outlined,
+            title: 'الإدارة',
+            accent: true,
+            onTap: () => context.push('/admin'),
+          ),
+        ),
+      ]);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        grid([budget, teams]),
+        const SizedBox(height: ZadTokens.s3),
+        notifications,
+      ],
     );
   }
 }

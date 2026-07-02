@@ -14,8 +14,17 @@ class ZadEmptyState extends StatelessWidget {
       padding: const EdgeInsets.all(ZadTokens.s5),
       child: Column(
         children: [
-          Icon(icon, size: 36, color: ZadTokens.gold),
-          const SizedBox(height: ZadTokens.s2),
+          Container(
+            width: 60,
+            height: 60,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: ZadTokens.gold.withValues(alpha: 0.12),
+            ),
+            child: Icon(icon, size: 30, color: ZadTokens.gold),
+          ),
+          const SizedBox(height: ZadTokens.s3),
           Text(
             message,
             textAlign: TextAlign.center,

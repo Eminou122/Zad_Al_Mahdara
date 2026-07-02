@@ -150,8 +150,9 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints:
-                const BoxConstraints(maxWidth: ZadTokens.contentMaxWidth),
+            constraints: const BoxConstraints(
+              maxWidth: ZadTokens.contentMaxWidth,
+            ),
             child: Column(
               children: [
                 Padding(
@@ -166,8 +167,9 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                               child: SizedBox(
                                 width: 20,
                                 height: 20,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               ),
                             )
                           : const Icon(Icons.search),
@@ -176,8 +178,7 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                   ),
                 ),
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: ZadTokens.s3),
+                  padding: const EdgeInsets.symmetric(horizontal: ZadTokens.s3),
                   child: Card(
                     margin: EdgeInsets.zero,
                     child: ExpansionTile(
@@ -249,55 +250,62 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                     child: ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
                   ),
                 Expanded(
-                  child: _results.isEmpty
-                      // Plain ListView keeps the empty card full-width and
-                      // top-aligned instead of a centered narrow tower.
-                      ? ListView(
-                          padding: const EdgeInsets.all(ZadTokens.s3),
-                          children: [
-                            ZadEmptyState(
-                              icon: Icons.person_search_outlined,
-                              message: _searchCtrl.text.length < 2
-                                  ? 'ابحث عن طالب للإضافة'
-                                  : 'لا توجد نتائج',
-                            ),
-                          ],
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(ZadTokens.s3),
-                          itemCount: _results.length,
-                          itemBuilder: (_, i) {
-                            final s = _results[i];
-                            return Card(
-                              margin: const EdgeInsets.only(
-                                bottom: ZadTokens.s2,
+                  // 200ms crossfade between empty state and results. Keys are
+                  // per-state, so typing inside results never re-animates.
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: _results.isEmpty
+                        // Plain ListView keeps the empty card full-width and
+                        // top-aligned instead of a centered narrow tower.
+                        ? ListView(
+                            key: const ValueKey('empty'),
+                            padding: const EdgeInsets.all(ZadTokens.s3),
+                            children: [
+                              ZadEmptyState(
+                                icon: Icons.person_search_outlined,
+                                message: _searchCtrl.text.length < 2
+                                    ? 'ابحث عن طالب للإضافة'
+                                    : 'لا توجد نتائج',
                               ),
-                              child: ListTile(
-                                leading: const Icon(
-                                  Icons.person_outline,
-                                  color: ZadTokens.primary,
+                            ],
+                          )
+                        : ListView.builder(
+                            key: const ValueKey('results'),
+                            padding: const EdgeInsets.all(ZadTokens.s3),
+                            itemCount: _results.length,
+                            itemBuilder: (_, i) {
+                              final s = _results[i];
+                              return Card(
+                                margin: const EdgeInsets.only(
+                                  bottom: ZadTokens.s2,
                                 ),
-                                title: Text(s.displayName),
-                                subtitle: Text(s.phoneMasked),
-                                trailing: _adding.contains(s.profileId)
-                                    ? const SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
+                                child: ListTile(
+                                  leading: const Icon(
+                                    Icons.person_outline,
+                                    color: ZadTokens.primary,
+                                  ),
+                                  title: Text(s.displayName),
+                                  subtitle: Text(s.phoneMasked),
+                                  trailing: _adding.contains(s.profileId)
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : IconButton(
+                                          icon: const Icon(
+                                            Icons.person_add,
+                                            color: ZadTokens.primary,
+                                          ),
+                                          onPressed: () => _add(s),
                                         ),
-                                      )
-                                    : IconButton(
-                                        icon: const Icon(
-                                          Icons.person_add,
-                                          color: ZadTokens.primary,
-                                        ),
-                                        onPressed: () => _add(s),
-                                      ),
-                              ),
-                            );
-                          },
-                        ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
                 ),
               ],
             ),
