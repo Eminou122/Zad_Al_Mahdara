@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/utils/error_text.dart';
+import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_scaffold.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
@@ -104,24 +105,15 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            ),
+            ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
           TextField(
             controller: _nameCtrl,
-            decoration: const InputDecoration(
-              labelText: 'اسم الفريق',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'اسم الفريق'),
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             value: _teamType, // ignore: deprecated_member_use
-            decoration: const InputDecoration(
-              labelText: 'نوع الفريق',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'نوع الفريق'),
             items: selectableTeamTypeLabels.entries
                 .map(
                   (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
@@ -134,10 +126,7 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
             value: _status, // ignore: deprecated_member_use
-            decoration: const InputDecoration(
-              labelText: 'الحالة',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'الحالة'),
             items: teamStatusLabels.entries
                 .map(
                   (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
@@ -152,26 +141,26 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
             title: const Text('فريق عام'),
             subtitle: const Text('يظهر للجميع في قائمة الفرق العامة'),
             value: _isPublic,
-            activeThumbColor: const Color(0xFF2E7D32),
             onChanged: (v) => setState(() => _isPublic = v),
           ),
           const SizedBox(height: 8),
           TextField(
             controller: _noteCtrl,
-            decoration: const InputDecoration(
-              labelText: 'ملاحظة (اختياري)',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)'),
             maxLines: 3,
           ),
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: _saving ? null : _save,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2E7D32),
-            ),
             child: _saving
-                ? const CircularProgressIndicator(color: Colors.white)
+                ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Text('حفظ'),
           ),
         ],

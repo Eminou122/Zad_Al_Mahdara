@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
+import '../../../core/widgets/zad_empty_state.dart';
+import '../../../core/widgets/zad_info_banner.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
 import '../domain/team_models.dart';
@@ -145,122 +148,158 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('إضافة عضو')),
       body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: TextField(
-                controller: _searchCtrl,
-                decoration: InputDecoration(
-                  labelText: 'البحث بالاسم (حرفان على الأقل)',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: _searching
-                      ? const Padding(
-                          padding: EdgeInsets.all(10),
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+        child: Center(
+          child: ConstrainedBox(
+            constraints:
+                const BoxConstraints(maxWidth: ZadTokens.contentMaxWidth),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(ZadTokens.s3),
+                  child: TextField(
+                    controller: _searchCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'البحث بالاسم (حرفان على الأقل)',
+                      suffixIcon: _searching
+                          ? const Padding(
+                              padding: EdgeInsets.all(10),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            )
+                          : const Icon(Icons.search),
+                    ),
+                    onChanged: _search,
+                  ),
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: ZadTokens.s3),
+                  child: Card(
+                    margin: EdgeInsets.zero,
+                    child: ExpansionTile(
+                      shape: const Border(),
+                      tilePadding: const EdgeInsets.symmetric(
+                        horizontal: ZadTokens.s3,
+                      ),
+                      leading: const Icon(
+                        Icons.person_add_alt_1,
+                        color: ZadTokens.gold,
+                      ),
+                      title: const Text('إضافة طالب بدون حساب'),
+                      childrenPadding: const EdgeInsets.fromLTRB(
+                        ZadTokens.s3,
+                        0,
+                        ZadTokens.s3,
+                        ZadTokens.s3,
+                      ),
+                      children: [
+                        TextField(
+                          controller: _nameCtrl,
+                          maxLength: 80,
+                          decoration: const InputDecoration(
+                            labelText: 'اسم الطالب',
+                          ),
+                        ),
+                        const SizedBox(height: ZadTokens.s2),
+                        TextField(
+                          controller: _phoneCtrl,
+                          keyboardType: TextInputType.phone,
+                          maxLength: 8,
+                          decoration: const InputDecoration(
+                            labelText: 'رقم الهاتف',
+                          ),
+                        ),
+                        if (_externalError != null)
+                          ZadInfoBanner(
+                            _externalError!,
+                            kind: ZadBannerKind.danger,
+                          ),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            icon: _addingExternal
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.person_add_alt_1),
+                            label: const Text('إضافة طالب بدون حساب'),
+                            onPressed: _addingExternal ? null : _addExternal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      ZadTokens.s3,
+                      ZadTokens.s3,
+                      ZadTokens.s3,
+                      0,
+                    ),
+                    child: ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
+                  ),
+                Expanded(
+                  child: _results.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(ZadTokens.s4),
+                          child: Center(
+                            child: ZadEmptyState(
+                              icon: Icons.person_search_outlined,
+                              message: _searchCtrl.text.length < 2
+                                  ? 'ابحث عن طالب للإضافة'
+                                  : 'لا توجد نتائج',
+                            ),
                           ),
                         )
-                      : const Icon(Icons.search),
-                ),
-                onChanged: _search,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                title: const Text('إضافة طالب بدون حساب'),
-                childrenPadding: const EdgeInsets.only(bottom: 12),
-                children: [
-                  TextField(
-                    controller: _nameCtrl,
-                    maxLength: 80,
-                    decoration: const InputDecoration(
-                      labelText: 'اسم الطالب',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _phoneCtrl,
-                    keyboardType: TextInputType.phone,
-                    maxLength: 8,
-                    decoration: const InputDecoration(
-                      labelText: 'رقم الهاتف',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  if (_externalError != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        _externalError!,
-                        style: const TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: _addingExternal
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.person_add_alt_1),
-                      label: const Text('إضافة طالب بدون حساب'),
-                      onPressed: _addingExternal ? null : _addExternal,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
-              ),
-            Expanded(
-              child: _results.isEmpty
-                  ? Center(
-                      child: Text(
-                        _searchCtrl.text.length < 2
-                            ? 'ابحث عن طالب للإضافة'
-                            : 'لا توجد نتائج',
-                        style: const TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _results.length,
-                      itemBuilder: (_, i) {
-                        final s = _results[i];
-                        return ListTile(
-                          leading: const Icon(Icons.person_outline),
-                          title: Text(s.displayName),
-                          subtitle: Text(s.phoneMasked),
-                          trailing: _adding.contains(s.profileId)
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : IconButton(
-                                  icon: const Icon(
-                                    Icons.person_add,
-                                    color: Color(0xFF2E7D32),
-                                  ),
-                                  onPressed: () => _add(s),
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(ZadTokens.s3),
+                          itemCount: _results.length,
+                          itemBuilder: (_, i) {
+                            final s = _results[i];
+                            return Card(
+                              margin: const EdgeInsets.only(
+                                bottom: ZadTokens.s2,
+                              ),
+                              child: ListTile(
+                                leading: const Icon(
+                                  Icons.person_outline,
+                                  color: ZadTokens.primary,
                                 ),
-                        );
-                      },
-                    ),
+                                title: Text(s.displayName),
+                                subtitle: Text(s.phoneMasked),
+                                trailing: _adding.contains(s.profileId)
+                                    ? const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : IconButton(
+                                        icon: const Icon(
+                                          Icons.person_add,
+                                          color: ZadTokens.primary,
+                                        ),
+                                        onPressed: () => _add(s),
+                                      ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

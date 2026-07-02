@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/utils/auth_helpers.dart';
 import '../../../core/widgets/tip_card.dart';
+import '../../../core/widgets/zad_info_banner.dart';
+import '../../../core/widgets/zad_logo_badge.dart';
 import '../../../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -91,8 +93,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const Center(child: ZadLogoBadge(size: 90)),
+              const SizedBox(height: 16),
               const TipCard('أدخل اسمك ورقم هاتفك، واختر رمزاً سرياً من 4 أرقام تحفظه جيداً'),
-              if (_error != null) _ErrorBox(_error!),
+              if (_error != null)
+                ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
               TextField(
                 controller: _nameCtrl,
                 textCapitalization: TextCapitalization.words,
@@ -152,25 +157,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _ErrorBox extends StatelessWidget {
-  final String message;
-  const _ErrorBox(this.message);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.red.shade200),
-      ),
-      child: Text(message, style: TextStyle(color: Colors.red.shade800)),
     );
   }
 }
