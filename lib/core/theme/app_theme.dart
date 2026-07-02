@@ -1,52 +1,112 @@
 import 'package:flutter/material.dart';
+import 'zad_tokens.dart';
 
 class AppTheme {
-  static const sand = Color(0xFFF5E6C8);
-  static const green = Color(0xFF2E7D32);
-  static const brown = Color(0xFF3E2723);
-  static const cream = Color(0xFFFFF8E1);
-
   static final light = ThemeData(
     useMaterial3: true,
-    scaffoldBackgroundColor: sand,
-    colorScheme: ColorScheme.light(
-      primary: green,
+    scaffoldBackgroundColor: ZadTokens.background,
+    colorScheme: const ColorScheme.light(
+      primary: ZadTokens.primary,
       onPrimary: Colors.white,
-      surface: cream,
-      onSurface: brown,
+      secondary: ZadTokens.gold,
+      onSecondary: ZadTokens.text,
+      surface: ZadTokens.surface,
+      onSurface: ZadTokens.text,
+      error: ZadTokens.danger,
+      onError: Colors.white,
     ),
     textTheme: const TextTheme(
-      bodyLarge: TextStyle(color: brown, fontSize: 16),
-      bodyMedium: TextStyle(color: brown, fontSize: 14),
-      titleLarge: TextStyle(color: brown, fontSize: 22, fontWeight: FontWeight.bold),
+      bodyLarge: TextStyle(color: ZadTokens.text, fontSize: 16),
+      bodyMedium: TextStyle(color: ZadTokens.text, fontSize: 14),
+      bodySmall: TextStyle(color: ZadTokens.textMuted, fontSize: 13),
+      titleLarge: TextStyle(
+        color: ZadTokens.text,
+        fontSize: 22,
+        fontWeight: FontWeight.bold,
+      ),
+      titleMedium: TextStyle(
+        color: ZadTokens.text,
+        fontSize: 17,
+        fontWeight: FontWeight.bold,
+      ),
+      titleSmall: TextStyle(
+        color: ZadTokens.text,
+        fontSize: 15,
+        fontWeight: FontWeight.bold,
+      ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: green,
+        backgroundColor: ZadTokens.primary,
         foregroundColor: Colors.white,
         minimumSize: const Size(double.infinity, 52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+        ),
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
       ),
     ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: ZadTokens.primary,
+        side: const BorderSide(color: ZadTokens.primary),
+        minimumSize: const Size(double.infinity, 48),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+        ),
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: ZadTokens.primary),
+    ),
     cardTheme: const CardThemeData(
-      color: cream,
+      color: ZadTokens.surface,
       elevation: 1,
+      shadowColor: Color(0x22000000),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderRadius: BorderRadius.all(Radius.circular(ZadTokens.radiusMd)),
       ),
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: green,
+      backgroundColor: ZadTokens.primaryDark,
       foregroundColor: Colors.white,
       centerTitle: true,
       elevation: 0,
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: cream,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      fillColor: ZadTokens.surface,
+      labelStyle: const TextStyle(color: ZadTokens.textMuted),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 2),
+        borderSide: const BorderSide(color: ZadTokens.goldSoft),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 2),
+        borderSide: const BorderSide(color: ZadTokens.goldSoft),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 2),
+        borderSide: const BorderSide(color: ZadTokens.primary, width: 2),
+      ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: ZadTokens.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(ZadTokens.radiusLg),
+      ),
+    ),
+    snackBarTheme: const SnackBarThemeData(
+      backgroundColor: ZadTokens.primaryDark,
+      contentTextStyle: TextStyle(color: Colors.white),
+      behavior: SnackBarBehavior.floating,
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: ZadTokens.primary,
+    ),
+    dividerTheme: const DividerThemeData(color: ZadTokens.goldSoft),
+    listTileTheme: const ListTileThemeData(iconColor: ZadTokens.primary),
   );
 }

@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/theme/zad_tokens.dart';
+import '../../../core/widgets/zad_card.dart';
+import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_scaffold.dart';
-import '../../../core/widgets/tip_card.dart';
+import '../../../core/widgets/zad_section_header.dart';
 import '../../../services/auth_service.dart';
 import '../data/budget_service.dart';
 import '../domain/budget_models.dart';
+import 'widgets/budget_quick_action_card.dart';
+import 'widgets/budget_summary_card.dart';
+import 'widgets/spending_progress_card.dart';
 
 class BudgetScreen extends StatefulWidget {
   final AuthService authService;
@@ -120,315 +126,272 @@ class _BudgetScreenState extends State<BudgetScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  void _goSetup() => context
+      .push('/budget/setup', extra: _overview?.budgetPlan)
+      .then((_) => _load());
+
   @override
   Widget build(BuildContext context) {
     return ZadScaffold(
       title: 'ميزانيتي',
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const TipCard(
-                  'هنا تعرف كم بقي من مالك وكم يمكنك أن تصرف كل يوم بأمان.',
-                ),
-                if (_error != null) _ErrorBox(_error!),
+                if (_error != null)
+                  ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
                 if (_overview != null) ..._body(_overview!),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => context
-                      .push('/budget/setup', extra: _overview?.budgetPlan)
-                      .then((_) => _load()),
-                  child: const Text('إعداد الميزانية'),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: () =>
-                      context.push('/budget/expense/new').then((_) => _load()),
-                  child: const Text('إضافة مصروف'),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: () => context
-                      .push('/budget/subscription/new')
-                      .then((_) => _load()),
-                  child: const Text('إضافة اشتراك'),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: () =>
-                      context.push('/budget/recurring').then((_) => _load()),
-                  child: const Text('المشتريات المتكررة'),
-                ),
               ],
             ),
     );
   }
 
   List<Widget> _body(BudgetOverview ov) {
-    final widgets = <Widget>[];
-
-    if (ov.budgetPlan == null) {
-      widgets.add(_WarningBox('أنشئ خطة ميزانية أولاً'));
-    } else {
-      final plan = ov.budgetPlan!;
-      final s = ov.summary!;
-
-      if (s.daysRemaining == 0) {
-        widgets.add(_WarningBox('انتهت مدة هذه الخطة.'));
-      }
-      if (s.remainingMoney < 0) {
-        widgets.add(
-          _WarningBox(
-            'انتهى المال المخطط أو أصبح أقل من الصفر.',
-            color: Colors.orange.shade700,
+    return [
+      BudgetSummaryCard(
+        plan: ov.budgetPlan,
+        summary: ov.summary,
+        onSetup: _goSetup,
+      ),
+      if (ov.budgetPlan != null && ov.summary != null) ...[
+        const SizedBox(height: ZadTokens.s3),
+        SpendingProgressCard(plan: ov.budgetPlan!, summary: ov.summary!),
+      ],
+      const ZadSectionHeader('إجراءات سريعة'),
+      GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: ZadTokens.s3,
+        crossAxisSpacing: ZadTokens.s3,
+        // 1.75 leaves room for two-line Arabic labels at 320px width.
+        childAspectRatio: 1.75,
+        children: [
+          BudgetQuickActionCard(
+            icon: Icons.add_circle_outline,
+            label: 'إضافة مصروف',
+            onTap: () =>
+                context.push('/budget/expense/new').then((_) => _load()),
           ),
-        );
-      }
-      if (s.isOverDailyLimit) {
-        widgets.add(
-          _WarningBox('صرفت اليوم أكثر من الحد الآمن. حاول تقليل المصاريف.'),
-        );
-      }
-
-      widgets.add(
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
+          BudgetQuickActionCard(
+            icon: Icons.tune_outlined,
+            label: 'إعداد الميزانية',
+            onTap: _goSetup,
+          ),
+          BudgetQuickActionCard(
+            icon: Icons.autorenew_outlined,
+            label: 'الاشتراكات',
+            onTap: () =>
+                context.push('/budget/subscription/new').then((_) => _load()),
+          ),
+          BudgetQuickActionCard(
+            icon: Icons.shopping_basket_outlined,
+            label: 'المشتريات المتكررة',
+            onTap: () =>
+                context.push('/budget/recurring').then((_) => _load()),
+          ),
+        ],
+      ),
+      const ZadSectionHeader('مشتريات اليوم'),
+      if (_todayRecurring.isEmpty)
+        const ZadCard(
+          child: Text(
+            'لا توجد مشتريات متكررة اليوم',
+            style: TextStyle(color: ZadTokens.textMuted),
+          ),
+        )
+      else
+        for (final item in _todayRecurring)
+          ZadCard(
+            margin: const EdgeInsets.only(bottom: ZadTokens.s2),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _row(
-                  'إجمالي الميزانية',
-                  '${plan.totalMoney.toStringAsFixed(2)} MRU',
-                ),
-                _row(
-                  'المتبقي',
-                  '${s.remainingMoney.toStringAsFixed(2)} MRU',
-                  color: s.remainingMoney < 0
-                      ? Colors.red
-                      : const Color(0xFF2E7D32),
-                ),
-                _row(
-                  'الحد اليومي الآمن',
-                  '${s.safeDailyLimit < 0 ? 0 : s.safeDailyLimit.toStringAsFixed(2)} MRU',
-                ),
-                _row(
-                  'مصروف اليوم',
-                  '${s.todaySpending.toStringAsFixed(2)} MRU',
-                ),
-                _row('الأيام المتبقية', '${s.daysRemaining} / ${s.daysTotal}'),
-                if (plan.note != null && plan.note!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      plan.note!,
-                      style: const TextStyle(fontSize: 13, color: Colors.grey),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      widgets.add(const SizedBox(height: 16));
-      widgets.add(
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                _row(
-                  'المتوقع من المشتريات المتكررة',
-                  '${s.plannedRecurringTotal.toStringAsFixed(2)} MRU',
-                ),
-                _row(
-                  'تم شراؤه فعلاً',
-                  '${s.actualRecurringTotal.toStringAsFixed(2)} MRU',
-                ),
-                _row(
-                  'لم يتم شراؤه',
-                  '${s.skippedRecurringTotal.toStringAsFixed(2)} MRU (${s.skippedRecurringCount})',
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    widgets.add(const SizedBox(height: 16));
-    widgets.add(_sectionTitle('مشتريات اليوم'));
-    if (_todayRecurring.isEmpty) {
-      widgets.add(
-        const Card(
-          child: Padding(
-            padding: EdgeInsets.all(12),
-            child: Text('لا توجد مشتريات متكررة اليوم'),
-          ),
-        ),
-      );
-    } else {
-      for (final item in _todayRecurring) {
-        widgets.add(
-          Card(
-            margin: const EdgeInsets.only(bottom: 6),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    item.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${item.price.toStringAsFixed(2)} MRU'
-                    '${item.reminderTime == null ? '' : '  •  تذكير: ${item.reminderTime}'}',
-                  ),
-                  const SizedBox(height: 6),
-                  Text('الحالة: ${_statusText(item.status)}'),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ElevatedButton(
-                        onPressed: item.status == 'purchased'
-                            ? null
-                            : () => _markRecurring(item, 'purchased'),
-                        child: const Text('تم الشراء'),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      OutlinedButton(
-                        onPressed: item.status == 'skipped'
-                            ? null
-                            : () => _markRecurring(item, 'skipped'),
-                        child: const Text('لم أشترِ'),
+                    ),
+                    Text(
+                      '${item.price.toStringAsFixed(2)} MRU',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: ZadTokens.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: ZadTokens.s1),
+                Text(
+                  '${_statusText(item.status)}'
+                  '${item.reminderTime == null ? '' : '  •  تذكير: ${item.reminderTime}'}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: ZadTokens.textMuted,
+                  ),
+                ),
+                const SizedBox(height: ZadTokens.s2),
+                Row(
+                  children: [
+                    ElevatedButton(
+                      style: _chipStyle,
+                      onPressed: item.status == 'purchased'
+                          ? null
+                          : () => _markRecurring(item, 'purchased'),
+                      child: const Text('تم الشراء'),
+                    ),
+                    const SizedBox(width: ZadTokens.s2),
+                    OutlinedButton(
+                      style: _chipStyle,
+                      onPressed: item.status == 'skipped'
+                          ? null
+                          : () => _markRecurring(item, 'skipped'),
+                      child: const Text('لم أشترِ'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+      if (ov.activeSubscriptions.isNotEmpty) ...[
+        const ZadSectionHeader('الاشتراكات الفعالة'),
+        for (final sub in ov.activeSubscriptions)
+          ZadCard(
+            margin: const EdgeInsets.only(bottom: ZadTokens.s2),
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZadTokens.s4,
+              vertical: ZadTokens.s3,
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.autorenew_outlined,
+                  color: ZadTokens.gold,
+                  size: 22,
+                ),
+                const SizedBox(width: ZadTokens.s3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        sub.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '${_fmtDate(sub.startDate)} ← ${_fmtDate(sub.endDate)}'
+                        '  •  إشعار قبل ${sub.notifyDaysBefore} أيام',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: ZadTokens.textMuted,
+                        ),
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+                Text(
+                  '${sub.amount.toStringAsFixed(2)} MRU',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: ZadTokens.primary,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, size: 20),
+                  tooltip: 'تعديل',
+                  onPressed: () => context
+                      .push('/budget/subscription/new', extra: sub)
+                      .then((_) => _load()),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.cancel_outlined,
+                    size: 20,
+                    color: ZadTokens.danger,
+                  ),
+                  tooltip: 'إلغاء',
+                  onPressed: () => _deactivateSub(sub.id),
+                ),
+              ],
             ),
           ),
-        );
-      }
-    }
-
-    if (ov.activeSubscriptions.isNotEmpty) {
-      widgets.add(const SizedBox(height: 16));
-      widgets.add(_sectionTitle('الاشتراكات الفعالة'));
-      for (final sub in ov.activeSubscriptions) {
-        widgets.add(
-          Card(
-            margin: const EdgeInsets.only(bottom: 6),
-            child: ListTile(
-              title: Text(
-                sub.name,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Text(
-                '${sub.amount.toStringAsFixed(2)} MRU  •  ${_fmtDate(sub.startDate)} ← ${_fmtDate(sub.endDate)}',
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+      ],
+      if (ov.recentExpenses.isNotEmpty) ...[
+        const ZadSectionHeader('المصاريف الأخيرة'),
+        for (final exp in ov.recentExpenses)
+          ZadCard(
+            margin: const EdgeInsets.only(bottom: ZadTokens.s2),
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZadTokens.s4,
+              vertical: ZadTokens.s3,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        exp.itemName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        _fmtDate(exp.expenseDate) +
+                            (exp.category != null
+                                ? '  •  ${exp.category}'
+                                : '') +
+                            (exp.source == 'recurring_purchase'
+                                ? '  •  متكرر'
+                                : ''),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: ZadTokens.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '${exp.amount.toStringAsFixed(2)} MRU',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                if (exp.source == 'manual') ...[
                   IconButton(
                     icon: const Icon(Icons.edit_outlined, size: 20),
                     tooltip: 'تعديل',
                     onPressed: () => context
-                        .push('/budget/subscription/new', extra: sub)
+                        .push('/budget/expense/new', extra: exp)
                         .then((_) => _load()),
                   ),
                   IconButton(
                     icon: const Icon(
-                      Icons.cancel_outlined,
+                      Icons.delete_outline,
                       size: 20,
-                      color: Colors.red,
+                      color: ZadTokens.danger,
                     ),
-                    tooltip: 'إلغاء',
-                    onPressed: () => _deactivateSub(sub.id),
+                    tooltip: 'حذف',
+                    onPressed: () => _deleteExpense(exp.id),
                   ),
                 ],
-              ),
+              ],
             ),
           ),
-        );
-      }
-    }
-
-    if (ov.recentExpenses.isNotEmpty) {
-      widgets.add(const SizedBox(height: 16));
-      widgets.add(_sectionTitle('المصاريف الأخيرة'));
-      for (final exp in ov.recentExpenses) {
-        widgets.add(
-          Card(
-            margin: const EdgeInsets.only(bottom: 6),
-            child: ListTile(
-              title: Text(
-                exp.itemName,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              subtitle: Text(
-                '${exp.amount.toStringAsFixed(2)} MRU  •  ${_fmtDate(exp.expenseDate)}'
-                '${exp.category != null ? "  •  ${exp.category}" : ""}'
-                '${exp.source == "recurring_purchase" ? "  •  متكرر" : ""}',
-              ),
-              trailing: exp.source == 'manual'
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined, size: 20),
-                          tooltip: 'تعديل',
-                          onPressed: () => context
-                              .push('/budget/expense/new', extra: exp)
-                              .then((_) => _load()),
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            size: 20,
-                            color: Colors.red,
-                          ),
-                          tooltip: 'حذف',
-                          onPressed: () => _deleteExpense(exp.id),
-                        ),
-                      ],
-                    )
-                  : null,
-            ),
-          ),
-        );
-      }
-    }
-
-    return widgets;
+      ],
+    ];
   }
 
-  Widget _sectionTitle(String title) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Text(
-      title,
-      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+  static final _chipStyle = ButtonStyle(
+    minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
+    padding: const WidgetStatePropertyAll(
+      EdgeInsets.symmetric(horizontal: ZadTokens.s4),
     ),
-  );
-
-  Widget _row(String label, String value, {Color? color}) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(child: Text(label)),
-        const SizedBox(width: 8),
-        Text(
-          value,
-          style: TextStyle(fontWeight: FontWeight.bold, color: color),
-        ),
-      ],
+    textStyle: const WidgetStatePropertyAll(
+      TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
     ),
   );
 
@@ -458,45 +421,5 @@ class _BudgetScreenState extends State<BudgetScreen> {
     }
     if (e is PostgrestException) return 'خطأ: ${e.message}';
     return 'حدث خطأ — تحقق من اتصالك بالإنترنت';
-  }
-}
-
-class _WarningBox extends StatelessWidget {
-  final String message;
-  final Color? color;
-  const _WarningBox(this.message, {this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = color ?? Colors.red.shade700;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: c.withValues(alpha: 0.4)),
-      ),
-      child: Text(message, style: TextStyle(color: c)),
-    );
-  }
-}
-
-class _ErrorBox extends StatelessWidget {
-  final String message;
-  const _ErrorBox(this.message);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.red.shade200),
-      ),
-      child: Text(message, style: TextStyle(color: Colors.red.shade800)),
-    );
   }
 }

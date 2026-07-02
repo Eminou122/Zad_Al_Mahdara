@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/widgets/zad_logo_badge.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -25,10 +26,7 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 180),
-              child: Image.asset('assets/images/zad_al_mahdara_logo.png'),
-            ),
+            const ZadLogoBadge(size: 160),
             const SizedBox(height: 16),
             Text(
               'زاد المحظرة',
@@ -42,7 +40,7 @@ class _SplashScreenState extends State<SplashScreen> {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 32),
-            const CircularProgressIndicator(color: Color(0xFF2E7D32)),
+            const CircularProgressIndicator(),
           ],
         ),
       ),

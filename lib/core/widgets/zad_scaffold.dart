@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../theme/zad_tokens.dart';
+import 'zad_logo_badge.dart';
 
 class ZadScaffold extends StatelessWidget {
   final String title;
@@ -17,22 +19,25 @@ class ZadScaffold extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset(
-              'assets/images/zad_al_mahdara_logo.png',
-              width: 32,
-              height: 32,
-            ),
-            const SizedBox(width: 8),
-            Expanded(child: Text(title, overflow: TextOverflow.ellipsis)),
+            const ZadLogoBadge(size: 30),
+            const SizedBox(width: ZadTokens.s2 + 2),
+            Flexible(child: Text(title, overflow: TextOverflow.ellipsis)),
           ],
         ),
         actions: actions,
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: body,
+        child: Center(
+          child: ConstrainedBox(
+            constraints:
+                const BoxConstraints(maxWidth: ZadTokens.contentMaxWidth),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(ZadTokens.s4),
+              child: body,
+            ),
+          ),
         ),
       ),
     );

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/utils/auth_helpers.dart';
 import '../../../core/widgets/tip_card.dart';
+import '../../../core/widgets/zad_logo_badge.dart';
 import '../../../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -71,12 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 32),
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 180),
-                  child: Image.asset('assets/images/zad_al_mahdara_logo.png'),
-                ),
-              ),
+              const Center(child: ZadLogoBadge(size: 140)),
               const SizedBox(height: 16),
               Text(
                 'تسجيل الدخول',

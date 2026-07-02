@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/widgets/zad_scaffold.dart';
 import '../../../core/widgets/tip_card.dart';
+import '../../../core/widgets/zad_info_banner.dart';
 import '../../../services/auth_service.dart';
 import '../data/budget_service.dart';
 import '../domain/budget_models.dart';
@@ -189,7 +190,8 @@ class _RecurringPurchaseFormScreenState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const TipCard('لن يتم خصم المال إلا عند اختيار "تم الشراء".'),
-          if (_error != null) _ErrorBox(_error!),
+          if (_error != null)
+            ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
           TextField(
             controller: _nameCtrl,
             maxLength: 80,
@@ -342,26 +344,6 @@ class _DateField extends StatelessWidget {
         ),
         child: Text(text),
       ),
-    );
-  }
-}
-
-class _ErrorBox extends StatelessWidget {
-  final String message;
-
-  const _ErrorBox(this.message);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.red.shade200),
-      ),
-      child: Text(message, style: TextStyle(color: Colors.red.shade800)),
     );
   }
 }
