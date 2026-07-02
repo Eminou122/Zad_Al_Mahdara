@@ -15,7 +15,20 @@ class ZadScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(title), actions: actions),
+      appBar: AppBar(
+        title: Row(
+          children: [
+            Image.asset(
+              'assets/images/zad_al_mahdara_logo.png',
+              width: 32,
+              height: 32,
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, overflow: TextOverflow.ellipsis)),
+          ],
+        ),
+        actions: actions,
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),

@@ -25,9 +25,16 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 180),
+              child: Image.asset('assets/images/zad_al_mahdara_logo.png'),
+            ),
+            const SizedBox(height: 16),
             Text(
               'زاد المحظرة',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 32),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontSize: 32),
             ),
             const SizedBox(height: 8),
             Text(

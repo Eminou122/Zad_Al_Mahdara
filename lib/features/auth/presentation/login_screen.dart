@@ -47,11 +47,17 @@ class _LoginScreenState extends State<LoginScreen> {
       await widget.authService.login(phone, pin);
       // router redirect handles navigation after auth state updates
     } on PostgrestException {
-      if (mounted) setState(() => _error = 'الرقم أو الرمز السري غير صحيح');
+      if (mounted) {
+        setState(() => _error = 'الرقم أو الرمز السري غير صحيح');
+      }
     } catch (_) {
-      if (mounted) setState(() => _error = 'حدث خطأ — تحقق من اتصالك بالإنترنت');
+      if (mounted) {
+        setState(() => _error = 'حدث خطأ — تحقق من اتصالك بالإنترنت');
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -65,6 +71,13 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 32),
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 180),
+                  child: Image.asset('assets/images/zad_al_mahdara_logo.png'),
+                ),
+              ),
+              const SizedBox(height: 16),
               Text(
                 'تسجيل الدخول',
                 textAlign: TextAlign.center,
