@@ -230,9 +230,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 Text(
                   '${_statusText(item.status)}'
                   '${item.reminderTime == null ? '' : '  •  تذكير: ${item.reminderTime}'}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: ZadTokens.textMuted,
+                    color: _statusColor(item.status),
                   ),
                 ),
                 const SizedBox(height: ZadTokens.s2),
@@ -296,9 +296,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 ),
                 Text(
                   '${sub.amount.toStringAsFixed(2)} MRU',
+                  // Amber: planned commitment, not an actual expense.
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: ZadTokens.primary,
+                    color: ZadTokens.warning,
                   ),
                 ),
                 IconButton(
@@ -358,7 +359,11 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 ),
                 Text(
                   '${exp.amount.toStringAsFixed(2)} MRU',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  // Red: money already spent.
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: ZadTokens.danger,
+                  ),
                 ),
                 if (exp.source == 'manual') ...[
                   IconButton(
@@ -406,6 +411,13 @@ class _BudgetScreenState extends State<BudgetScreen> {
       return 'لم يتم الشراء';
     }
     return 'لم يحدد بعد';
+  }
+
+  // purchased = green, skipped = neutral, pending = amber.
+  static Color _statusColor(String status) {
+    if (status == 'purchased') return ZadTokens.primary;
+    if (status == 'skipped') return ZadTokens.textMuted;
+    return ZadTokens.warning;
   }
 
   static String _arabicError(Object e) {

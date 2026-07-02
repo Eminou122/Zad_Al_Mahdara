@@ -21,21 +21,36 @@ class SpendingProgressCard extends StatelessWidget {
     final s = summary;
     final total = plan.totalMoney;
     final ratio = total > 0 ? (s.totalSpent / total).clamp(0.0, 1.0) : 1.0;
+    // Finance semantics: green under 80%, amber near the limit, red over.
     final barColor = s.remainingMoney < 0
         ? ZadTokens.danger
-        : ratio >= 0.85
+        : ratio >= 0.8
             ? ZadTokens.warning
             : ZadTokens.primary;
+    final todayColor = s.isOverDailyLimit
+        ? ZadTokens.danger
+        : (s.safeDailyLimit > 0 && s.todaySpending >= 0.8 * s.safeDailyLimit)
+            ? ZadTokens.warning
+            : ZadTokens.text;
 
-    String? warning;
-    ZadBannerKind kind = ZadBannerKind.warning;
+    // One status banner only — worst condition wins.
+    final String status;
+    final ZadBannerKind kind;
     if (s.remainingMoney < 0) {
-      warning = 'انتهى المال المخطط أو أصبح أقل من الصفر.';
+      status = 'تجاوزت الميزانية';
+      kind = ZadBannerKind.danger;
+    } else if (s.isOverDailyLimit) {
+      status = 'تجاوزت الحد اليومي — حاول تقليل مصاريف اليوم';
       kind = ZadBannerKind.danger;
     } else if (s.daysRemaining == 0) {
-      warning = 'انتهت مدة هذه الخطة.';
-    } else if (s.isOverDailyLimit) {
-      warning = 'صرفت اليوم أكثر من الحد الآمن. حاول تقليل المصاريف.';
+      status = 'انتهت مدة هذه الخطة';
+      kind = ZadBannerKind.warning;
+    } else if (ratio >= 0.8) {
+      status = 'انتبه، اقتربت من الحد';
+      kind = ZadBannerKind.warning;
+    } else {
+      status = 'الوضع جيد';
+      kind = ZadBannerKind.success;
     }
 
     return ZadCard(
@@ -75,15 +90,13 @@ class SpendingProgressCard extends StatelessWidget {
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
-                  color: s.isOverDailyLimit ? ZadTokens.danger : ZadTokens.text,
+                  color: todayColor,
                 ),
               ),
             ],
           ),
-          if (warning != null) ...[
-            const SizedBox(height: ZadTokens.s3),
-            ZadInfoBanner(warning, kind: kind),
-          ],
+          const SizedBox(height: ZadTokens.s3),
+          ZadInfoBanner(status, kind: kind),
         ],
       ),
     );

@@ -48,9 +48,21 @@ class BudgetSummaryCard extends StatelessWidget {
 
     final p = plan!;
     final s = summary!;
-    final remainingColor =
-        s.remainingMoney < 0 ? ZadTokens.danger : ZadTokens.primary;
     final safeLimit = s.safeDailyLimit < 0 ? 0.0 : s.safeDailyLimit;
+    // Finance semantics: green = safe, amber = caution, red = danger.
+    final remainingColor = s.remainingMoney < 0
+        ? ZadTokens.danger
+        : (p.totalMoney > 0 && s.remainingMoney / p.totalMoney <= 0.15)
+            ? ZadTokens.warning
+            : ZadTokens.primary;
+    final daysColor = s.daysRemaining == 0
+        ? ZadTokens.danger
+        : s.daysRemaining <= 3
+            ? ZadTokens.warning
+            : ZadTokens.primary;
+    final limitColor = (s.remainingMoney <= 0 || safeLimit <= 0)
+        ? ZadTokens.danger
+        : ZadTokens.primary;
 
     return ZadCard(
       highlighted: true,
@@ -84,6 +96,7 @@ class BudgetSummaryCard extends StatelessWidget {
                   icon: Icons.calendar_month_outlined,
                   value: '${s.daysRemaining} / ${s.daysTotal}',
                   label: 'الأيام المتبقية',
+                  valueColor: daysColor,
                 ),
               ),
               Expanded(
@@ -91,6 +104,7 @@ class BudgetSummaryCard extends StatelessWidget {
                   icon: Icons.shield_outlined,
                   value: safeLimit.toStringAsFixed(0),
                   label: 'الحد اليومي الآمن',
+                  valueColor: limitColor,
                 ),
               ),
             ],

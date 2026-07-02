@@ -6,12 +6,14 @@ class BudgetMetricTile extends StatelessWidget {
   final IconData icon;
   final String value;
   final String label;
+  final Color? valueColor;
 
   const BudgetMetricTile({
     super.key,
     required this.icon,
     required this.value,
     required this.label,
+    this.valueColor,
   });
 
   @override
@@ -23,10 +25,10 @@ class BudgetMetricTile extends StatelessWidget {
         Text(
           value,
           textAlign: TextAlign.center,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 15,
-            color: ZadTokens.text,
+            color: valueColor ?? ZadTokens.text,
           ),
         ),
         Text(

@@ -191,15 +191,17 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
           _statRow('المتوقع من المشتريات المتكررة',
               '${s.plannedTotal.toStringAsFixed(2)} MRU'),
           _statRow('تم شراؤه فعلاً',
-              '${s.actualPurchasedTotal.toStringAsFixed(2)} MRU'),
+              '${s.actualPurchasedTotal.toStringAsFixed(2)} MRU',
+              color: ZadTokens.primary),
           _statRow('لم يتم شراؤه',
-              '${s.skippedTotal.toStringAsFixed(2)} MRU (${s.skippedCount})'),
+              '${s.skippedTotal.toStringAsFixed(2)} MRU (${s.skippedCount})',
+              color: ZadTokens.textMuted),
         ],
       ),
     );
   }
 
-  Widget _statRow(String label, String value) => Padding(
+  Widget _statRow(String label, String value, {Color? color}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -213,7 +215,11 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
             const SizedBox(width: ZadTokens.s2),
             Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: color,
+              ),
             ),
           ],
         ),
