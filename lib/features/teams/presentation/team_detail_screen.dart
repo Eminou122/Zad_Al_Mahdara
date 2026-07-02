@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/routing/route_observer.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
@@ -20,13 +21,14 @@ class TeamDetailScreen extends StatefulWidget {
   State<TeamDetailScreen> createState() => _TeamDetailScreenState();
 }
 
-class _TeamDetailScreenState extends State<TeamDetailScreen> {
+class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   late final TeamService _svc;
   late final TeamTurnService _turnSvc;
   TeamDetail? _detail;
   TeamTurnState? _turnState;
   bool _loading = true;
   bool _turnLoading = false;
+  bool _routeSubscribed = false;
   String? _error;
   final Set<String> _busyMembers = {};
 
@@ -36,6 +38,28 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
     _svc = TeamService(widget.authService);
     _turnSvc = TeamTurnService(widget.authService);
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeSubscribed) return;
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      appRouteObserver.subscribe(this, route);
+      _routeSubscribed = true;
+    }
+  }
+
+  @override
+  void didPopNext() {
+    _load();
+  }
+
+  @override
+  void dispose() {
+    if (_routeSubscribed) appRouteObserver.unsubscribe(this);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -272,9 +296,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.edit),
                         label: const Text('تعديل'),
-                        onPressed: () => context
-                            .push('/teams/${widget.teamId}/edit', extra: team)
-                            .then((_) => _load()),
+                        onPressed: () => context.push(
+                          '/teams/${widget.teamId}/edit',
+                          extra: team,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -285,9 +310,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF2E7D32),
                         ),
-                        onPressed: () => context
-                            .push('/teams/${widget.teamId}/add-member')
-                            .then((_) => _load()),
+                        onPressed: () =>
+                            context.push('/teams/${widget.teamId}/add-member'),
                       ),
                     ),
                   ],

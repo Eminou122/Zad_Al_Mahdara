@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'route_observer.dart';
 import '../../services/auth_service.dart';
 import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/auth/presentation/login_screen.dart';
@@ -31,6 +32,7 @@ class AppRouter {
     refreshListenable: authService,
     redirect: _guard,
     initialLocation: '/',
+    observers: [appRouteObserver],
     routes: [
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
       GoRoute(
