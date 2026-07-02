@@ -160,7 +160,8 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                   child: TextField(
                     controller: _searchCtrl,
                     decoration: InputDecoration(
-                      labelText: 'البحث بالاسم (حرفان على الأقل)',
+                      hintText: 'ابحث عن طالب بالاسم (حرفان على الأقل)',
+                      prefixIcon: const Icon(Icons.search),
                       suffixIcon: _searching
                           ? const Padding(
                               padding: EdgeInsets.all(10),
@@ -172,7 +173,7 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                                 ),
                               ),
                             )
-                          : const Icon(Icons.search),
+                          : null,
                     ),
                     onChanged: _search,
                   ),
@@ -186,11 +187,27 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                       tilePadding: const EdgeInsets.symmetric(
                         horizontal: ZadTokens.s3,
                       ),
-                      leading: const Icon(
-                        Icons.person_add_alt_1,
-                        color: ZadTokens.gold,
+                      leading: Container(
+                        width: 38,
+                        height: 38,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: ZadTokens.gold.withValues(alpha: 0.15),
+                        ),
+                        child: const Icon(
+                          Icons.person_add_alt_1,
+                          size: 20,
+                          color: ZadTokens.goldDark,
+                        ),
                       ),
-                      title: const Text('إضافة طالب بدون حساب'),
+                      title: const Text(
+                        'إضافة طالب بدون حساب',
+                        style: TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       childrenPadding: const EdgeInsets.fromLTRB(
                         ZadTokens.s3,
                         0,
@@ -294,11 +311,21 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                                             strokeWidth: 2,
                                           ),
                                         )
-                                      : IconButton(
-                                          icon: const Icon(
-                                            Icons.person_add,
-                                            color: ZadTokens.primary,
+                                      // Green "إضافة" pill (Stitch).
+                                      : ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            minimumSize: const Size(0, 36),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: ZadTokens.s3,
+                                            ),
+                                            shape: const StadiumBorder(),
+                                            textStyle: const TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
+                                          icon: const Icon(Icons.add, size: 16),
+                                          label: const Text('إضافة'),
                                           onPressed: () => _add(s),
                                         ),
                                 ),

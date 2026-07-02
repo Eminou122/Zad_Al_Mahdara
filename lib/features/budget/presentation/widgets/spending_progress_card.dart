@@ -57,6 +57,25 @@ class SpendingProgressCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Stitch: title + percentage headline row.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'استهلاك الميزانية',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              Text(
+                '${(ratio * 100).round()}%',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: barColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: ZadTokens.s2),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

@@ -4,7 +4,6 @@ import '../../../core/routing/route_observer.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
-import '../../../core/widgets/zad_badge.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_confirm.dart';
 import '../../../core/widgets/zad_info_banner.dart';
@@ -245,6 +244,17 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     final team = d.team;
     return Scaffold(
       appBar: AppBar(title: Text(team.name)),
+      // Gold add-member FAB (Stitch team_detail); same route push as before.
+      floatingActionButton: d.canEdit
+          ? FloatingActionButton(
+              backgroundColor: ZadTokens.gold,
+              foregroundColor: ZadTokens.primaryDark,
+              tooltip: 'إضافة عضو',
+              onPressed: () =>
+                  context.push('/teams/${widget.teamId}/add-member'),
+              child: const Icon(Icons.person_add_alt_1),
+            )
+          : null,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -261,9 +271,16 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                   vertical: ZadTokens.s4,
                 ),
                 children: [
+                  // Green hero card (Stitch team_detail): badges, name,
+                  // leader, member count — same data, new dress.
                   ZadAnimatedEntry(
-                    child: ZadCard(
-                      highlighted: true,
+                    child: Container(
+                      padding: const EdgeInsets.all(ZadTokens.s4),
+                      decoration: BoxDecoration(
+                        gradient: ZadTokens.heroGradient,
+                        borderRadius: BorderRadius.circular(ZadTokens.radiusLg),
+                        boxShadow: ZadTokens.cardShadow,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -271,56 +288,78 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                             spacing: ZadTokens.s2,
                             runSpacing: ZadTokens.s1,
                             children: [
-                              ZadBadge(
+                              _HeroBadge(
                                 teamTypeLabels[team.teamType] ?? team.teamType,
                                 gold: true,
                               ),
-                              ZadBadge(
+                              _HeroBadge(
                                 teamStatusLabels[team.status] ?? team.status,
                               ),
-                              ZadBadge(team.isPublic ? 'عام' : 'خاص'),
+                              _HeroBadge(team.isPublic ? 'عام' : 'خاص'),
                             ],
                           ),
                           const SizedBox(height: ZadTokens.s3),
-                          const Divider(height: 1),
-                          const SizedBox(height: ZadTokens.s3),
-                          _InfoRow('القائد', team.leaderName),
-                          _InfoRow(
-                            'الأعضاء',
-                            '${team.memberCount} '
-                                '(نشط ${team.activeMemberCount} · '
-                                'غير نشط ${team.inactiveMemberCount})',
+                          Text(
+                            team.name,
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(color: Colors.white),
                           ),
-                          if (team.note != null) _InfoRow('ملاحظة', team.note!),
+                          const SizedBox(height: ZadTokens.s1),
+                          Text(
+                            'القائد: ${team.leaderName}',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: ZadTokens.s3),
+                          const Divider(height: 1, color: Colors.white24),
+                          const SizedBox(height: ZadTokens.s3),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.people_alt_outlined,
+                                size: 16,
+                                color: ZadTokens.gold,
+                              ),
+                              const SizedBox(width: ZadTokens.s1 + 2),
+                              Expanded(
+                                child: Text(
+                                  '${team.memberCount} عضو '
+                                  '(نشط ${team.activeMemberCount} · '
+                                  'غير نشط ${team.inactiveMemberCount})',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (team.note != null) ...[
+                            const SizedBox(height: ZadTokens.s2),
+                            Text(
+                              'ملاحظة: ${team.note!}',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: ZadTokens.s4),
+                  // Add-member moved to the gold FAB (Stitch); edit stays.
                   if (d.canEdit)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.edit),
-                            label: const Text('تعديل'),
-                            onPressed: () => context.push(
-                              '/teams/${widget.teamId}/edit',
-                              extra: team,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: ZadTokens.s2),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            icon: const Icon(Icons.person_add),
-                            label: const Text('إضافة عضو'),
-                            onPressed: () => context.push(
-                              '/teams/${widget.teamId}/add-member',
-                            ),
-                          ),
-                        ),
-                      ],
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.edit),
+                      label: const Text('تعديل الفريق'),
+                      onPressed: () => context.push(
+                        '/teams/${widget.teamId}/edit',
+                        extra: team,
+                      ),
                     ),
                   const SizedBox(height: ZadTokens.s4),
                   ZadAnimatedEntry(
@@ -393,7 +432,19 @@ class _TurnCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('دور اليوم', style: Theme.of(context).textTheme.titleSmall),
+          // Stitch turn-system header: gold icon + title.
+          Row(
+            children: [
+              const Icon(Icons.autorenew, size: 18, color: ZadTokens.goldDark),
+              const SizedBox(width: ZadTokens.s2),
+              Text(
+                'نظام النوبات اليومي',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(color: ZadTokens.goldDark),
+              ),
+            ],
+          ),
           const SizedBox(height: ZadTokens.s1),
           const Text(
             'هنا تعرف من عليه الدور اليوم ومن بعده.',
@@ -682,6 +733,35 @@ class _MemberTile extends StatelessWidget {
                   ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+/// Pill badge for the green hero: white-tinted, or solid gold for accent.
+class _HeroBadge extends StatelessWidget {
+  final String label;
+  final bool gold;
+  const _HeroBadge(this.label, {this.gold = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: ZadTokens.s2 + 2,
+        vertical: 3,
+      ),
+      decoration: BoxDecoration(
+        color: gold ? ZadTokens.gold : Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: gold ? ZadTokens.primaryDark : Colors.white,
+        ),
       ),
     );
   }

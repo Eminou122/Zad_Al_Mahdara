@@ -75,17 +75,33 @@ class _TeamsScreenState extends State<TeamsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Row(
-              children: [
-                _tab('فرقي', !_showPublic, () {
-                  setState(() => _showPublic = false);
-                }),
-                _tab('الفرق العامة', _showPublic, () {
-                  setState(() => _showPublic = true);
-                }),
-              ],
+            // Segmented pill toggle (Stitch teams_list).
+            Container(
+              margin: const EdgeInsets.fromLTRB(
+                ZadTokens.s3,
+                ZadTokens.s3,
+                ZadTokens.s3,
+                ZadTokens.s1,
+              ),
+              padding: const EdgeInsets.all(4),
+              constraints: const BoxConstraints(
+                maxWidth: ZadTokens.contentMaxWidth,
+              ),
+              decoration: BoxDecoration(
+                color: ZadTokens.surfaceContainer,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                children: [
+                  _tab('فرقي', !_showPublic, () {
+                    setState(() => _showPublic = false);
+                  }),
+                  _tab('الفرق العامة', _showPublic, () {
+                    setState(() => _showPublic = true);
+                  }),
+                ],
+              ),
             ),
-            const Divider(height: 1),
             if (_loading)
               const Expanded(child: Center(child: CircularProgressIndicator()))
             else if (_error != null)
@@ -108,15 +124,26 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   Widget _tab(String label, bool selected, VoidCallback onTap) => Expanded(
-    child: TextButton(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        foregroundColor: selected ? ZadTokens.primary : ZadTokens.textMuted,
-        textStyle: TextStyle(
-          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? ZadTokens.primaryDark : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.bold,
+            color: selected ? Colors.white : ZadTokens.textMuted,
+          ),
         ),
       ),
-      child: Text(label),
     ),
   );
 
@@ -182,13 +209,14 @@ class _TeamCard extends StatelessWidget {
           padding: const EdgeInsets.all(ZadTokens.s3),
           child: Row(
             children: [
+              // Rounded-square tinted icon tile (Stitch team card).
               Container(
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: ZadTokens.primary.withValues(alpha: 0.10),
+                  color: ZadTokens.surfaceContainer,
+                  borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 4),
                 ),
                 child: Icon(
                   team.isPublic ? Icons.group : Icons.lock_outline,
@@ -219,10 +247,23 @@ class _TeamCard extends StatelessWidget {
                         ),
                         ZadBadge(teamStatusLabels[team.status] ?? team.status),
                         if (team.myRole == 'leader') const ZadBadge('قائد'),
+                        ZadBadge(team.isPublic ? 'عام' : 'خاص'),
+                      ],
+                    ),
+                    const SizedBox(height: ZadTokens.s2),
+                    // Member count row with icon (Stitch).
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.people_alt_outlined,
+                          size: 15,
+                          color: ZadTokens.textMuted,
+                        ),
+                        const SizedBox(width: ZadTokens.s1),
                         Text(
-                          '${team.isPublic ? 'عام' : 'خاص'} · ${team.memberCount} عضو',
+                          '${team.memberCount} عضو',
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 12.5,
                             color: ZadTokens.textMuted,
                           ),
                         ),

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import '../theme/zad_tokens.dart';
 
 /// Section title with a subtle gold ornament divider (Sahrawi diamond).
+/// Optional [trailing] for a compact end action (e.g. "عرض الكل").
 class ZadSectionHeader extends StatelessWidget {
   final String title;
-  const ZadSectionHeader(this.title, {super.key});
+  final Widget? trailing;
+  const ZadSectionHeader(this.title, {super.key, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -20,6 +22,7 @@ class ZadSectionHeader extends StatelessWidget {
           ),
           const SizedBox(width: ZadTokens.s3),
           const Expanded(child: Divider(height: 1)),
+          ?trailing,
         ],
       ),
     );

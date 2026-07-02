@@ -68,27 +68,38 @@ class AppTheme {
         borderRadius: BorderRadius.all(Radius.circular(ZadTokens.radiusMd)),
       ),
     ),
+    // Stitch-style light header: cream bar, green title/icons.
     appBarTheme: const AppBarTheme(
-      backgroundColor: ZadTokens.primaryDark,
-      foregroundColor: Colors.white,
+      backgroundColor: ZadTokens.background,
+      foregroundColor: ZadTokens.primaryDark,
+      surfaceTintColor: Colors.transparent,
       centerTitle: true,
       elevation: 0,
+      titleTextStyle: TextStyle(
+        color: ZadTokens.primaryDark,
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+      ),
     ),
+    // Stitch-style filled inputs: tinted, borderless, rounded.
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: ZadTokens.surface,
+      fillColor: ZadTokens.surfaceContainer,
       labelStyle: const TextStyle(color: ZadTokens.textMuted),
+      hintStyle: const TextStyle(color: ZadTokens.textMuted),
+      prefixIconColor: ZadTokens.textMuted,
+      suffixIconColor: ZadTokens.textMuted,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 2),
-        borderSide: const BorderSide(color: ZadTokens.goldSoft),
+        borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+        borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 2),
-        borderSide: const BorderSide(color: ZadTokens.goldSoft),
+        borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+        borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 2),
-        borderSide: const BorderSide(color: ZadTokens.primary, width: 2),
+        borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+        borderSide: const BorderSide(color: ZadTokens.primary, width: 1.5),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     ),

@@ -168,44 +168,65 @@ class _BudgetScreenState extends State<BudgetScreen> {
         ),
       ],
       const ZadSectionHeader('إجراءات سريعة'),
+      // Row of 4 circular actions (Stitch); first one gold-filled.
       ZadAnimatedEntry(
         delay: const Duration(milliseconds: 120),
-        child: GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: ZadTokens.s3,
-          crossAxisSpacing: ZadTokens.s3,
-          // 1.35 fits the 34px icon disk + two-line Arabic labels at 320px width.
-          childAspectRatio: 1.35,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            BudgetQuickActionCard(
-              icon: Icons.add_circle_outline,
-              label: 'إضافة مصروف',
-              onTap: () =>
-                  context.push('/budget/expense/new').then((_) => _load()),
+            Expanded(
+              child: BudgetQuickActionCard(
+                icon: Icons.add_circle_outline,
+                label: 'إضافة مصروف',
+                filled: true,
+                onTap: () =>
+                    context.push('/budget/expense/new').then((_) => _load()),
+              ),
             ),
-            BudgetQuickActionCard(
-              icon: Icons.tune_outlined,
-              label: 'إعداد الميزانية',
-              onTap: _goSetup,
+            Expanded(
+              child: BudgetQuickActionCard(
+                icon: Icons.tune_outlined,
+                label: 'إعداد الميزانية',
+                onTap: _goSetup,
+              ),
             ),
-            BudgetQuickActionCard(
-              icon: Icons.autorenew_outlined,
-              label: 'الاشتراكات',
-              onTap: () =>
-                  context.push('/budget/subscription/new').then((_) => _load()),
+            Expanded(
+              child: BudgetQuickActionCard(
+                icon: Icons.autorenew_outlined,
+                label: 'الاشتراكات',
+                onTap: () => context
+                    .push('/budget/subscription/new')
+                    .then((_) => _load()),
+              ),
             ),
-            BudgetQuickActionCard(
-              icon: Icons.shopping_basket_outlined,
-              label: 'المشتريات المتكررة',
-              onTap: () =>
-                  context.push('/budget/recurring').then((_) => _load()),
+            Expanded(
+              child: BudgetQuickActionCard(
+                icon: Icons.shopping_basket_outlined,
+                label: 'المشتريات المتكررة',
+                onTap: () =>
+                    context.push('/budget/recurring').then((_) => _load()),
+              ),
             ),
           ],
         ),
       ),
-      const ZadSectionHeader('مشتريات اليوم'),
+      ZadSectionHeader(
+        'مشتريات اليوم',
+        trailing: TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: ZadTokens.goldDark,
+            padding: const EdgeInsets.symmetric(horizontal: ZadTokens.s2),
+            minimumSize: const Size(0, 32),
+            textStyle: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          onPressed: () =>
+              context.push('/budget/recurring').then((_) => _load()),
+          child: const Text('عرض الكل'),
+        ),
+      ),
       if (_todayRecurring.isEmpty)
         const ZadCard(
           child: Text(

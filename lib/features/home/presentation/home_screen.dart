@@ -4,7 +4,6 @@ import '../../../core/theme/zad_tokens.dart';
 import '../../../core/widgets/zad_action_card.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_confirm.dart';
-import '../../../core/widgets/zad_logo_badge.dart';
 import '../../../core/widgets/zad_scaffold.dart';
 import '../../../core/widgets/zad_section_header.dart';
 import '../../../services/auth_service.dart';
@@ -29,44 +28,30 @@ class HomeScreen extends StatelessWidget {
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Green hero welcome card (Stitch-inspired), white on primary.
+              // Green hero welcome banner (Stitch), text-only, white on green.
               ZadAnimatedEntry(
                 child: Container(
-                  padding: const EdgeInsets.all(ZadTokens.s4),
+                  padding: const EdgeInsets.all(ZadTokens.s5),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [ZadTokens.primaryDark, ZadTokens.primary],
-                      begin: AlignmentDirectional.topStart,
-                      end: AlignmentDirectional.bottomEnd,
-                    ),
-                    borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+                    gradient: ZadTokens.heroGradient,
+                    borderRadius: BorderRadius.circular(ZadTokens.radiusLg),
                     boxShadow: ZadTokens.cardShadow,
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const ZadLogoBadge(size: 56),
-                      const SizedBox(width: ZadTokens.s3),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name.isNotEmpty ? 'مرحباً، $name' : 'مرحباً بك',
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(color: Colors.white),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: ZadTokens.s1),
-                            const Text(
-                              'زادك اليومي لتنظيم الميزانية وأدوار المحظرة',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
+                      Text(
+                        name.isNotEmpty ? 'مرحباً، $name' : 'مرحباً بك',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleLarge?.copyWith(color: Colors.white),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: ZadTokens.s1 + 2),
+                      const Text(
+                        'زادك اليومي لتنظيم الميزانية وأدوار المحظرة',
+                        style: TextStyle(fontSize: 13.5, color: Colors.white70),
                       ),
                     ],
                   ),
@@ -81,7 +66,7 @@ class HomeScreen extends StatelessWidget {
                   side: const BorderSide(color: ZadTokens.danger),
                 ),
                 icon: const Icon(Icons.logout, size: 20),
-                label: const Text('خروج'),
+                label: const Text('تسجيل الخروج'),
                 onPressed: () async {
                   final ok = await zadConfirm(
                     context,
@@ -99,8 +84,9 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  /// Admin: 2x2 grid of 4 cards. Normal user: 2 cards + full-width
-  /// notifications card, so the grid never shows an empty slot.
+  /// Admin: 2x2 grid of 4 subtitled cards (Stitch home_admin).
+  /// Normal user: 2 cards + full-width horizontal notifications row
+  /// (Stitch home_student), so the grid never shows an empty slot.
   Widget _sectionGrid(BuildContext context, {required bool isAdmin}) {
     // Very small stagger (40ms steps) so the cards settle in calmly.
     final budget = ZadAnimatedEntry(
@@ -108,6 +94,7 @@ class HomeScreen extends StatelessWidget {
       child: ZadActionCard(
         icon: Icons.account_balance_wallet_outlined,
         title: 'ميزانيتي',
+        subtitle: 'تتبع مصاريفك اليومية',
         onTap: () => context.push('/budget'),
       ),
     );
@@ -116,39 +103,42 @@ class HomeScreen extends StatelessWidget {
       child: ZadActionCard(
         icon: Icons.group_outlined,
         title: 'الفرق',
+        subtitle: 'الفرق وأدوار المطبخ',
         onTap: () => context.push('/teams'),
       ),
     );
-    final notifications = ZadAnimatedEntry(
-      delay: const Duration(milliseconds: 120),
-      child: ZadActionCard(
-        icon: Icons.notifications_outlined,
-        title: 'الإشعارات',
-        onTap: () => context.push('/notifications'),
-      ),
-    );
 
-    Widget grid(List<Widget> children) => GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: ZadTokens.s3,
-      crossAxisSpacing: ZadTokens.s3,
-      // 1.55 fits the 34px icon disk + one-line labels at 320px width.
-      childAspectRatio: 1.55,
-      children: children,
-    );
+    Widget grid(List<Widget> children, {required double ratio}) =>
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: ZadTokens.s3,
+          crossAxisSpacing: ZadTokens.s3,
+          childAspectRatio: ratio,
+          children: children,
+        );
 
     if (isAdmin) {
-      return grid([
+      // 1.25 fits icon disk + title + subtitle at 320px width.
+      return grid(ratio: 1.25, [
         budget,
         teams,
-        notifications,
+        ZadAnimatedEntry(
+          delay: const Duration(milliseconds: 120),
+          child: ZadActionCard(
+            icon: Icons.notifications_outlined,
+            title: 'الإشعارات',
+            subtitle: 'كل التنبيهات',
+            onTap: () => context.push('/notifications'),
+          ),
+        ),
         ZadAnimatedEntry(
           delay: const Duration(milliseconds: 160),
           child: ZadActionCard(
             icon: Icons.admin_panel_settings_outlined,
             title: 'الإدارة',
+            subtitle: 'إعدادات النظام',
             accent: true,
             onTap: () => context.push('/admin'),
           ),
@@ -158,9 +148,68 @@ class HomeScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        grid([budget, teams]),
+        grid(ratio: 1.25, [budget, teams]),
         const SizedBox(height: ZadTokens.s3),
-        notifications,
+        // Full-width horizontal notifications row (Stitch home_student).
+        ZadAnimatedEntry(
+          delay: const Duration(milliseconds: 120),
+          child: Material(
+            color: ZadTokens.surface,
+            elevation: 1,
+            shadowColor: const Color(0x22000000),
+            borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+            child: InkWell(
+              onTap: () => context.push('/notifications'),
+              borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+              child: Padding(
+                padding: const EdgeInsets.all(ZadTokens.s3),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: ZadTokens.primary.withValues(alpha: 0.10),
+                      ),
+                      child: const Icon(
+                        Icons.notifications_outlined,
+                        size: 22,
+                        color: ZadTokens.primary,
+                      ),
+                    ),
+                    const SizedBox(width: ZadTokens.s3),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'الإشعارات',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: ZadTokens.text,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'كل تنبيهات الميزانية والفرق',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: ZadTokens.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_left, color: ZadTokens.textMuted),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
