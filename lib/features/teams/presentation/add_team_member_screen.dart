@@ -250,16 +250,18 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                   ),
                 Expanded(
                   child: _results.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(ZadTokens.s4),
-                          child: Center(
-                            child: ZadEmptyState(
+                      // Plain ListView keeps the empty card full-width and
+                      // top-aligned instead of a centered narrow tower.
+                      ? ListView(
+                          padding: const EdgeInsets.all(ZadTokens.s3),
+                          children: [
+                            ZadEmptyState(
                               icon: Icons.person_search_outlined,
                               message: _searchCtrl.text.length < 2
                                   ? 'ابحث عن طالب للإضافة'
                                   : 'لا توجد نتائج',
                             ),
-                          ),
+                          ],
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.all(ZadTokens.s3),

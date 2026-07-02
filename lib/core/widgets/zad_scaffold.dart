@@ -29,7 +29,9 @@ class ZadScaffold extends StatelessWidget {
         actions: actions,
       ),
       body: SafeArea(
-        child: Center(
+        // topCenter: short pages start under the AppBar instead of mid-screen.
+        child: Align(
+          alignment: Alignment.topCenter,
           child: ConstrainedBox(
             constraints:
                 const BoxConstraints(maxWidth: ZadTokens.contentMaxWidth),

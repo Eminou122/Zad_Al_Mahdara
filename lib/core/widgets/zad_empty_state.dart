@@ -11,6 +11,7 @@ class ZadEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ZadCard(
+      padding: const EdgeInsets.all(ZadTokens.s5),
       child: Column(
         children: [
           Icon(icon, size: 36, color: ZadTokens.gold),
