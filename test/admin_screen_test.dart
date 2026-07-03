@@ -13,6 +13,26 @@ void main() {
     expect(find.text('49****35'), findsOneWidget);
     expect(find.text('49413435'), findsNothing);
     expect(find.text('secret-hash'), findsNothing);
+    _expectNearestTextDirection(
+      tester,
+      find.text('49****35'),
+      TextDirection.ltr,
+    );
+  });
+
+  testWidgets('admin user detail renders masked phone left-to-right', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeAdminService());
+    await tester.tap(find.text('Student One'));
+    await tester.pumpAndSettle();
+    _expectNearestTextDirection(
+      tester,
+      find.text('49****35'),
+      TextDirection.ltr,
+    );
+    expect(find.text('49413435'), findsNothing);
+    expect(find.text('secret-hash'), findsNothing);
   });
 
   testWidgets('inactive user shows reactivate action', (tester) async {
@@ -44,6 +64,17 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+}
+
+void _expectNearestTextDirection(
+  WidgetTester tester,
+  Finder finder,
+  TextDirection direction,
+) {
+  for (final element in finder.evaluate()) {
+    final widget = element.findAncestorWidgetOfExactType<Directionality>();
+    expect(widget?.textDirection, direction);
+  }
 }
 
 Future<void> _pump(WidgetTester tester, AdminService service) async {

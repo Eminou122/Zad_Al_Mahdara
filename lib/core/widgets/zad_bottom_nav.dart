@@ -37,6 +37,12 @@ class ZadBottomNav extends StatelessWidget {
     _ => false,
   };
 
+  /// Root-tab routes in visual right-to-left order (matches [_userItems] /
+  /// [_adminItems] below) — shared source of truth for swipe/transition
+  /// direction, so tab order never drifts out of sync with the nav itself.
+  static List<String> routesFor(bool isAdmin) =>
+      (isAdmin ? _adminItems : _userItems).map((t) => t.$5).toList();
+
   // (tab, inactive icon, active filled icon, label, route).
   static const _home = (
     ZadTab.home,

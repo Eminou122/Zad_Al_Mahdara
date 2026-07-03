@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'route_observer.dart';
+import '../widgets/zad_bottom_nav.dart';
+import '../widgets/zad_swipe_nav.dart';
 import '../../services/auth_service.dart';
 import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/auth/presentation/login_screen.dart';
@@ -28,6 +30,51 @@ class AppRouter {
 
   static const _authPaths = {'/login', '/register', '/forgot-pin', '/'};
 
+  // Previous main-tab index, so the transition direction reflects whether
+  // the user is moving toward the start or end of the tab strip. Null until
+  // the first main tab is shown, so the initial app load never slides.
+  int? _lastMainIndex;
+
+  /// Premium, subtle page transition for the 5 bottom-nav root tabs: a fast
+  /// fade + small horizontal drift (not a full-width push — the bottom nav
+  /// each screen carries stays visually put). Direction matches the tab's
+  /// position in the (RTL-ordered) nav strip; see ZadSwipeNav for the same
+  /// left/right convention used for swipe.
+  Page<void> _mainPage(GoRouterState state, Widget child) {
+    final path = state.matchedLocation;
+    final routes = ZadBottomNav.routesFor(authService.isAdmin);
+    final index = routes.indexOf(path);
+    final previous = _lastMainIndex;
+    final forward = (previous == null || index == -1 || previous == index)
+        ? null // first load or unchanged index: fade only, no direction
+        : index > previous;
+    if (index != -1) _lastMainIndex = index;
+
+    return CustomTransitionPage<void>(
+      key: state.pageKey,
+      child: ZadSwipeNav(routes: routes, index: index, child: child),
+      transitionDuration: const Duration(milliseconds: 260),
+      reverseTransitionDuration: const Duration(milliseconds: 260),
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        if (forward == null || MediaQuery.of(context).disableAnimations) {
+          return FadeTransition(opacity: animation, child: child);
+        }
+        // Target tab lives to the left when moving forward (higher index)
+        // in this RTL strip, so it enters from the left, and vice versa.
+        final beginOffset = Offset(forward ? -0.06 : 0.06, 0);
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween(begin: beginOffset, end: Offset.zero)
+                .chain(CurveTween(curve: Curves.easeOutCubic))
+                .animate(animation),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
   late final GoRouter router = GoRouter(
     refreshListenable: authService,
     redirect: _guard,
@@ -46,11 +93,13 @@ class AppRouter {
       GoRoute(path: '/forgot-pin', builder: (_, _) => const ForgotPinScreen()),
       GoRoute(
         path: '/home',
-        builder: (_, _) => HomeScreen(authService: authService),
+        pageBuilder: (_, state) =>
+            _mainPage(state, HomeScreen(authService: authService)),
       ),
       GoRoute(
         path: '/budget',
-        builder: (_, _) => BudgetScreen(authService: authService),
+        pageBuilder: (_, state) =>
+            _mainPage(state, BudgetScreen(authService: authService)),
       ),
       GoRoute(
         path: '/budget/setup',
@@ -86,7 +135,8 @@ class AppRouter {
       ),
       GoRoute(
         path: '/teams',
-        builder: (_, _) => TeamsScreen(authService: authService),
+        pageBuilder: (_, state) =>
+            _mainPage(state, TeamsScreen(authService: authService)),
       ),
       GoRoute(
         path: '/teams/new',
@@ -116,11 +166,12 @@ class AppRouter {
       ),
       GoRoute(
         path: '/notifications',
-        builder: (_, _) => const NotificationsScreen(),
+        pageBuilder: (_, state) => _mainPage(state, const NotificationsScreen()),
       ),
       GoRoute(
         path: '/admin',
-        builder: (_, _) => AdminScreen(authService: authService),
+        pageBuilder: (_, state) =>
+            _mainPage(state, AdminScreen(authService: authService)),
       ),
     ],
   );

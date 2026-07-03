@@ -359,7 +359,7 @@ class _UserCard extends StatelessWidget {
                   children: [
                     ZadBadge(user.isActive ? 'نشط' : 'متوقف'),
                     if (user.isAdmin) const ZadBadge('مسؤول', gold: true),
-                    ZadBadge(user.phoneMasked, gold: true),
+                    _MaskedPhoneBadge(user.phoneMasked),
                   ],
                 ),
                 const SizedBox(height: ZadTokens.s2),
@@ -423,7 +423,7 @@ class _UserDetailSheet extends StatelessWidget {
               children: [
                 ZadBadge(user.isActive ? 'نشط' : 'متوقف'),
                 if (user.isAdmin) const ZadBadge('مسؤول', gold: true),
-                ZadBadge(user.phoneMasked, gold: true),
+                _MaskedPhoneBadge(user.phoneMasked),
               ],
             ),
             const SizedBox(height: ZadTokens.s4),
@@ -493,6 +493,19 @@ class _TeamCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MaskedPhoneBadge extends StatelessWidget {
+  final String value;
+  const _MaskedPhoneBadge(this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: ZadBadge(value, gold: true),
     );
   }
 }
