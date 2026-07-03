@@ -16,6 +16,16 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>
+    // Keep Flutter Web on one routing strategy: hash routes only.
+    // Direct SPA paths served by Vercel, e.g. /home, become /#/home before
+    // Flutter starts so GoRouter redirects never produce /home#/login.
+    (function () {
+      if (location.hash || location.pathname === '/') return;
+      var hashPath = location.pathname + location.search;
+      location.replace('/#' + hashPath);
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
