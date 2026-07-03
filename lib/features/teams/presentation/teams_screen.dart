@@ -4,6 +4,7 @@ import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_badge.dart';
+import '../../../core/widgets/zad_bottom_nav.dart';
 import '../../../core/widgets/zad_empty_state.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../services/auth_service.dart';
@@ -63,7 +64,12 @@ class _TeamsScreenState extends State<TeamsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('الفرق')),
+      // Root tab: no back arrow, bottom nav with الفرق active (Stitch shell).
+      appBar: AppBar(
+        title: const Text('الفرق'),
+        automaticallyImplyLeading: false,
+      ),
+      bottomNavigationBar: const ZadBottomNav(current: ZadTab.teams),
       floatingActionButton: !_showPublic
           ? FloatingActionButton(
               backgroundColor: ZadTokens.primary,

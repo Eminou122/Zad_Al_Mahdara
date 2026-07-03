@@ -68,13 +68,17 @@ class AppTheme {
         borderRadius: BorderRadius.all(Radius.circular(ZadTokens.radiusMd)),
       ),
     ),
-    // Stitch-style light header: cream bar, green title/icons.
+    // Stitch-style light header: slim cream bar, hairline bottom border,
+    // logo+title at the RTL start (not centered).
     appBarTheme: const AppBarTheme(
       backgroundColor: ZadTokens.background,
       foregroundColor: ZadTokens.primaryDark,
       surfaceTintColor: Colors.transparent,
-      centerTitle: true,
+      centerTitle: false,
       elevation: 0,
+      scrolledUnderElevation: 0,
+      // Stitch surface-container-highest (#f2e0cc) hairline.
+      shape: Border(bottom: BorderSide(color: Color(0xFFF2E0CC))),
       titleTextStyle: TextStyle(
         color: ZadTokens.primaryDark,
         fontSize: 18,

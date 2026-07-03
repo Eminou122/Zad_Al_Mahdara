@@ -4,6 +4,7 @@ import '../../../core/routing/route_observer.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
+import '../../../core/widgets/zad_bottom_nav.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_confirm.dart';
 import '../../../core/widgets/zad_info_banner.dart';
@@ -244,6 +245,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     final team = d.team;
     return Scaffold(
       appBar: AppBar(title: Text(team.name)),
+      // Stitch team_detail keeps the bottom nav with الفرق active; the FAB
+      // floats above it automatically. Back arrow stays (detail page).
+      bottomNavigationBar: const ZadBottomNav(current: ZadTab.teams),
       // Gold add-member FAB (Stitch team_detail); same route push as before.
       floatingActionButton: d.canEdit
           ? FloatingActionButton(

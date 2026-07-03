@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../theme/zad_tokens.dart';
+import 'zad_bottom_nav.dart';
 import 'zad_logo_badge.dart';
 
 class ZadScaffold extends StatelessWidget {
@@ -16,8 +18,15 @@ class ZadScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Stitch app shell: bottom nav + back-arrow visibility derive from the
+    // current route, so screens need no shell wiring of their own.
+    final location = _location(context);
     return Scaffold(
       appBar: AppBar(
+        // Root tabs never show a back arrow (Stitch); pop/browser back is
+        // untouched — only the arrow is hidden.
+        automaticallyImplyLeading:
+            location == null || !ZadBottomNav.isRootTab(location),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -28,6 +37,8 @@ class ZadScaffold extends StatelessWidget {
         ),
         actions: actions,
       ),
+      bottomNavigationBar:
+          location == null ? null : ZadBottomNav.forLocation(location),
       body: SafeArea(
         // topCenter: short pages start under the AppBar instead of mid-screen.
         child: Align(
@@ -43,5 +54,13 @@ class ZadScaffold extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String? _location(BuildContext context) {
+    try {
+      return GoRouterState.of(context).matchedLocation;
+    } catch (_) {
+      return null; // built outside a route (e.g. bare widget tests)
+    }
   }
 }

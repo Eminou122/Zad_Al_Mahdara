@@ -28,7 +28,9 @@ class AdminScreen extends StatelessWidget {
               child: ElevatedButton.icon(
                 icon: const Icon(Icons.home_outlined),
                 label: const Text('العودة للرئيسية'),
-                onPressed: () => context.pop(),
+                // go, not pop: arriving via the bottom nav leaves nothing
+                // on the stack to pop.
+                onPressed: () => context.go('/home'),
               ),
             ),
           ),
