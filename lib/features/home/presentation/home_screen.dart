@@ -4,6 +4,7 @@ import '../../../core/theme/zad_tokens.dart';
 import '../../../core/widgets/zad_action_card.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_confirm.dart';
+import '../../../core/widgets/zad_dotted_background.dart';
 import '../../../core/widgets/zad_scaffold.dart';
 import '../../../core/widgets/zad_section_header.dart';
 import '../../../services/auth_service.dart';
@@ -28,37 +29,81 @@ class HomeScreen extends StatelessWidget {
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Green hero welcome banner (Stitch), text-only, white on green.
               ZadAnimatedEntry(
-                child: Container(
-                  padding: const EdgeInsets.all(ZadTokens.s5),
-                  decoration: BoxDecoration(
-                    gradient: ZadTokens.heroGradient,
-                    borderRadius: BorderRadius.circular(ZadTokens.radiusLg),
-                    boxShadow: ZadTokens.cardShadow,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name.isNotEmpty ? 'مرحباً، $name' : 'مرحباً بك',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.titleLarge?.copyWith(color: Colors.white),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(ZadTokens.radiusLg),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: ZadTokens.heroGradient,
+                      boxShadow: ZadTokens.cardShadow,
+                    ),
+                    child: ZadDottedBackground(
+                      color: Colors.white24,
+                      child: Padding(
+                        padding: const EdgeInsets.all(ZadTokens.s5),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name.isNotEmpty ? 'مرحباً، $name' : 'مرحباً بك',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(color: Colors.white),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: ZadTokens.s1 + 2),
+                            const Text(
+                              'زادك اليومي لتنظيم الميزانية وأدوار المحظرة',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: Colors.white70,
+                              ),
+                            ),
+                            if (authService.isAdmin) ...[
+                              const SizedBox(height: ZadTokens.s4),
+                              Row(
+                                children: [
+                                  const Text(
+                                    '75%',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: ZadTokens.s2),
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(999),
+                                      child: const LinearProgressIndicator(
+                                        value: 0.75,
+                                        minHeight: 6,
+                                        color: ZadTokens.gold,
+                                        backgroundColor: Colors.white24,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: ZadTokens.s2),
+                                  const Text(
+                                    'من عدد اليوم',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: ZadTokens.s1 + 2),
-                      const Text(
-                        'زادك اليومي لتنظيم الميزانية وأدوار المحظرة',
-                        style: TextStyle(fontSize: 13.5, color: Colors.white70),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
               const ZadSectionHeader('أقسام التطبيق'),
               _sectionGrid(context, isAdmin: authService.isAdmin),
+              const SizedBox(height: ZadTokens.s4),
+              _ActivityCard(isAdmin: authService.isAdmin),
               const SizedBox(height: ZadTokens.s5),
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
@@ -211,6 +256,63 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ActivityCard extends StatelessWidget {
+  final bool isAdmin;
+  const _ActivityCard({required this.isAdmin});
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = isAdmin
+        ? const [
+            ('الإدارة', 'إعدادات النظام', Icons.admin_panel_settings_outlined),
+            (
+              'الإشعارات',
+              'تنبيهات الميزانية والفرق',
+              Icons.notifications_outlined,
+            ),
+          ]
+        : const [
+            ('النوبات اليومية', 'تحقق من جدول الدور المستقر', Icons.history),
+            (
+              'ميزانية الفريق',
+              'راجع حدود الصرف لهذا الأسبوع',
+              Icons.wallet_outlined,
+            ),
+          ];
+    return Container(
+      decoration: BoxDecoration(
+        color: ZadTokens.surface,
+        borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+        border: Border.all(color: ZadTokens.goldSoft.withValues(alpha: 0.6)),
+        boxShadow: ZadTokens.cardShadow,
+      ),
+      child: Column(
+        children: [
+          for (final row in rows) ...[
+            ListTile(
+              dense: true,
+              leading: Icon(row.$3, color: ZadTokens.primary, size: 20),
+              title: Text(
+                row.$1,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              subtitle: Text(row.$2, style: const TextStyle(fontSize: 11.5)),
+              trailing: const Icon(
+                Icons.chevron_left,
+                color: ZadTokens.textMuted,
+              ),
+            ),
+            if (row != rows.last) const Divider(height: 1),
+          ],
+        ],
+      ),
     );
   }
 }

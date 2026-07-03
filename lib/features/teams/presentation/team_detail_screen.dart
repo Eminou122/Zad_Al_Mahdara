@@ -4,8 +4,10 @@ import '../../../core/routing/route_observer.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
+import '../../../core/widgets/zad_badge.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_confirm.dart';
+import '../../../core/widgets/zad_dotted_background.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_section_header.dart';
 import '../../../services/auth_service.dart';
@@ -271,82 +273,109 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                   vertical: ZadTokens.s4,
                 ),
                 children: [
-                  // Green hero card (Stitch team_detail): badges, name,
-                  // leader, member count — same data, new dress.
                   ZadAnimatedEntry(
-                    child: Container(
-                      padding: const EdgeInsets.all(ZadTokens.s4),
-                      decoration: BoxDecoration(
-                        gradient: ZadTokens.heroGradient,
-                        borderRadius: BorderRadius.circular(ZadTokens.radiusLg),
-                        boxShadow: ZadTokens.cardShadow,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Wrap(
-                            spacing: ZadTokens.s2,
-                            runSpacing: ZadTokens.s1,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(ZadTokens.radiusLg),
+                      child: Container(
+                        decoration: const BoxDecoration(
+                          gradient: ZadTokens.heroGradient,
+                          boxShadow: ZadTokens.cardShadow,
+                        ),
+                        child: ZadDottedBackground(
+                          color: Colors.white12,
+                          child: Stack(
                             children: [
-                              _HeroBadge(
-                                teamTypeLabels[team.teamType] ?? team.teamType,
-                                gold: true,
+                              const PositionedDirectional(
+                                start: 12,
+                                top: 8,
+                                child: Icon(
+                                  Icons.mosque_outlined,
+                                  size: 86,
+                                  color: Colors.white12,
+                                ),
                               ),
-                              _HeroBadge(
-                                teamStatusLabels[team.status] ?? team.status,
-                              ),
-                              _HeroBadge(team.isPublic ? 'عام' : 'خاص'),
-                            ],
-                          ),
-                          const SizedBox(height: ZadTokens.s3),
-                          Text(
-                            team.name,
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(color: Colors.white),
-                          ),
-                          const SizedBox(height: ZadTokens.s1),
-                          Text(
-                            'القائد: ${team.leaderName}',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: ZadTokens.s3),
-                          const Divider(height: 1, color: Colors.white24),
-                          const SizedBox(height: ZadTokens.s3),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.people_alt_outlined,
-                                size: 16,
-                                color: ZadTokens.gold,
-                              ),
-                              const SizedBox(width: ZadTokens.s1 + 2),
-                              Expanded(
-                                child: Text(
-                                  '${team.memberCount} عضو '
-                                  '(نشط ${team.activeMemberCount} · '
-                                  'غير نشط ${team.inactiveMemberCount})',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                  ),
+                              Padding(
+                                padding: const EdgeInsets.all(ZadTokens.s4),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Wrap(
+                                      spacing: ZadTokens.s2,
+                                      runSpacing: ZadTokens.s1,
+                                      children: [
+                                        _HeroBadge(
+                                          teamTypeLabels[team.teamType] ??
+                                              team.teamType,
+                                          gold: true,
+                                        ),
+                                        _HeroBadge(
+                                          teamStatusLabels[team.status] ??
+                                              team.status,
+                                        ),
+                                        _HeroBadge(
+                                          team.isPublic ? 'عام' : 'خاص',
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: ZadTokens.s4),
+                                    Text(
+                                      team.name,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge
+                                          ?.copyWith(color: Colors.white),
+                                    ),
+                                    const SizedBox(height: ZadTokens.s1),
+                                    Text(
+                                      'القائد: ${team.leaderName}',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(height: ZadTokens.s3),
+                                    const Divider(
+                                      height: 1,
+                                      color: Colors.white24,
+                                    ),
+                                    const SizedBox(height: ZadTokens.s3),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.people_alt_outlined,
+                                          size: 16,
+                                          color: ZadTokens.gold,
+                                        ),
+                                        const SizedBox(width: ZadTokens.s1 + 2),
+                                        Expanded(
+                                          child: Text(
+                                            '${team.memberCount} عضو '
+                                            '(نشط ${team.activeMemberCount} · '
+                                            'غير نشط ${team.inactiveMemberCount})',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    if (team.note != null) ...[
+                                      const SizedBox(height: ZadTokens.s2),
+                                      Text(
+                                        'ملاحظة: ${team.note!}',
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                          if (team.note != null) ...[
-                            const SizedBox(height: ZadTokens.s2),
-                            Text(
-                              'ملاحظة: ${team.note!}',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -674,65 +703,102 @@ class _MemberTile extends StatelessWidget {
       member.isActive ? roleLabel : '$roleLabel · غير نشط',
     ];
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: ZadTokens.s2),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: ZadTokens.s3),
-        leading: CircleAvatar(
-          backgroundColor: member.isActive
-              ? ZadTokens.primary
-              : ZadTokens.textMuted,
-          child: Text(
-            '$displayPosition',
-            style: const TextStyle(color: Colors.white),
-          ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: ZadTokens.s1),
+      decoration: const BoxDecoration(
+        color: ZadTokens.surface,
+        border: Border(bottom: BorderSide(color: ZadTokens.goldSoft)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: ZadTokens.s3,
+          vertical: ZadTokens.s2,
         ),
-        title: Text(member.displayName),
-        subtitle: Text(
-          parts.join(' · '),
-          style: member.isActive
-              ? null
-              : const TextStyle(color: ZadTokens.textMuted),
-        ),
-        trailing: busy
-            ? const SizedBox(
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: member.isActive
+                    ? ZadTokens.primary.withValues(alpha: 0.10)
+                    : ZadTokens.textMuted.withValues(alpha: 0.10),
+              ),
+              child: Text(
+                '$displayPosition',
+                style: TextStyle(
+                  color: member.isActive
+                      ? ZadTokens.primary
+                      : ZadTokens.textMuted,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: ZadTokens.s3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          member.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      if (isLeader) const ZadBadge('القائد', gold: true),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    parts.join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: member.isActive
+                          ? ZadTokens.textMuted
+                          : ZadTokens.textMuted.withValues(alpha: 0.75),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (busy)
+              const SizedBox(
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : !showActions
-            ? null
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (member.isActive)
-                    IconButton(
-                      tooltip: 'تعطيل',
-                      icon: const Icon(
-                        Icons.pause_circle_outline,
-                        color: ZadTokens.warning,
-                      ),
-                      onPressed: onDeactivate,
-                    )
-                  else
-                    IconButton(
-                      tooltip: 'تفعيل',
-                      icon: const Icon(
-                        Icons.play_circle_outline,
-                        color: ZadTokens.primary,
-                      ),
-                      onPressed: onReactivate,
-                    ),
-                  IconButton(
-                    tooltip: 'إزالة',
-                    icon: const Icon(
-                      Icons.person_remove_outlined,
-                      color: ZadTokens.danger,
-                    ),
-                    onPressed: onRemove,
-                  ),
-                ],
+            else if (showActions) ...[
+              IconButton(
+                tooltip: member.isActive ? 'تعطيل' : 'تفعيل',
+                icon: Icon(
+                  member.isActive
+                      ? Icons.person_off_outlined
+                      : Icons.person_add_alt_1_outlined,
+                  color: member.isActive
+                      ? ZadTokens.warning
+                      : ZadTokens.primary,
+                ),
+                onPressed: member.isActive ? onDeactivate : onReactivate,
               ),
+              IconButton(
+                tooltip: 'إزالة',
+                icon: const Icon(
+                  Icons.person_remove_outlined,
+                  color: ZadTokens.danger,
+                ),
+                onPressed: onRemove,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

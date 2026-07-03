@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/zad_tokens.dart';
 import '../../../../core/widgets/zad_card.dart';
+import '../../../../core/widgets/zad_dotted_background.dart';
 import '../../domain/budget_models.dart';
 
 /// Stitch-style budget hero: green banner with remaining money, two tinted
@@ -89,52 +90,71 @@ class BudgetSummaryCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Green hero banner (Stitch budget_dashboard).
-        Container(
-          padding: const EdgeInsets.all(ZadTokens.s5),
-          decoration: BoxDecoration(
-            gradient: ZadTokens.heroGradient,
-            borderRadius: BorderRadius.circular(ZadTokens.radiusLg),
-            boxShadow: ZadTokens.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'الرصيد المتبقي',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-              const SizedBox(height: ZadTokens.s1),
-              Text(
-                '${s.remainingMoney.toStringAsFixed(2)} MRU',
-                style: const TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: ZadTokens.s2),
-              // Status dot keeps the finance semantics visible on green.
-              Row(
+        ClipRRect(
+          borderRadius: BorderRadius.circular(ZadTokens.radiusLg),
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: ZadTokens.heroGradient,
+              boxShadow: ZadTokens.cardShadow,
+            ),
+            child: ZadDottedBackground(
+              color: Colors.white12,
+              child: Stack(
                 children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: statusColor,
+                  const PositionedDirectional(
+                    start: 18,
+                    top: 16,
+                    child: Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 88,
+                      color: Colors.white12,
                     ),
                   ),
-                  const SizedBox(width: ZadTokens.s2),
-                  Text(
-                    statusLabel,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12.5,
+                  Padding(
+                    padding: const EdgeInsets.all(ZadTokens.s5),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'الرصيد المتبقي',
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                        const SizedBox(height: ZadTokens.s1),
+                        Text(
+                          '${s.remainingMoney.toStringAsFixed(2)} MRU',
+                          style: const TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: ZadTokens.s2),
+                        Row(
+                          children: [
+                            Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: statusColor,
+                              ),
+                            ),
+                            const SizedBox(width: ZadTokens.s2),
+                            Text(
+                              statusLabel,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
         const SizedBox(height: ZadTokens.s3),

@@ -23,7 +23,9 @@ class ZadActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = accent ? ZadTokens.gold : ZadTokens.primary;
     return Material(
-      color: ZadTokens.surface,
+      color: accent
+          ? ZadTokens.gold.withValues(alpha: 0.10)
+          : ZadTokens.surfaceContainer.withValues(alpha: 0.72),
       elevation: 1,
       shadowColor: const Color(0x22000000),
       shape: RoundedRectangleBorder(
@@ -36,7 +38,10 @@ class ZadActionCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
         child: Padding(
-          padding: const EdgeInsets.all(ZadTokens.s3),
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZadTokens.s3,
+            vertical: ZadTokens.s4,
+          ),
           child: Column(
             // min: sizes to content when used full-width outside a grid cell;
             // grid cells impose tight constraints, so they render unchanged.
@@ -44,23 +49,23 @@ class ZadActionCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 34,
-                height: 34,
+                width: 52,
+                height: 52,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: color.withValues(alpha: 0.12),
                 ),
-                child: Icon(icon, size: 20, color: color),
+                child: Icon(icon, size: 25, color: color),
               ),
-              const SizedBox(height: ZadTokens.s1 + 2),
+              const SizedBox(height: ZadTokens.s2),
               Text(
                 title,
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: ZadTokens.text,
                 ),
@@ -72,7 +77,7 @@ class ZadActionCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 11.5,
                     color: ZadTokens.textMuted,
                   ),
                 ),
