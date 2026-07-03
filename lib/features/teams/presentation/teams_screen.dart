@@ -11,6 +11,9 @@ import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
 import '../domain/team_models.dart';
 
+// Stitch manuscript-card border (#f2e0cc), teams-list-local on purpose.
+const _cardBorder = Color(0xFFF2E0CC);
+
 class TeamsScreen extends StatefulWidget {
   final AuthService authService;
   const TeamsScreen({super.key, required this.authService});
@@ -74,6 +77,10 @@ class _TeamsScreenState extends State<TeamsScreen> {
           ? FloatingActionButton(
               backgroundColor: ZadTokens.primary,
               foregroundColor: Colors.white,
+              // Stitch FAB is a rounded-2xl square, not a circle.
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               onPressed: () => context.push('/teams/new').then((_) => _load()),
               child: const Icon(Icons.add),
             )
@@ -93,9 +100,10 @@ class _TeamsScreenState extends State<TeamsScreen> {
               constraints: const BoxConstraints(
                 maxWidth: ZadTokens.contentMaxWidth,
               ),
+              // Stitch toggle: rounded-xl container, rounded-lg segments.
               decoration: BoxDecoration(
                 color: ZadTokens.surfaceContainer,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
               ),
               child: Row(
                 children: [
@@ -137,8 +145,9 @@ class _TeamsScreenState extends State<TeamsScreen> {
         curve: Curves.easeOutCubic,
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? ZadTokens.primaryDark : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
+          color: selected ? ZadTokens.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 2),
+          boxShadow: selected ? ZadTokens.cardShadow : null,
         ),
         child: Text(
           label,
@@ -206,80 +215,115 @@ class _TeamCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: ZadTokens.s2),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
-        child: Padding(
-          padding: const EdgeInsets.all(ZadTokens.s3),
-          child: Row(
-            children: [
-              // Rounded-square tinted icon tile (Stitch team card).
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: ZadTokens.surfaceContainer,
-                  borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 4),
-                ),
-                child: Icon(
-                  team.isPublic ? Icons.group : Icons.lock_outline,
-                  size: 22,
-                  color: ZadTokens.primary,
-                ),
-              ),
-              const SizedBox(width: ZadTokens.s3),
-              Expanded(
-                child: Column(
+    // Stitch team card: two zones — name + badges facing a 48px icon tile,
+    // then a hairline divider and a meta row. Avatar cluster rejected
+    // (no avatar data); chevron keeps the tap affordance instead.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: ZadTokens.s3),
+      child: Material(
+        color: ZadTokens.surface,
+        elevation: 1,
+        shadowColor: const Color(0x14000000),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+          side: const BorderSide(color: _cardBorder),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+          child: Padding(
+            padding: const EdgeInsets.all(ZadTokens.s4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      team.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: ZadTokens.s1),
-                    Wrap(
-                      spacing: ZadTokens.s2,
-                      runSpacing: ZadTokens.s1,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        ZadBadge(
-                          teamTypeLabels[team.teamType] ?? team.teamType,
-                          gold: true,
-                        ),
-                        ZadBadge(teamStatusLabels[team.status] ?? team.status),
-                        if (team.myRole == 'leader') const ZadBadge('قائد'),
-                        ZadBadge(team.isPublic ? 'عام' : 'خاص'),
-                      ],
-                    ),
-                    const SizedBox(height: ZadTokens.s2),
-                    // Member count row with icon (Stitch).
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.people_alt_outlined,
-                          size: 15,
-                          color: ZadTokens.textMuted,
-                        ),
-                        const SizedBox(width: ZadTokens.s1),
-                        Text(
-                          '${team.memberCount} عضو',
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            color: ZadTokens.textMuted,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            team.name,
+                            style: const TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.bold,
+                              color: ZadTokens.text,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: ZadTokens.s2),
+                          Wrap(
+                            spacing: ZadTokens.s2,
+                            runSpacing: ZadTokens.s1,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              ZadBadge(
+                                teamTypeLabels[team.teamType] ?? team.teamType,
+                                gold: true,
+                              ),
+                              ZadBadge(
+                                teamStatusLabels[team.status] ?? team.status,
+                              ),
+                              if (team.myRole == 'leader')
+                                const ZadBadge('قائد')
+                              else if (team.myRole != null)
+                                const ZadBadge('عضو'),
+                              ZadBadge(team.isPublic ? 'عام' : 'خاص'),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: ZadTokens.s3),
+                    // 48px rounded-xl tile, filled icon (Stitch). Glyph stays
+                    // truthful: groups = public, lock = private.
+                    Container(
+                      width: 48,
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: ZadTokens.surfaceContainer,
+                        borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+                      ),
+                      child: Icon(
+                        team.isPublic ? Icons.groups : Icons.lock_outline,
+                        size: 26,
+                        color: ZadTokens.primary,
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const Icon(Icons.chevron_left, color: ZadTokens.textMuted),
-            ],
+                const SizedBox(height: ZadTokens.s3),
+                const Divider(height: 1, color: _cardBorder),
+                const SizedBox(height: ZadTokens.s3),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.groups_outlined,
+                      size: 18,
+                      color: ZadTokens.textMuted,
+                    ),
+                    const SizedBox(width: ZadTokens.s1 + 2),
+                    Text(
+                      '${team.memberCount} عضو',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: ZadTokens.textMuted,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Icon(
+                      Icons.chevron_left,
+                      size: 20,
+                      color: ZadTokens.textMuted,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
