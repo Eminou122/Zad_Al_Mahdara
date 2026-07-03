@@ -1,138 +1,598 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
-import '../../../core/widgets/zad_animated_entry.dart';
+import '../../../core/widgets/zad_badge.dart';
+import '../../../core/widgets/zad_card.dart';
+import '../../../core/widgets/zad_confirm.dart';
+import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_scaffold.dart';
+import '../../../core/widgets/zad_section_header.dart';
+import '../../../services/auth_service.dart';
+import '../data/admin_models.dart';
+import '../data/admin_service.dart';
 
-const _warmBorder = Color(0xFFF2E0CC);
-const _warmDisk = Color(0xFFFEEDDC);
+class AdminScreen extends StatefulWidget {
+  final AuthService authService;
+  final AdminService? service;
 
-class AdminScreen extends StatelessWidget {
-  const AdminScreen({super.key});
+  const AdminScreen({super.key, required this.authService, this.service});
+
+  @override
+  State<AdminScreen> createState() => _AdminScreenState();
+}
+
+class _AdminScreenState extends State<AdminScreen> {
+  late final AdminService _admin =
+      widget.service ?? AdminService(widget.authService);
+  final _search = TextEditingController();
+  Timer? _debounce;
+
+  AdminDashboard? _dashboard;
+  List<AdminUserSummary> _users = [];
+  List<AdminPublicTeam> _teams = [];
+  bool _loading = true;
+  bool _usersLoading = false;
+  String? _error;
+  String? _message;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAll() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _message = null;
+    });
+    try {
+      final results = await Future.wait([
+        _admin.getDashboard(),
+        _admin.listUsers(_search.text),
+        _admin.listPublicTeams(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _dashboard = results[0] as AdminDashboard;
+        _users = results[1] as List<AdminUserSummary>;
+        _teams = results[2] as List<AdminPublicTeam>;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = _safeError(e);
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadUsers() async {
+    setState(() {
+      _usersLoading = true;
+      _error = null;
+      _message = null;
+    });
+    try {
+      final users = await _admin.listUsers(_search.text);
+      if (!mounted) return;
+      setState(() {
+        _users = users;
+        _usersLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = _safeError(e);
+        _usersLoading = false;
+      });
+    }
+  }
+
+  void _onSearchChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), _loadUsers);
+  }
+
+  Future<void> _showUser(AdminUserSummary user) async {
+    try {
+      final detail = await _admin.getUserDetail(user.id);
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: ZadTokens.background,
+        builder: (_) => _UserDetailSheet(
+          user: detail,
+          onDeactivate: () => _changeUserActive(detail, false),
+          onReactivate: () => _changeUserActive(detail, true),
+        ),
+      );
+    } catch (e) {
+      if (mounted) _snack(_safeError(e), danger: true);
+    }
+  }
+
+  Future<void> _changeUserActive(AdminUserDetail user, bool active) async {
+    final ok = await zadConfirm(
+      context,
+      title: active ? 'إعادة تفعيل المستخدم' : 'إيقاف المستخدم',
+      body: active
+          ? 'هل تريد إعادة تفعيل هذا المستخدم؟'
+          : 'هل تريد إيقاف هذا المستخدم؟',
+      confirmLabel: active ? 'إعادة التفعيل' : 'إيقاف',
+    );
+    if (!ok) return;
+
+    try {
+      if (active) {
+        await _admin.reactivateUser(user.id);
+      } else {
+        await _admin.deactivateUser(user.id);
+      }
+      if (!mounted) return;
+      Navigator.of(context).maybePop();
+      setState(() => _message = active ? 'تمت إعادة التفعيل' : 'تم الإيقاف');
+      await _loadAll();
+    } catch (e) {
+      if (mounted) _snack(_safeError(e), danger: true);
+    }
+  }
+
+  void _snack(String message, {bool danger = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: danger ? ZadTokens.danger : ZadTokens.primary,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return ZadScaffold(
       title: 'الإدارة',
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, ZadTokens.s6, 20, 96),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: (constraints.maxHeight - 128).clamp(380.0, 640.0),
-              ),
-              child: Center(
-                child: ZadAnimatedEntry(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 360),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              width: 132,
-                              height: 132,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: _warmDisk,
-                                border: Border.all(
-                                  color: ZadTokens.gold.withValues(alpha: 0.4),
-                                  width: 1.5,
-                                ),
-                                boxShadow: ZadTokens.cardShadow,
-                              ),
-                              child: const Icon(
-                                Icons.admin_panel_settings_outlined,
-                                size: 64,
-                                color: ZadTokens.primaryDark,
-                              ),
-                            ),
-                            PositionedDirectional(
-                              top: -4,
-                              end: -4,
-                              child: Container(
-                                width: 40,
-                                height: 40,
-                                alignment: Alignment.center,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: ZadTokens.gold,
-                                ),
-                                child: const Icon(
-                                  Icons.lock_outline,
-                                  size: 20,
-                                  color: ZadTokens.primaryDark,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: ZadTokens.s5),
-                        Text(
-                          'منطقة إدارية',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                color: ZadTokens.text,
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        const SizedBox(height: ZadTokens.s3),
-                        const Text(
-                          'هذه الصفحة مخصصة للمؤسس والمسؤولين فقط. ستتوفر أدوات الإدارة هنا قريباً.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: ZadTokens.textMuted,
-                            height: 1.6,
-                          ),
-                        ),
-                        const SizedBox(height: ZadTokens.s5),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              minimumSize: const Size.fromHeight(52),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            icon: const Icon(Icons.home_outlined),
-                            label: const Text('العودة للرئيسية'),
-                            onPressed: () => context.go('/home'),
-                          ),
-                        ),
-                        const SizedBox(height: ZadTokens.s4),
-                        Container(
-                          width: 116,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: _warmBorder,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          alignment: AlignmentDirectional.centerStart,
-                          child: FractionallySizedBox(
-                            widthFactor: 0.34,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: ZadTokens.gold.withValues(alpha: 0.55),
-                                borderRadius: BorderRadius.circular(99),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+      actions: [
+        IconButton(
+          tooltip: 'تحديث',
+          onPressed: _loading ? null : _loadAll,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _loadAll,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_error != null)
+                    ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
+                  if (_message != null)
+                    ZadInfoBanner(_message!, kind: ZadBannerKind.success),
+                  if (_dashboard != null) _DashboardGrid(_dashboard!),
+                  const ZadSectionHeader('المستخدمون'),
+                  _SearchBox(
+                    controller: _search,
+                    loading: _usersLoading,
+                    onChanged: _onSearchChanged,
+                    onRefresh: _loadUsers,
                   ),
-                ),
+                  const SizedBox(height: ZadTokens.s3),
+                  if (_users.isEmpty)
+                    const _EmptyCard('لا يوجد مستخدمون')
+                  else
+                    for (final user in _users)
+                      _UserCard(user: user, onTap: () => _showUser(user)),
+                  const ZadSectionHeader('الفرق العامة'),
+                  if (_teams.isEmpty)
+                    const _EmptyCard('لا توجد فرق عامة')
+                  else
+                    for (final team in _teams) _TeamCard(team),
+                ],
               ),
             ),
-          );
-        },
+    );
+  }
+}
+
+class _DashboardGrid extends StatelessWidget {
+  final AdminDashboard dashboard;
+  const _DashboardGrid(this.dashboard);
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = [
+      _StatCard('نشطون', dashboard.activeUsersCount, Icons.verified_outlined),
+      _StatCard('متوقفون', dashboard.inactiveUsersCount, Icons.block_outlined),
+      _StatCard('فرق عامة', dashboard.publicTeamsCount, Icons.groups_outlined),
+      _StatCard(
+        'طلبات PIN',
+        dashboard.pendingPinResetRequestsCount,
+        Icons.lock_reset_outlined,
+      ),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth < 380 ? 2 : 4;
+        final width =
+            (constraints.maxWidth - (columns - 1) * ZadTokens.s2) / columns;
+        return Wrap(
+          spacing: ZadTokens.s2,
+          runSpacing: ZadTokens.s2,
+          children: [
+            for (final card in cards)
+              SizedBox(width: width, height: 104, child: card),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final String label;
+  final int value;
+  final IconData icon;
+  const _StatCard(this.label, this.value, this.icon);
+
+  @override
+  Widget build(BuildContext context) {
+    return ZadCard(
+      padding: const EdgeInsets.all(ZadTokens.s3),
+      highlighted: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: ZadTokens.primary, size: 20),
+          const SizedBox(height: ZadTokens.s1),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '$value',
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _SearchBox extends StatelessWidget {
+  final TextEditingController controller;
+  final bool loading;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onRefresh;
+
+  const _SearchBox({
+    required this.controller,
+    required this.loading,
+    required this.onChanged,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: controller,
+            onChanged: onChanged,
+            textInputAction: TextInputAction.search,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'بحث بالاسم أو الهاتف المخفي',
+            ),
+          ),
+        ),
+        const SizedBox(width: ZadTokens.s2),
+        IconButton.filledTonal(
+          tooltip: 'تحديث',
+          onPressed: loading ? null : onRefresh,
+          icon: loading
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh),
+        ),
+      ],
+    );
+  }
+}
+
+class _UserCard extends StatelessWidget {
+  final AdminUserSummary user;
+  final VoidCallback onTap;
+  const _UserCard({required this.user, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: ZadTokens.s2),
+      child: Material(
+        color: ZadTokens.surface,
+        borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+          onTap: onTap,
+          child: ZadCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        user.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const Icon(Icons.chevron_left, color: ZadTokens.textMuted),
+                  ],
+                ),
+                const SizedBox(height: ZadTokens.s2),
+                Wrap(
+                  spacing: ZadTokens.s2,
+                  runSpacing: ZadTokens.s1,
+                  children: [
+                    ZadBadge(user.isActive ? 'نشط' : 'متوقف'),
+                    if (user.isAdmin) const ZadBadge('مسؤول', gold: true),
+                    ZadBadge(user.phoneMasked, gold: true),
+                  ],
+                ),
+                const SizedBox(height: ZadTokens.s2),
+                _MetaLine(
+                  createdAt: user.createdAt,
+                  lastLoginAt: user.lastLoginAt,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UserDetailSheet extends StatelessWidget {
+  final AdminUserDetail user;
+  final VoidCallback onDeactivate;
+  final VoidCallback onReactivate;
+
+  const _UserDetailSheet({
+    required this.user,
+    required this.onDeactivate,
+    required this.onReactivate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          ZadTokens.s4,
+          ZadTokens.s4,
+          ZadTokens.s4,
+          ZadTokens.s4 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    user.displayName,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'إغلاق',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: ZadTokens.s2),
+            Wrap(
+              spacing: ZadTokens.s2,
+              runSpacing: ZadTokens.s1,
+              children: [
+                ZadBadge(user.isActive ? 'نشط' : 'متوقف'),
+                if (user.isAdmin) const ZadBadge('مسؤول', gold: true),
+                ZadBadge(user.phoneMasked, gold: true),
+              ],
+            ),
+            const SizedBox(height: ZadTokens.s4),
+            _DetailRow('تاريخ الإنشاء', _fmtDate(user.createdAt)),
+            _DetailRow('آخر دخول', _fmtDate(user.lastLoginAt)),
+            _DetailRow('محاولات فاشلة', '${user.failedLoginCount}'),
+            if (user.lockedUntil != null)
+              _DetailRow('مقفل حتى', _fmtDateTime(user.lockedUntil)),
+            const SizedBox(height: ZadTokens.s4),
+            if (!user.isAdmin)
+              ElevatedButton.icon(
+                onPressed: user.isActive ? onDeactivate : onReactivate,
+                icon: Icon(user.isActive ? Icons.block : Icons.restart_alt),
+                label: Text(user.isActive ? 'إيقاف المستخدم' : 'إعادة التفعيل'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: user.isActive
+                      ? ZadTokens.danger
+                      : ZadTokens.primary,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TeamCard extends StatelessWidget {
+  final AdminPublicTeam team;
+  const _TeamCard(this.team);
+
+  @override
+  Widget build(BuildContext context) {
+    return ZadCard(
+      margin: const EdgeInsets.only(bottom: ZadTokens.s2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            team.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: ZadTokens.s2),
+          Wrap(
+            spacing: ZadTokens.s2,
+            runSpacing: ZadTokens.s1,
+            children: [
+              ZadBadge(_teamType(team.teamType), gold: true),
+              ZadBadge(_teamStatus(team.status)),
+              ZadBadge('${team.memberCount} عضو'),
+            ],
+          ),
+          const SizedBox(height: ZadTokens.s2),
+          Text(
+            'القائد: ${team.leaderName}',
+            style: const TextStyle(color: ZadTokens.textMuted),
+          ),
+          const SizedBox(height: ZadTokens.s1),
+          Text(
+            'نشطون: ${team.activeMemberCount} • متوقفون: ${team.inactiveMemberCount}'
+            '${team.createdAt == null ? '' : ' • ${_fmtDate(team.createdAt)}'}',
+            style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetaLine extends StatelessWidget {
+  final DateTime? createdAt;
+  final DateTime? lastLoginAt;
+  const _MetaLine({required this.createdAt, required this.lastLoginAt});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'أضيف: ${_fmtDate(createdAt)}'
+      '${lastLoginAt == null ? '' : ' • آخر دخول: ${_fmtDate(lastLoginAt)}'}',
+      style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _DetailRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: ZadTokens.s2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: ZadTokens.textMuted),
+            ),
+          ),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyCard extends StatelessWidget {
+  final String message;
+  const _EmptyCard(this.message);
+
+  @override
+  Widget build(BuildContext context) {
+    return ZadCard(
+      child: Text(message, style: const TextStyle(color: ZadTokens.textMuted)),
+    );
+  }
+}
+
+String _fmtDate(DateTime? d) {
+  if (d == null) return 'غير متوفر';
+  return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+}
+
+String _fmtDateTime(DateTime? d) {
+  if (d == null) return 'غير متوفر';
+  return '${_fmtDate(d)} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
+String _teamType(String value) {
+  if (value == 'mahdara') return 'محظرة';
+  if (value == 'housing') return 'سكن';
+  return value;
+}
+
+String _teamStatus(String value) {
+  if (value == 'open') return 'مفتوح';
+  if (value == 'closed') return 'مغلق';
+  return value;
+}
+
+String _safeError(Object e) {
+  final msg = e is PostgrestException
+      ? e.message.toLowerCase()
+      : '$e'.toLowerCase();
+  if (msg.contains('admin only')) return 'هذه الصفحة للمسؤولين فقط';
+  if (msg.contains('invalid session') || msg.contains('not authenticated')) {
+    return 'انتهت الجلسة — يرجى تسجيل الدخول من جديد';
+  }
+  if (msg.contains('cannot act on own account')) {
+    return 'لا يمكن تنفيذ هذا الإجراء على حسابك';
+  }
+  if (msg.contains('cannot deactivate an admin account')) {
+    return 'لا يمكن إيقاف حساب مسؤول';
+  }
+  if (msg.contains('user not found')) return 'المستخدم غير موجود';
+  return 'حدث خطأ — حاول مرة أخرى';
 }

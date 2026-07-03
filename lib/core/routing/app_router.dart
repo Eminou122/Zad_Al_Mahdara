@@ -118,7 +118,10 @@ class AppRouter {
         path: '/notifications',
         builder: (_, _) => const NotificationsScreen(),
       ),
-      GoRoute(path: '/admin', builder: (_, _) => const AdminScreen()),
+      GoRoute(
+        path: '/admin',
+        builder: (_, _) => AdminScreen(authService: authService),
+      ),
     ],
   );
 
