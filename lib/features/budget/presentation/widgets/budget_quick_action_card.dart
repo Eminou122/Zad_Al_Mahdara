@@ -23,9 +23,11 @@ class BudgetQuickActionCard extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Material(
-          color: filled
-              ? ZadTokens.gold
-              : ZadTokens.primary.withValues(alpha: 0.10),
+          // Stitch: gold disk + dark-gold icon for the primary action,
+          // cream disks + green icons for the rest, all softly elevated.
+          color: filled ? ZadTokens.gold : ZadTokens.surfaceContainer,
+          elevation: 1,
+          shadowColor: const Color(0x22000000),
           shape: const CircleBorder(),
           child: InkWell(
             onTap: onTap,
@@ -37,7 +39,7 @@ class BudgetQuickActionCard extends StatelessWidget {
               child: Icon(
                 icon,
                 size: 24,
-                color: filled ? ZadTokens.primaryDark : ZadTokens.primary,
+                color: filled ? ZadTokens.goldDark : ZadTokens.primary,
               ),
             ),
           ),

@@ -202,7 +202,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
             Expanded(
               child: BudgetQuickActionCard(
                 icon: Icons.shopping_basket_outlined,
-                label: 'المشتريات المتكررة',
+                label: 'المشتريات',
                 onTap: () =>
                     context.push('/budget/recurring').then((_) => _load()),
               ),
@@ -242,12 +242,44 @@ class _BudgetScreenState extends State<BudgetScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    // Status-tinted icon tile (Stitch: green = purchased,
+                    // gold = pending, muted = skipped).
+                    Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _statusColor(
+                          item.status,
+                        ).withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.shopping_basket_outlined,
+                        size: 22,
+                        color: _statusColor(item.status),
+                      ),
+                    ),
+                    const SizedBox(width: ZadTokens.s3),
                     Expanded(
-                      child: Text(
-                        item.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_statusText(item.status)}'
+                            '${item.reminderTime == null ? '' : '  •  تذكير: ${item.reminderTime}'}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _statusColor(item.status),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     Text(
@@ -258,15 +290,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: ZadTokens.s1),
-                Text(
-                  '${_statusText(item.status)}'
-                  '${item.reminderTime == null ? '' : '  •  تذكير: ${item.reminderTime}'}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: _statusColor(item.status),
-                  ),
                 ),
                 const SizedBox(height: ZadTokens.s2),
                 Row(
@@ -302,10 +325,20 @@ class _BudgetScreenState extends State<BudgetScreen> {
             ),
             child: Row(
               children: [
-                const Icon(
-                  Icons.autorenew_outlined,
-                  color: ZadTokens.gold,
-                  size: 22,
+                // Gold-tinted tile (Stitch: amber = planned commitment).
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: ZadTokens.gold.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.autorenew_outlined,
+                    color: ZadTokens.goldDark,
+                    size: 22,
+                  ),
                 ),
                 const SizedBox(width: ZadTokens.s3),
                 Expanded(
@@ -356,7 +389,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
           ),
       ],
       if (ov.recentExpenses.isNotEmpty) ...[
-        const ZadSectionHeader('المصاريف الأخيرة'),
+        // Stitch title. "التقارير" button rejected: no reports feature.
+        const ZadSectionHeader('آخر المصروفات'),
         for (final exp in ov.recentExpenses)
           ZadCard(
             margin: const EdgeInsets.only(bottom: ZadTokens.s2),
@@ -366,6 +400,22 @@ class _BudgetScreenState extends State<BudgetScreen> {
             ),
             child: Row(
               children: [
+                // Neutral circular icon tile (Stitch expense rows).
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: ZadTokens.surfaceContainer,
+                  ),
+                  child: const Icon(
+                    Icons.receipt_long_outlined,
+                    size: 20,
+                    color: ZadTokens.textMuted,
+                  ),
+                ),
+                const SizedBox(width: ZadTokens.s3),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,8 +441,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   ),
                 ),
                 Text(
-                  '${exp.amount.toStringAsFixed(2)} MRU',
-                  // Red: money already spent.
+                  '- ${exp.amount.toStringAsFixed(2)}',
+                  // Red: money already spent (Stitch "- 150.00" style).
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: ZadTokens.danger,

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/zad_tokens.dart';
 import '../../../../core/widgets/zad_card.dart';
-import '../../../../core/widgets/zad_info_banner.dart';
 import '../../domain/budget_models.dart';
 
 /// Lightweight spending progress: one bar, spent/remaining figures,
@@ -22,10 +21,13 @@ class SpendingProgressCard extends StatelessWidget {
     final total = plan.totalMoney;
     final ratio = total > 0 ? (s.totalSpent / total).clamp(0.0, 1.0) : 1.0;
     // Finance semantics: green under 80%, amber near the limit, red over.
+    // Bar fill uses the brighter gold for caution (Stitch secondary-container
+    // bar); text stays in the darker readable warning amber.
+    final caution = ratio >= 0.8;
     final barColor = s.remainingMoney < 0
         ? ZadTokens.danger
-        : ratio >= 0.8
-        ? ZadTokens.warning
+        : caution
+        ? ZadTokens.gold
         : ZadTokens.primary;
     final todayColor = s.isOverDailyLimit
         ? ZadTokens.danger
@@ -33,24 +35,31 @@ class SpendingProgressCard extends StatelessWidget {
         ? ZadTokens.warning
         : ZadTokens.text;
 
-    // One status banner only — worst condition wins.
+    // One status line only — worst condition wins (Stitch: warning icon +
+    // colored text row, no boxed banner).
     final String status;
-    final ZadBannerKind kind;
+    final Color statusColor;
+    final IconData statusIcon;
     if (s.remainingMoney < 0) {
       status = 'تجاوزت الميزانية';
-      kind = ZadBannerKind.danger;
+      statusColor = ZadTokens.danger;
+      statusIcon = Icons.error_outline;
     } else if (s.isOverDailyLimit) {
       status = 'تجاوزت الحد اليومي — حاول تقليل مصاريف اليوم';
-      kind = ZadBannerKind.danger;
+      statusColor = ZadTokens.danger;
+      statusIcon = Icons.error_outline;
     } else if (s.daysRemaining == 0) {
       status = 'انتهت مدة هذه الخطة';
-      kind = ZadBannerKind.warning;
-    } else if (ratio >= 0.8) {
+      statusColor = ZadTokens.warning;
+      statusIcon = Icons.warning_amber_outlined;
+    } else if (caution) {
       status = 'انتبه، اقتربت من الحد';
-      kind = ZadBannerKind.warning;
+      statusColor = ZadTokens.warning;
+      statusIcon = Icons.warning_amber_outlined;
     } else {
       status = 'الوضع جيد';
-      kind = ZadBannerKind.success;
+      statusColor = ZadTokens.primary;
+      statusIcon = Icons.check_circle_outline;
     }
 
     return ZadCard(
@@ -67,10 +76,11 @@ class SpendingProgressCard extends StatelessWidget {
               ),
               Text(
                 '${(ratio * 100).round()}%',
-                style: TextStyle(
+                // Muted like Stitch; state color lives in the bar + status.
+                style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
-                  color: barColor,
+                  color: ZadTokens.textMuted,
                 ),
               ),
             ],
@@ -94,7 +104,8 @@ class SpendingProgressCard extends StatelessWidget {
           ),
           const SizedBox(height: ZadTokens.s2),
           ClipRRect(
-            borderRadius: BorderRadius.circular(ZadTokens.radiusSm),
+            // Fully rounded thick bar on a cream track (Stitch).
+            borderRadius: BorderRadius.circular(999),
             // Bar fills 0 → ratio once on load; retargets smoothly on data
             // change. Value is display-only, calculations untouched.
             child: TweenAnimationBuilder<double>(
@@ -103,9 +114,9 @@ class SpendingProgressCard extends StatelessWidget {
               curve: Curves.easeOutCubic,
               builder: (context, value, _) => LinearProgressIndicator(
                 value: value,
-                minHeight: 10,
+                minHeight: 12,
                 color: barColor,
-                backgroundColor: ZadTokens.goldSoft.withValues(alpha: 0.5),
+                backgroundColor: ZadTokens.surfaceContainer,
               ),
             ),
           ),
@@ -128,7 +139,22 @@ class SpendingProgressCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: ZadTokens.s3),
-          ZadInfoBanner(status, kind: kind),
+          Row(
+            children: [
+              Icon(statusIcon, size: 18, color: statusColor),
+              const SizedBox(width: ZadTokens.s2),
+              Expanded(
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

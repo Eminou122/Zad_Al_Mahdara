@@ -3,6 +3,9 @@ import '../../../../core/theme/zad_tokens.dart';
 import '../../../../core/widgets/zad_card.dart';
 import '../../domain/budget_models.dart';
 
+// Stitch manuscript-card border (#f2e0cc), budget-local on purpose.
+const _cardBorder = Color(0xFFF2E0CC);
+
 /// Stitch-style budget hero: green banner with remaining money, two tinted
 /// metric mini-cards, and a safe-daily-limit banner. Falls back to an empty
 /// state with an inline setup action when no budget plan exists.
@@ -80,7 +83,7 @@ class BudgetSummaryCard extends StatelessWidget {
         ? ZadTokens.danger
         : s.daysRemaining <= 3
         ? ZadTokens.warning
-        : ZadTokens.primary;
+        : ZadTokens.goldDark; // Stitch: days metric in secondary gold
     final limitColor = (s.remainingMoney <= 0 || safeLimit <= 0)
         ? ZadTokens.danger
         : ZadTokens.primary;
@@ -88,51 +91,88 @@ class BudgetSummaryCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Green hero banner (Stitch budget_dashboard).
+        // Green hero banner (Stitch budget_dashboard): big number + small
+        // unit, faded wallet watermark in the corner.
         Container(
-          padding: const EdgeInsets.all(ZadTokens.s5),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             gradient: ZadTokens.heroGradient,
             borderRadius: BorderRadius.circular(ZadTokens.radiusLg),
             boxShadow: ZadTokens.cardShadow,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
             children: [
-              const Text(
-                'الرصيد المتبقي',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-              const SizedBox(height: ZadTokens.s1),
-              Text(
-                '${s.remainingMoney.toStringAsFixed(2)} MRU',
-                style: const TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+              PositionedDirectional(
+                bottom: -24,
+                end: -24,
+                child: Icon(
+                  Icons.account_balance_wallet,
+                  size: 120,
+                  color: Colors.white.withValues(alpha: 0.08),
                 ),
               ),
-              const SizedBox(height: ZadTokens.s2),
-              // Status dot keeps the finance semantics visible on green.
-              Row(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: statusColor,
+              Padding(
+                padding: const EdgeInsets.all(ZadTokens.s5),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'المبلغ المتبقي',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
                     ),
-                  ),
-                  const SizedBox(width: ZadTokens.s2),
-                  Text(
-                    statusLabel,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12.5,
+                    const SizedBox(height: ZadTokens.s1),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              s.remainingMoney.toStringAsFixed(2),
+                              style: const TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: ZadTokens.s2),
+                        const Text(
+                          'MRU',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: ZadTokens.s2),
+                    // Status dot keeps the finance semantics visible on green.
+                    Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: statusColor,
+                          ),
+                        ),
+                        const SizedBox(width: ZadTokens.s2),
+                        Text(
+                          statusLabel,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -145,7 +185,7 @@ class BudgetSummaryCard extends StatelessWidget {
               child: _MetricBox(
                 label: 'إجمالي الميزانية',
                 value: '${p.totalMoney.toStringAsFixed(0)} MRU',
-                valueColor: ZadTokens.text,
+                valueColor: ZadTokens.primary, // Stitch: total in green
               ),
             ),
             const SizedBox(width: ZadTokens.s3),
@@ -159,27 +199,33 @@ class BudgetSummaryCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: ZadTokens.s3),
-        // Safe daily limit banner with shield (Stitch).
+        // Safe daily limit as a full-width metric card with shield (Stitch:
+        // caption + verified icon on top, bold green value below).
         Container(
           padding: const EdgeInsets.all(ZadTokens.s3),
           decoration: BoxDecoration(
             color: ZadTokens.surfaceContainer,
             borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+            border: Border.all(color: _cardBorder),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.shield_outlined, size: 20, color: limitColor),
-              const SizedBox(width: ZadTokens.s2 + 2),
-              const Expanded(
-                child: Text(
-                  'الحد اليومي الآمن',
-                  style: TextStyle(fontSize: 13, color: ZadTokens.text),
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'الحد اليومي الآمن',
+                    style: TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+                  ),
+                  Icon(Icons.shield_outlined, size: 18, color: limitColor),
+                ],
               ),
+              const SizedBox(height: ZadTokens.s1),
               Text(
-                '${safeLimit.toStringAsFixed(0)} MRU',
+                '${safeLimit.toStringAsFixed(2)} MRU',
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: limitColor,
                 ),
@@ -217,6 +263,7 @@ class _MetricBox extends StatelessWidget {
       decoration: BoxDecoration(
         color: ZadTokens.surfaceContainer,
         borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+        border: Border.all(color: _cardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
