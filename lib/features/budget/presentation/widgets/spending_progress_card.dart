@@ -19,7 +19,8 @@ class SpendingProgressCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = summary;
     final total = plan.totalMoney;
-    final ratio = total > 0 ? (s.totalSpent / total).clamp(0.0, 1.0) : 1.0;
+    final consumed = total - s.remainingMoney;
+    final ratio = total > 0 ? (consumed / total).clamp(0.0, 1.0) : 1.0;
     // Finance semantics: green under 80%, amber near the limit, red over.
     // Bar fill uses the brighter gold for caution (Stitch secondary-container
     // bar); text stays in the darker readable warning amber.
@@ -94,7 +95,7 @@ class SpendingProgressCard extends StatelessWidget {
                 style: TextStyle(color: ZadTokens.textMuted, fontSize: 13),
               ),
               Text(
-                '${s.totalSpent.toStringAsFixed(2)} / ${total.toStringAsFixed(2)} MRU',
+                '${consumed.toStringAsFixed(2)} / ${total.toStringAsFixed(2)} MRU',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
