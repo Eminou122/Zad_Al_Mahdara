@@ -3,6 +3,9 @@ import '../../../core/theme/zad_tokens.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_scaffold.dart';
 
+const _warmBorder = Color(0xFFF2E0CC);
+const _warmDisk = Color(0xFFFEEDDC);
+
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -60,56 +63,72 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       _controller.repeat();
     }
     return ZadScaffold(
-      title: 'الإشعارات',
-      body: Padding(
-        padding: const EdgeInsets.only(top: ZadTokens.s6),
-        child: ZadAnimatedEntry(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ZadTokens.s4,
-              vertical: ZadTokens.s6,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Static disk; only the bell moves (paint-only transform).
-                Container(
-                  width: 120,
-                  height: 120,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: ZadTokens.gold.withValues(alpha: 0.12),
-                  ),
-                  child: AnimatedBuilder(
-                    animation: _ding,
-                    builder: (context, child) => Transform.rotate(
-                      angle: 0.03 * _ding.value, // ±0.03 rad ≈ ±1.7°
-                      child: child,
+      title: 'التنبيهات',
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, ZadTokens.s6, 20, 96),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: (constraints.maxHeight - 128).clamp(360.0, 620.0),
+              ),
+              child: Center(
+                child: ZadAnimatedEntry(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 360),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 148,
+                          height: 148,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _warmDisk,
+                            border: Border.all(color: _warmBorder),
+                            boxShadow: ZadTokens.cardShadow,
+                          ),
+                          child: AnimatedBuilder(
+                            animation: _ding,
+                            builder: (context, child) => Transform.rotate(
+                              angle: 0.03 * _ding.value,
+                              child: child,
+                            ),
+                            child: const Icon(
+                              Icons.notifications_none_outlined,
+                              size: 72,
+                              color: ZadTokens.primaryDark,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: ZadTokens.s5),
+                        Text(
+                          'لا توجد تنبيهات حالياً',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                color: ZadTokens.text,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        const SizedBox(height: ZadTokens.s3),
+                        const Text(
+                          'ستظهر التنبيهات هنا قريباً. سنقوم بإشعارك عند وجود تحديثات جديدة في ميزانيتك أو فرقك الدراسية.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: ZadTokens.textMuted,
+                            height: 1.6,
+                          ),
+                        ),
+                      ],
                     ),
-                    child: const Icon(
-                      Icons.notifications_none_outlined,
-                      size: 48,
-                      color: ZadTokens.primaryDark,
-                    ),
                   ),
                 ),
-                const SizedBox(height: ZadTokens.s4),
-                Text(
-                  'لا توجد تنبيهات حالياً',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: ZadTokens.s2),
-                const Text(
-                  'ستظهر التنبيهات هنا قريباً — سنقوم بإشعارك عند وجود تحديثات جديدة في ميزانيتك أو فرقك.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: ZadTokens.textMuted),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
