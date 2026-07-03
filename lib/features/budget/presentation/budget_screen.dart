@@ -12,6 +12,7 @@ import '../data/budget_service.dart';
 import '../domain/budget_models.dart';
 import 'widgets/budget_quick_action_card.dart';
 import 'widgets/budget_summary_card.dart';
+import 'widgets/recurring_purchases_card.dart';
 import 'widgets/spending_progress_card.dart';
 
 class BudgetScreen extends StatefulWidget {
@@ -26,6 +27,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
   late final BudgetService _budget;
   BudgetOverview? _overview;
   List<TodayRecurringPurchase> _todayRecurring = [];
+  List<RecurringPurchase> _recurringItems = [];
+  RecurringPurchaseOverview? _recurringStats;
   bool _isLoading = true;
   String? _error;
 
@@ -44,10 +47,14 @@ class _BudgetScreenState extends State<BudgetScreen> {
     try {
       final ov = await _budget.getOverview();
       final today = await _budget.getTodayRecurringPurchases();
+      final recurringItems = await _budget.getRecurringPurchases();
+      final recurringStats = await _budget.getRecurringPurchaseOverview();
       if (mounted) {
         setState(() {
           _overview = ov;
           _todayRecurring = today;
+          _recurringItems = recurringItems;
+          _recurringStats = recurringStats;
           _isLoading = false;
         });
       }
@@ -388,6 +395,30 @@ class _BudgetScreenState extends State<BudgetScreen> {
             ),
           ),
       ],
+      ZadSectionHeader(
+        'المشتريات اليومية',
+        trailing: TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: ZadTokens.goldDark,
+            padding: const EdgeInsets.symmetric(horizontal: ZadTokens.s2),
+            minimumSize: const Size(0, 32),
+            textStyle: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          onPressed: () =>
+              context.push('/budget/recurring').then((_) => _load()),
+          child: const Text('عرض الكل'),
+        ),
+      ),
+      RecurringPurchasesCard(
+        stats: ov.budgetPlan != null ? _recurringStats : null,
+        items: _recurringItems,
+        todayItems: _todayRecurring,
+        onManage: () =>
+            context.push('/budget/recurring').then((_) => _load()),
+      ),
       if (ov.recentExpenses.isNotEmpty) ...[
         // Stitch title. "التقارير" button rejected: no reports feature.
         const ZadSectionHeader('آخر المصروفات'),
