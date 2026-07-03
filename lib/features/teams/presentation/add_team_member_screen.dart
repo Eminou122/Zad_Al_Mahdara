@@ -30,7 +30,6 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
   bool _addingExternal = false;
   String? _error;
   String? _externalError;
-  bool _showExternal = false;
   final Set<String> _adding = {};
 
   @override
@@ -157,12 +156,7 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    ZadTokens.s3,
-                    ZadTokens.s4,
-                    ZadTokens.s3,
-                    ZadTokens.s3,
-                  ),
+                  padding: const EdgeInsets.all(ZadTokens.s3),
                   child: TextField(
                     controller: _searchCtrl,
                     decoration: InputDecoration(
@@ -189,10 +183,6 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                   child: Card(
                     margin: EdgeInsets.zero,
                     child: ExpansionTile(
-                      key: ValueKey(_showExternal),
-                      initiallyExpanded: _showExternal,
-                      onExpansionChanged: (value) =>
-                          setState(() => _showExternal = value),
                       shape: const Border(),
                       tilePadding: const EdgeInsets.symmetric(
                         horizontal: ZadTokens.s3,
@@ -291,7 +281,7 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                               ZadEmptyState(
                                 icon: Icons.person_search_outlined,
                                 message: _searchCtrl.text.length < 2
-                                    ? 'ابحث عن طالب لإضافته إلى الفريق'
+                                    ? 'ابحث عن طالب للإضافة'
                                     : 'لا توجد نتائج',
                               ),
                             ],
@@ -306,77 +296,42 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                                 margin: const EdgeInsets.only(
                                   bottom: ZadTokens.s2,
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: ZadTokens.s3,
-                                    vertical: ZadTokens.s2,
+                                child: ListTile(
+                                  leading: const Icon(
+                                    Icons.person_outline,
+                                    color: ZadTokens.primary,
                                   ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              s.displayName,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                              ),
+                                  title: Text(s.displayName),
+                                  subtitle: Text(s.phoneMasked),
+                                  trailing: _adding.contains(s.profileId)
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      // Green "إضافة" pill (Stitch).
+                                      : ElevatedButton.icon(
+                                          style: ElevatedButton.styleFrom(
+                                            minimumSize: const Size(0, 36),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: ZadTokens.s3,
                                             ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              s.phoneMasked,
-                                              style: const TextStyle(
-                                                color: ZadTokens.textMuted,
-                                                fontSize: 12,
-                                              ),
+                                            shape: const StadiumBorder(),
+                                            textStyle: const TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.bold,
                                             ),
-                                          ],
+                                          ),
+                                          icon: const Icon(Icons.add, size: 16),
+                                          label: const Text('إضافة'),
+                                          onPressed: () => _add(s),
                                         ),
-                                      ),
-                                      _adding.contains(s.profileId)
-                                          ? const SizedBox(
-                                              width: 24,
-                                              height: 24,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          : ElevatedButton.icon(
-                                              style: ElevatedButton.styleFrom(
-                                                minimumSize: const Size(0, 36),
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: ZadTokens.s3,
-                                                    ),
-                                                shape: const StadiumBorder(),
-                                                textStyle: const TextStyle(
-                                                  fontSize: 12.5,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              icon: const Icon(
-                                                Icons.add,
-                                                size: 16,
-                                              ),
-                                              label: const Text('إضافة'),
-                                              onPressed: () => _add(s),
-                                            ),
-                                    ],
-                                  ),
                                 ),
                               );
                             },
                           ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(ZadTokens.s3),
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.person_add_alt_1),
-                    label: const Text('إضافة المزيد'),
-                    onPressed: () => setState(() => _showExternal = true),
                   ),
                 ),
               ],

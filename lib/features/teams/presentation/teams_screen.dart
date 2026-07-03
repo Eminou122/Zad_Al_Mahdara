@@ -201,87 +201,78 @@ class _TeamCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(bottom: ZadTokens.s3),
+      margin: const EdgeInsets.only(bottom: ZadTokens.s2),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
         child: Padding(
-          padding: const EdgeInsets.all(ZadTokens.s4),
-          child: Column(
+          padding: const EdgeInsets.all(ZadTokens.s3),
+          child: Row(
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: ZadTokens.surfaceContainer,
-                      borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+              // Rounded-square tinted icon tile (Stitch team card).
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: ZadTokens.surfaceContainer,
+                  borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 4),
+                ),
+                child: Icon(
+                  team.isPublic ? Icons.group : Icons.lock_outline,
+                  size: 22,
+                  color: ZadTokens.primary,
+                ),
+              ),
+              const SizedBox(width: ZadTokens.s3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      team.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    child: Icon(
-                      team.isPublic ? Icons.menu_book : Icons.lock_outline,
-                      size: 24,
-                      color: ZadTokens.primary,
-                    ),
-                  ),
-                  const SizedBox(width: ZadTokens.s3),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: ZadTokens.s1),
+                    Wrap(
+                      spacing: ZadTokens.s2,
+                      runSpacing: ZadTokens.s1,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        Text(
-                          team.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        ZadBadge(
+                          teamTypeLabels[team.teamType] ?? team.teamType,
+                          gold: true,
                         ),
-                        const SizedBox(height: ZadTokens.s2),
-                        Wrap(
-                          spacing: ZadTokens.s2,
-                          runSpacing: ZadTokens.s1,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            ZadBadge(
-                              teamTypeLabels[team.teamType] ?? team.teamType,
-                              gold: true,
-                            ),
-                            ZadBadge(
-                              teamStatusLabels[team.status] ?? team.status,
-                            ),
-                            if (team.myRole == 'leader') const ZadBadge('قائد'),
-                            ZadBadge(team.isPublic ? 'عام' : 'خاص'),
-                          ],
+                        ZadBadge(teamStatusLabels[team.status] ?? team.status),
+                        if (team.myRole == 'leader') const ZadBadge('قائد'),
+                        ZadBadge(team.isPublic ? 'عام' : 'خاص'),
+                      ],
+                    ),
+                    const SizedBox(height: ZadTokens.s2),
+                    // Member count row with icon (Stitch).
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.people_alt_outlined,
+                          size: 15,
+                          color: ZadTokens.textMuted,
+                        ),
+                        const SizedBox(width: ZadTokens.s1),
+                        Text(
+                          '${team.memberCount} عضو',
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: ZadTokens.textMuted,
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  const Icon(Icons.chevron_left, color: ZadTokens.textMuted),
-                ],
+                  ],
+                ),
               ),
-              const Divider(height: ZadTokens.s5),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.people_alt_outlined,
-                    size: 16,
-                    color: ZadTokens.textMuted,
-                  ),
-                  const SizedBox(width: ZadTokens.s1 + 2),
-                  Text(
-                    '${team.memberCount} عضو',
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: ZadTokens.textMuted,
-                    ),
-                  ),
-                ],
-              ),
+              const Icon(Icons.chevron_left, color: ZadTokens.textMuted),
             ],
           ),
         ),
