@@ -46,11 +46,18 @@ class ZadSwipeNav extends StatefulWidget {
   State<ZadSwipeNav> createState() => _ZadSwipeNavState();
 }
 
+enum _SwipeIntent { undecided, horizontal, vertical }
+
 class _ZadSwipeNavState extends State<ZadSwipeNav>
     with SingleTickerProviderStateMixin {
   double _dragOffset = 0;
   bool _handled = false;
   bool _isDragging = false;
+
+  // Axis lock
+  _SwipeIntent _intent = _SwipeIntent.undecided;
+  double _cumulativeDx = 0;
+  double _cumulativeDy = 0;
 
   // Velocity tracking
   final _recent = <_Sample>[];
@@ -102,7 +109,9 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
 
     // Neighbor label to show during drag
     String? neighborLabel;
-    if (_dragOffset.abs() > 20 && !_cancelCtrl.isAnimating) {
+    if (_intent == _SwipeIntent.horizontal &&
+        _dragOffset.abs() > 20 &&
+        !_cancelCtrl.isAnimating) {
       final dir = _dragOffset > 0 ? 1 : -1;
       final ni = widget.index + dir;
       if (ni >= 0 && ni < allRoutes.length) {
@@ -180,10 +189,40 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
     _isDragging = true;
     _recent.clear();
     _childPageAtDown = _childPc?.page;
+    _intent = _SwipeIntent.undecided;
+    _cumulativeDx = 0;
+    _cumulativeDy = 0;
   }
 
   void _onMove(PointerMoveEvent event) {
     if (_handled) return;
+
+    _cumulativeDx += event.delta.dx;
+    _cumulativeDy += event.delta.dy;
+
+    if (_intent == _SwipeIntent.vertical) return;
+
+    if (_intent == _SwipeIntent.undecided) {
+      // Vertical lock: strong vertical movement wins
+      if (_cumulativeDy.abs() > 12 &&
+          _cumulativeDy.abs() >= _cumulativeDx.abs() * 1.1) {
+        _intent = _SwipeIntent.vertical;
+        setState(() => _dragOffset = 0);
+        _recent.clear();
+        return;
+      }
+      // Horizontal lock: clear horizontal dominance wins
+      if (_cumulativeDx.abs() > 18 &&
+          _cumulativeDx.abs() > _cumulativeDy.abs() * 1.4) {
+        _intent = _SwipeIntent.horizontal;
+      } else {
+        // Still undecided: accumulate samples but don't move page
+        _recent.add(_Sample(event.delta.dx, DateTime.now()));
+        return;
+      }
+    }
+
+    // Horizontal intent: apply finger-following drag
     setState(() {
       _dragOffset += event.delta.dx;
     });
@@ -193,6 +232,11 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
   void _onUp(PointerUpEvent event) {
     if (!_isDragging || _handled) return;
     _isDragging = false;
+
+    if (_intent != _SwipeIntent.horizontal) {
+      _animateBack();
+      return;
+    }
 
     // Check if a child PageView consumed the gesture
     final pc = _childPc;
