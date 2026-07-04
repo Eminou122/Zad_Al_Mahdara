@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_confirm.dart';
@@ -60,6 +61,16 @@ class HomeScreen extends StatelessWidget {
               const ZadSectionHeader('دليل سريع'),
               ..._tips(context, isAdmin: authService.isAdmin),
               const SizedBox(height: ZadTokens.s5),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: ZadTokens.primary,
+                  side: const BorderSide(color: ZadTokens.primary),
+                ),
+                icon: const Icon(Icons.settings_outlined, size: 20),
+                label: const Text('إعدادات الحساب'),
+                onPressed: () => context.push('/account'),
+              ),
+              const SizedBox(height: ZadTokens.s2),
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   foregroundColor: ZadTokens.danger,

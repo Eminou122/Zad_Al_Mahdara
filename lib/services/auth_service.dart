@@ -105,6 +105,32 @@ class AuthService extends ChangeNotifier {
     return json['ok'] == true;
   }
 
+  Future<void> updateProfileName(String name) async {
+    _requireSupabase();
+    final token = currentToken;
+    if (token == null) throw Exception('not authenticated');
+    final result = await _client.rpc('update_my_profile_name', params: {
+      'p_session_token': token,
+      'p_display_name': name,
+    });
+    final json = Map<String, dynamic>.from(result as Map);
+    final profileJson = Map<String, dynamic>.from(json['profile'] as Map);
+    _profile = UserProfile.fromJson(profileJson);
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>> changePin(String currentPin, String newPin) async {
+    _requireSupabase();
+    final token = currentToken;
+    if (token == null) throw Exception('not authenticated');
+    final result = await _client.rpc('change_my_pin', params: {
+      'p_session_token': token,
+      'p_current_pin': currentPin,
+      'p_new_pin': newPin,
+    });
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   Future<void> logout() async {
     final token = SessionStorage.read();
     if (token != null && AppConfig.supabaseUrl.isNotEmpty) {

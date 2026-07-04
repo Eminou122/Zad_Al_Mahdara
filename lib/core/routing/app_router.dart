@@ -25,6 +25,7 @@ import '../../features/teams/presentation/add_team_member_screen.dart';
 import '../../features/teams/domain/team_models.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/admin/presentation/admin_screen.dart';
+import '../../features/account/presentation/account_screen.dart';
 
 class AppRouter {
   final AuthService authService;
@@ -197,6 +198,10 @@ class AppRouter {
         path: '/admin',
         pageBuilder: (_, state) =>
             _mainPage(state, AdminScreen(authService: authService)),
+      ),
+      GoRoute(
+        path: '/account',
+        builder: (_, _) => AccountScreen(authService: authService),
       ),
     ],
   );
