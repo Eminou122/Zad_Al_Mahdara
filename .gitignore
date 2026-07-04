@@ -51,6 +51,7 @@ dart_defines.json
 dart_defines*.json
 .vercel
 .env*.local
+.env*
 
 # Stitch design references — visual reference only, never commit
 design_refs/
