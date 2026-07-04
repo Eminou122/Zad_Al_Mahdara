@@ -7,11 +7,11 @@ import '../../../core/widgets/zad_badge.dart';
 import '../../../core/widgets/zad_bottom_nav.dart';
 import '../../../core/widgets/zad_empty_state.dart';
 import '../../../core/widgets/zad_info_banner.dart';
+import '../../../core/widgets/zad_nested_swipe_scope.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
 import '../domain/team_models.dart';
 
-// Stitch manuscript-card border (#f2e0cc), teams-list-local on purpose.
 const _cardBorder = Color(0xFFF2E0CC);
 
 class TeamsScreen extends StatefulWidget {
@@ -28,13 +28,35 @@ class _TeamsScreenState extends State<TeamsScreen> {
   List<TeamSummary> _public = [];
   bool _loading = true;
   String? _error;
-  bool _showPublic = false;
+
+  late final PageController _pageController;
+  int _teamPage = 0;
 
   @override
   void initState() {
     super.initState();
     _svc = TeamService(widget.authService);
+    _pageController = PageController();
+    _pageController.addListener(_onPageChanged);
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        PageControllerRegistration(_pageController).dispatch(context);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _pageController.removeListener(_onPageChanged);
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _onPageChanged() {
+    if (!_pageController.hasClients) return;
+    final page = _pageController.page ?? 0;
+    setState(() => _teamPage = page.round());
   }
 
   Future<void> _load() async {
@@ -67,17 +89,15 @@ class _TeamsScreenState extends State<TeamsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Root tab: no back arrow, bottom nav with الفرق active (Stitch shell).
       appBar: AppBar(
         title: const Text('الفرق'),
         automaticallyImplyLeading: false,
       ),
       bottomNavigationBar: const ZadBottomNav(current: ZadTab.teams),
-      floatingActionButton: !_showPublic
+      floatingActionButton: _teamPage == 0
           ? FloatingActionButton(
               backgroundColor: ZadTokens.primary,
               foregroundColor: Colors.white,
-              // Stitch FAB is a rounded-2xl square, not a circle.
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -88,7 +108,6 @@ class _TeamsScreenState extends State<TeamsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Segmented pill toggle (Stitch teams_list).
             Container(
               margin: const EdgeInsets.fromLTRB(
                 ZadTokens.s3,
@@ -100,18 +119,25 @@ class _TeamsScreenState extends State<TeamsScreen> {
               constraints: const BoxConstraints(
                 maxWidth: ZadTokens.contentMaxWidth,
               ),
-              // Stitch toggle: rounded-xl container, rounded-lg segments.
               decoration: BoxDecoration(
                 color: ZadTokens.surfaceContainer,
                 borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
               ),
               child: Row(
                 children: [
-                  _tab('فرقي', !_showPublic, () {
-                    setState(() => _showPublic = false);
+                  _tab('فرقي', _teamPage == 0, () {
+                    _pageController.animateToPage(
+                      0,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutCubic,
+                    );
                   }),
-                  _tab('الفرق العامة', _showPublic, () {
-                    setState(() => _showPublic = true);
+                  _tab('الفرق العامة', _teamPage == 1, () {
+                    _pageController.animateToPage(
+                      1,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOutCubic,
+                    );
                   }),
                 ],
               ),
@@ -129,7 +155,20 @@ class _TeamsScreenState extends State<TeamsScreen> {
               )
             else
               Expanded(
-                child: RefreshIndicator(onRefresh: _load, child: _buildList()),
+                child: PageView(
+                  controller: _pageController,
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    RefreshIndicator(
+                      onRefresh: _load,
+                      child: _buildList(isMine: true),
+                    ),
+                    RefreshIndicator(
+                      onRefresh: _load,
+                      child: _buildList(isMine: false),
+                    ),
+                  ],
+                ),
               ),
           ],
         ),
@@ -162,9 +201,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
     ),
   );
 
-  Widget _buildList() {
-    final items = _showPublic ? _public : _mine;
-    // Side padding grows on wide screens so cards stay near contentMaxWidth.
+  Widget _buildList({required bool isMine}) {
+    final items = isMine ? _mine : _public;
     return LayoutBuilder(
       builder: (context, constraints) {
         final side = ((constraints.maxWidth - ZadTokens.contentMaxWidth) / 2)
@@ -178,8 +216,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
             children: [
               ZadAnimatedEntry(
                 child: ZadEmptyState(
-                  icon: _showPublic ? Icons.public_off : Icons.group_outlined,
-                  message: _showPublic ? 'لا توجد فرق عامة' : 'لا توجد فرق بعد',
+                  icon: isMine ? Icons.group_outlined : Icons.public_off,
+                  message: isMine ? 'لا توجد فرق بعد' : 'لا توجد فرق عامة',
                 ),
               ),
             ],
@@ -191,9 +229,6 @@ class _TeamsScreenState extends State<TeamsScreen> {
             vertical: ZadTokens.s3,
           ),
           itemCount: items.length,
-          // Stagger only the first screenful; later rows appear instantly
-          // while scrolling. Entry state persists, so the "فرقي/عامة" toggle
-          // swaps content without replaying the animation.
           itemBuilder: (_, i) => ZadAnimatedEntry(
             delay: Duration(milliseconds: i < 6 ? 40 * i : 0),
             child: _TeamCard(
@@ -215,9 +250,6 @@ class _TeamCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Stitch team card: two zones — name + badges facing a 48px icon tile,
-    // then a hairline divider and a meta row. Avatar cluster rejected
-    // (no avatar data); chevron keeps the tap affordance instead.
     return Padding(
       padding: const EdgeInsets.only(bottom: ZadTokens.s3),
       child: Material(
@@ -277,8 +309,6 @@ class _TeamCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: ZadTokens.s3),
-                    // 48px rounded-xl tile, filled icon (Stitch). Glyph stays
-                    // truthful: groups = public, lock = private.
                     Container(
                       width: 48,
                       height: 48,
