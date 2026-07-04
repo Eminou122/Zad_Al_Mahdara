@@ -53,22 +53,30 @@ class AppRouter {
     return CustomTransitionPage<void>(
       key: state.pageKey,
       child: ZadSwipeNav(routes: routes, index: index, child: child),
-      transitionDuration: const Duration(milliseconds: 260),
-      reverseTransitionDuration: const Duration(milliseconds: 260),
+      transitionDuration: const Duration(milliseconds: 320),
+      reverseTransitionDuration: const Duration(milliseconds: 320),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
         if (forward == null || MediaQuery.of(context).disableAnimations) {
           return FadeTransition(opacity: animation, child: child);
         }
         // Target tab lives to the left when moving forward (higher index)
         // in this RTL strip, so it enters from the left, and vice versa.
-        final beginOffset = Offset(forward ? -0.06 : 0.06, 0);
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        final beginOffset = Offset(forward ? -0.045 : 0.045, 0);
         return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween(begin: beginOffset, end: Offset.zero)
-                .chain(CurveTween(curve: Curves.easeOutCubic))
-                .animate(animation),
-            child: child,
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween(begin: 0.985, end: 1.0).animate(curved),
+            child: SlideTransition(
+              position: Tween(
+                begin: beginOffset,
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
           ),
         );
       },
@@ -166,7 +174,8 @@ class AppRouter {
       ),
       GoRoute(
         path: '/notifications',
-        pageBuilder: (_, state) => _mainPage(state, const NotificationsScreen()),
+        pageBuilder: (_, state) =>
+            _mainPage(state, const NotificationsScreen()),
       ),
       GoRoute(
         path: '/admin',
