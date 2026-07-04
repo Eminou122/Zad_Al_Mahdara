@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
@@ -62,6 +63,7 @@ class _AccountScreenState extends State<AccountScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('تم تحديث الاسم')),
       );
+      context.go('/home');
     } on PostgrestException {
       if (mounted) {
         setState(() => _nameError = 'تعذر تحديث الاسم — الرجاء المحاولة لاحقًا');
@@ -105,9 +107,11 @@ class _AccountScreenState extends State<AccountScreen> {
         _curPinCtrl.clear();
         _newPinCtrl.clear();
         _confirmPinCtrl.clear();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم تغيير الرمز السري')),
         );
+        context.go('/home');
       } else {
         setState(() {
           _pinError = 'الرمز الحالي غير صحيح أو الحساب مقفل مؤقتًا.';

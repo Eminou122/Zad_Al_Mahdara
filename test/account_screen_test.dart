@@ -1,19 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:zad_al_mahdara/features/account/presentation/account_screen.dart';
 import 'package:zad_al_mahdara/services/auth_service.dart';
 
+Widget _bootApp(AuthService s) {
+  final router = GoRouter(
+    initialLocation: '/account',
+    routes: [
+      GoRoute(path: '/account', builder: (_, _) => AccountScreen(authService: s)),
+      GoRoute(path: '/home', builder: (_, _) => const Placeholder()),
+    ],
+  );
+  return MaterialApp.router(
+    routerConfig: router,
+  );
+}
+
 void main() {
   testWidgets('account screen renders name and PIN sections', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: _FakeAuthService()),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(_FakeAuthService()));
     await tester.pumpAndSettle();
 
     expect(find.text('الاسم الظاهر'), findsWidgets);
@@ -22,14 +29,7 @@ void main() {
   });
 
   testWidgets('name validation: empty name shows error', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: _FakeAuthService()),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(_FakeAuthService()));
     await tester.pumpAndSettle();
 
     final nameFields = find.byType(TextField);
@@ -41,14 +41,7 @@ void main() {
   });
 
   testWidgets('name validation: too-long name shows error', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: _FakeAuthService()),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(_FakeAuthService()));
     await tester.pumpAndSettle();
 
     final nameFields = find.byType(TextField);
@@ -62,14 +55,7 @@ void main() {
   testWidgets('PIN validation: non-4-digit current PIN shows error', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: _FakeAuthService()),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(_FakeAuthService()));
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextField);
@@ -83,14 +69,7 @@ void main() {
   });
 
   testWidgets('PIN validation: non-4-digit new PIN shows error', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: _FakeAuthService()),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(_FakeAuthService()));
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextField);
@@ -104,14 +83,7 @@ void main() {
   });
 
   testWidgets('PIN validation: mismatch shows error', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: _FakeAuthService()),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(_FakeAuthService()));
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextField);
@@ -125,14 +97,7 @@ void main() {
   });
 
   testWidgets('PIN fields obscure text', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: _FakeAuthService()),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(_FakeAuthService()));
     await tester.pumpAndSettle();
 
     final pinFields = find.byType(TextField);
@@ -143,14 +108,7 @@ void main() {
   });
 
   testWidgets('no pin_hash or full phone shown', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: _FakeAuthService()),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(_FakeAuthService()));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('pin_hash'), findsNothing);
@@ -165,14 +123,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: _FakeAuthService()),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(_FakeAuthService()));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
@@ -182,14 +133,7 @@ void main() {
     tester,
   ) async {
     final service = _FakeAuthService();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: service),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(service));
     await tester.pumpAndSettle();
 
     final nameFields = find.byType(TextField);
@@ -198,21 +142,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(service.updatedName, 'NewName');
-    expect(find.text('تم تحديث الاسم'), findsOneWidget);
+    expect(find.byType(Placeholder), findsOneWidget);
   });
 
   testWidgets('PIN change ok:true clears fields and shows success', (
     tester,
   ) async {
     final service = _FakeAuthService(pinOk: true);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: service),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(service));
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextField);
@@ -224,19 +161,12 @@ void main() {
 
     expect(service.changedCurrentPin, '1234');
     expect(service.changedNewPin, '5678');
-    expect(find.text('تم تغيير الرمز السري'), findsOneWidget);
+    expect(find.byType(Placeholder), findsOneWidget);
   });
 
   testWidgets('PIN change ok:false shows generic error', (tester) async {
     final service = _FakeAuthService(pinOk: false);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: service),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(service));
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextField);
@@ -256,14 +186,7 @@ void main() {
     tester,
   ) async {
     final service = _FakeAuthService(pinThrows: true);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: service),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(service));
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextField);
@@ -283,14 +206,7 @@ void main() {
     tester,
   ) async {
     final service = _FakeAuthService(nameThrows: true);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: AccountScreen(authService: service),
-        ),
-      ),
-    );
+    await tester.pumpWidget(_bootApp(service));
     await tester.pumpAndSettle();
 
     final nameFields = find.byType(TextField);
