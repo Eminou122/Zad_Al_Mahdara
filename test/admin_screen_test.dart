@@ -38,6 +38,11 @@ void main() {
   testWidgets('inactive user shows reactivate action', (tester) async {
     await _pump(tester, _FakeAdminService());
 
+    await tester.scrollUntilVisible(
+      find.text('Inactive User'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('Inactive User'));
     await tester.pumpAndSettle();
 
@@ -48,6 +53,11 @@ void main() {
   testWidgets('admin user does not show deactivate action', (tester) async {
     await _pump(tester, _FakeAdminService());
 
+    await tester.scrollUntilVisible(
+      find.text('Admin User'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.text('Admin User'));
     await tester.pumpAndSettle();
 
@@ -63,6 +73,45 @@ void main() {
     await _pump(tester, _FakeAdminService());
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('admin reset requests hide sensitive fields and render LTR', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeAdminService());
+
+    expect(find.text('طلبات إعادة تعيين الرمز'), findsOneWidget);
+    expect(find.text('Reset Student'), findsOneWidget);
+    expect(find.text('77****88'), findsOneWidget);
+    expect(find.text('77889900'), findsNothing);
+    expect(find.text('pin_hash'), findsNothing);
+    expect(find.text('code_hash'), findsNothing);
+    expect(find.text('12345678'), findsNothing);
+    _expectNearestTextDirection(
+      tester,
+      find.text('77****88'),
+      TextDirection.ltr,
+    );
+  });
+
+  testWidgets('admin issue dialog shows one-time code warning and LTR code', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeAdminService());
+
+    await tester.tap(find.text('إصدار رمز'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('سيظهر هذا الرمز مرة واحدة فقط. انسخه أو أعطه للطالب الآن.'),
+      findsOneWidget,
+    );
+    expect(find.text('12345678'), findsOneWidget);
+    _expectNearestTextDirection(
+      tester,
+      find.text('12345678'),
+      TextDirection.ltr,
+    );
   });
 }
 
@@ -161,4 +210,34 @@ class _FakeAdminService extends AdminService {
       createdAt: DateTime(2026, 7, 1),
     ),
   ];
+
+  @override
+  Future<List<AdminPinResetRequest>> listActivePinResetRequests() async => [
+    AdminPinResetRequest(
+      id: 'r1',
+      profileId: 'u-reset',
+      displayName: 'Reset Student',
+      phoneMasked: '77****88',
+      status: 'pending',
+      createdAt: DateTime(2026, 7, 3),
+      issuedAt: null,
+      codeExpiresAt: null,
+      usedAt: null,
+      cancelledAt: null,
+      expiredAt: null,
+      attemptCount: 0,
+    ),
+  ];
+
+  @override
+  Future<AdminIssuedPinResetCode> issuePinResetCode(String requestId) async =>
+      AdminIssuedPinResetCode(
+        requestId: requestId,
+        code: '12345678',
+        codeExpiresAt: DateTime(2026, 7, 3, 12, 15),
+        status: 'code_issued',
+      );
+
+  @override
+  Future<void> cancelPinResetRequest(String requestId) async {}
 }

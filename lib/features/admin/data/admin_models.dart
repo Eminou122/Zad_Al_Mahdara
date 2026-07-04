@@ -114,6 +114,74 @@ class AdminPublicTeam {
   );
 }
 
+class AdminPinResetRequest {
+  final String id;
+  final String profileId;
+  final String displayName;
+  final String phoneMasked;
+  final String status;
+  final DateTime? createdAt;
+  final DateTime? issuedAt;
+  final DateTime? codeExpiresAt;
+  final DateTime? usedAt;
+  final DateTime? cancelledAt;
+  final DateTime? expiredAt;
+  final int attemptCount;
+
+  const AdminPinResetRequest({
+    required this.id,
+    required this.profileId,
+    required this.displayName,
+    required this.phoneMasked,
+    required this.status,
+    required this.createdAt,
+    required this.issuedAt,
+    required this.codeExpiresAt,
+    required this.usedAt,
+    required this.cancelledAt,
+    required this.expiredAt,
+    required this.attemptCount,
+  });
+
+  factory AdminPinResetRequest.fromJson(Map<String, dynamic> j) =>
+      AdminPinResetRequest(
+        id: j['id'] as String,
+        profileId: j['profile_id'] as String? ?? '',
+        displayName: j['display_name'] as String? ?? '',
+        phoneMasked: j['phone_masked'] as String? ?? '',
+        status: j['status'] as String? ?? '',
+        createdAt: _date(j['created_at']),
+        issuedAt: _date(j['issued_at']),
+        codeExpiresAt: _date(j['code_expires_at']),
+        usedAt: _date(j['used_at']),
+        cancelledAt: _date(j['cancelled_at']),
+        expiredAt: _date(j['expired_at']),
+        attemptCount: _int(j['attempt_count']),
+      );
+}
+
+class AdminIssuedPinResetCode {
+  final String requestId;
+  final String code;
+  final DateTime? codeExpiresAt;
+  final String status;
+
+  const AdminIssuedPinResetCode({
+    required this.requestId,
+    required this.code,
+    required this.codeExpiresAt,
+    required this.status,
+  });
+
+  factory AdminIssuedPinResetCode.fromJson(Map<String, dynamic> j) =>
+      AdminIssuedPinResetCode(
+        requestId: j['request_id'] as String? ?? '',
+        code: j['code'] as String? ?? '',
+        codeExpiresAt: _date(j['code_expires_at']),
+        status: j['status'] as String? ?? '',
+      );
+}
+
 int _int(Object? v) => v is int ? v : int.tryParse('$v') ?? 0;
 
 DateTime? _date(Object? v) => v == null ? null : DateTime.tryParse('$v');

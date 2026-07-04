@@ -14,7 +14,14 @@ class ZadSectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(top: ZadTokens.s4, bottom: ZadTokens.s2),
       child: Row(
         children: [
-          Text(title, style: Theme.of(context).textTheme.titleSmall),
+          Flexible(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
           const SizedBox(width: ZadTokens.s3),
           Transform.rotate(
             angle: 0.785398, // 45° diamond

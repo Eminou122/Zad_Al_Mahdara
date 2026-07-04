@@ -46,5 +46,32 @@ void main() {
     expect(team.name, 'Public Team');
     expect(team.memberCount, 5);
     expect(team.activeMemberCount, 4);
+
+    final reset = AdminPinResetRequest.fromJson({
+      'id': 'r1',
+      'profile_id': 'u1',
+      'display_name': 'Student One',
+      'phone_masked': '49****35',
+      'status': 'code_issued',
+      'created_at': '2026-07-01T10:00:00Z',
+      'issued_at': '2026-07-01T10:01:00Z',
+      'code_expires_at': '2026-07-01T10:16:00Z',
+      'attempt_count': 2,
+    });
+
+    expect(reset.displayName, 'Student One');
+    expect(reset.phoneMasked, '49****35');
+    expect(reset.status, 'code_issued');
+    expect(reset.attemptCount, 2);
+
+    final issued = AdminIssuedPinResetCode.fromJson({
+      'request_id': 'r1',
+      'code': '12345678',
+      'code_expires_at': '2026-07-01T10:16:00Z',
+      'status': 'code_issued',
+    });
+
+    expect(issued.requestId, 'r1');
+    expect(issued.code, '12345678');
   });
 }

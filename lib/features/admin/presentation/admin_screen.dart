@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/widgets/zad_badge.dart';
@@ -32,6 +33,7 @@ class _AdminScreenState extends State<AdminScreen> {
   AdminDashboard? _dashboard;
   List<AdminUserSummary> _users = [];
   List<AdminPublicTeam> _teams = [];
+  List<AdminPinResetRequest> _pinResetRequests = [];
   bool _loading = true;
   bool _usersLoading = false;
   String? _error;
@@ -61,12 +63,14 @@ class _AdminScreenState extends State<AdminScreen> {
         _admin.getDashboard(),
         _admin.listUsers(_search.text),
         _admin.listPublicTeams(),
+        _admin.listActivePinResetRequests(),
       ]);
       if (!mounted) return;
       setState(() {
         _dashboard = results[0] as AdminDashboard;
         _users = results[1] as List<AdminUserSummary>;
         _teams = results[2] as List<AdminPublicTeam>;
+        _pinResetRequests = results[3] as List<AdminPinResetRequest>;
         _loading = false;
       });
     } catch (e) {
@@ -150,6 +154,39 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
+  Future<void> _issuePinResetCode(AdminPinResetRequest request) async {
+    try {
+      final issued = await _admin.issuePinResetCode(request.id);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => _IssuedCodeDialog(issued: issued),
+      );
+      await _loadAll();
+    } catch (e) {
+      if (mounted) _snack(_safeError(e), danger: true);
+    }
+  }
+
+  Future<void> _cancelPinResetRequest(AdminPinResetRequest request) async {
+    final ok = await zadConfirm(
+      context,
+      title: 'إلغاء طلب إعادة التعيين',
+      body: 'هل تريد إلغاء هذا الطلب؟',
+      confirmLabel: 'إلغاء الطلب',
+    );
+    if (!ok) return;
+
+    try {
+      await _admin.cancelPinResetRequest(request.id);
+      if (!mounted) return;
+      await _loadAll();
+      if (mounted) setState(() => _message = 'تم إلغاء طلب إعادة التعيين');
+    } catch (e) {
+      if (mounted) _snack(_safeError(e), danger: true);
+    }
+  }
+
   void _snack(String message, {bool danger = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -182,6 +219,16 @@ class _AdminScreenState extends State<AdminScreen> {
                   if (_message != null)
                     ZadInfoBanner(_message!, kind: ZadBannerKind.success),
                   if (_dashboard != null) _DashboardGrid(_dashboard!),
+                  const ZadSectionHeader('طلبات إعادة تعيين الرمز'),
+                  if (_pinResetRequests.isEmpty)
+                    const _EmptyCard('لا توجد طلبات نشطة')
+                  else
+                    for (final request in _pinResetRequests)
+                      _PinResetRequestCard(
+                        request: request,
+                        onIssue: () => _issuePinResetCode(request),
+                        onCancel: () => _cancelPinResetRequest(request),
+                      ),
                   const ZadSectionHeader('المستخدمون'),
                   _SearchBox(
                     controller: _search,
@@ -453,6 +500,149 @@ class _UserDetailSheet extends StatelessWidget {
   }
 }
 
+class _PinResetRequestCard extends StatelessWidget {
+  final AdminPinResetRequest request;
+  final VoidCallback onIssue;
+  final VoidCallback onCancel;
+
+  const _PinResetRequestCard({
+    required this.request,
+    required this.onIssue,
+    required this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ZadCard(
+      margin: const EdgeInsets.only(bottom: ZadTokens.s2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            request.displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: ZadTokens.s2),
+          Wrap(
+            spacing: ZadTokens.s2,
+            runSpacing: ZadTokens.s1,
+            children: [
+              ZadBadge(_resetStatus(request.status), gold: true),
+              _MaskedPhoneBadge(request.phoneMasked),
+              ZadBadge('محاولات: ${request.attemptCount}'),
+            ],
+          ),
+          const SizedBox(height: ZadTokens.s2),
+          Text(
+            'أضيف: ${_fmtDateTime(request.createdAt)}'
+            '${request.issuedAt == null ? '' : ' • أُصدر: ${_fmtDateTime(request.issuedAt)}'}'
+            '${request.codeExpiresAt == null ? '' : ' • ينتهي: ${_fmtDateTime(request.codeExpiresAt)}'}',
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+          ),
+          const SizedBox(height: ZadTokens.s3),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final issue = FilledButton.icon(
+                onPressed: onIssue,
+                icon: const Icon(Icons.lock_reset_outlined, size: 18),
+                label: Text(
+                  request.status == 'code_issued'
+                      ? 'إصدار رمز جديد'
+                      : 'إصدار رمز',
+                ),
+              );
+              final cancel = OutlinedButton.icon(
+                onPressed: onCancel,
+                icon: const Icon(Icons.cancel_outlined, size: 18),
+                label: const Text('إلغاء'),
+              );
+              if (constraints.maxWidth < 300) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    issue,
+                    const SizedBox(height: ZadTokens.s2),
+                    cancel,
+                  ],
+                );
+              }
+              return Wrap(
+                spacing: ZadTokens.s2,
+                runSpacing: ZadTokens.s2,
+                children: [issue, cancel],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IssuedCodeDialog extends StatelessWidget {
+  final AdminIssuedPinResetCode issued;
+  const _IssuedCodeDialog({required this.issued});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('رمز إعادة التعيين'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'سيظهر هذا الرمز مرة واحدة فقط. انسخه أو أعطه للطالب الآن.',
+          ),
+          const SizedBox(height: ZadTokens.s3),
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: SelectableText(
+              issued.code,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+              ),
+            ),
+          ),
+          if (issued.codeExpiresAt != null) ...[
+            const SizedBox(height: ZadTokens.s2),
+            Text(
+              'ينتهي: ${_fmtDateTime(issued.codeExpiresAt)}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: ZadTokens.textMuted),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton.icon(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: issued.code));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('تم نسخ الرمز')),
+              );
+            }
+          },
+          icon: const Icon(Icons.copy),
+          label: const Text('نسخ'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('تم'),
+        ),
+      ],
+    );
+  }
+}
+
 class _TeamCard extends StatelessWidget {
   final AdminPublicTeam team;
   const _TeamCard(this.team);
@@ -592,6 +782,15 @@ String _teamStatus(String value) {
   return value;
 }
 
+String _resetStatus(String value) {
+  if (value == 'pending') return 'بانتظار الرمز';
+  if (value == 'code_issued') return 'صدر رمز';
+  if (value == 'used') return 'مستخدم';
+  if (value == 'expired') return 'منتهي';
+  if (value == 'cancelled') return 'ملغى';
+  return value;
+}
+
 String _safeError(Object e) {
   final msg = e is PostgrestException
       ? e.message.toLowerCase()
@@ -605,6 +804,9 @@ String _safeError(Object e) {
   }
   if (msg.contains('cannot deactivate an admin account')) {
     return 'لا يمكن إيقاف حساب مسؤول';
+  }
+  if (msg.contains('pin reset request not found')) {
+    return 'طلب إعادة التعيين غير موجود';
   }
   if (msg.contains('user not found')) return 'المستخدم غير موجود';
   return 'حدث خطأ — حاول مرة أخرى';

@@ -8,6 +8,7 @@ import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
 import '../../features/auth/presentation/forgot_pin_screen.dart';
+import '../../features/auth/presentation/reset_pin_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/budget/presentation/budget_screen.dart';
 import '../../features/budget/presentation/budget_plan_form_screen.dart';
@@ -28,7 +29,13 @@ class AppRouter {
   final AuthService authService;
   AppRouter(this.authService);
 
-  static const _authPaths = {'/login', '/register', '/forgot-pin', '/'};
+  static const _authPaths = {
+    '/login',
+    '/register',
+    '/forgot-pin',
+    '/reset-pin',
+    '/',
+  };
 
   // Previous main-tab index, so the transition direction reflects whether
   // the user is moving toward the start or end of the tab strip. Null until
@@ -98,7 +105,14 @@ class AppRouter {
         path: '/register',
         builder: (_, _) => RegisterScreen(authService: authService),
       ),
-      GoRoute(path: '/forgot-pin', builder: (_, _) => const ForgotPinScreen()),
+      GoRoute(
+        path: '/forgot-pin',
+        builder: (_, _) => ForgotPinScreen(authService: authService),
+      ),
+      GoRoute(
+        path: '/reset-pin',
+        builder: (_, _) => ResetPinScreen(authService: authService),
+      ),
       GoRoute(
         path: '/home',
         pageBuilder: (_, state) =>

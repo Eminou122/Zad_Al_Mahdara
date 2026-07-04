@@ -89,6 +89,22 @@ class AuthService extends ChangeNotifier {
     _applyAuthResult(result as Map);
   }
 
+  Future<void> requestPinReset(String phone) async {
+    _requireSupabase();
+    await _client.rpc('request_pin_reset', params: {'p_phone_number': phone});
+  }
+
+  Future<bool> completePinReset(String phone, String code, String newPin) async {
+    _requireSupabase();
+    final result = await _client.rpc('complete_pin_reset', params: {
+      'p_phone_number': phone,
+      'p_code': code,
+      'p_new_pin': newPin,
+    });
+    final json = Map<String, dynamic>.from(result as Map);
+    return json['ok'] == true;
+  }
+
   Future<void> logout() async {
     final token = SessionStorage.read();
     if (token != null && AppConfig.supabaseUrl.isNotEmpty) {
