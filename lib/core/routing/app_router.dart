@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'route_observer.dart';
@@ -93,7 +94,8 @@ class AppRouter {
   late final GoRouter router = GoRouter(
     refreshListenable: authService,
     redirect: _guard,
-    initialLocation: '/',
+    initialLocation:
+        kIsWeb && Uri.base.fragment.isNotEmpty ? Uri.base.fragment : '/',
     observers: [appRouteObserver],
     routes: [
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
