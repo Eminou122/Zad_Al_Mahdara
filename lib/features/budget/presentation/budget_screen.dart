@@ -8,6 +8,7 @@ import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_scaffold.dart';
 import '../../../core/widgets/zad_section_header.dart';
 import '../../../services/auth_service.dart';
+import '../data/budget_cache_service.dart';
 import '../data/budget_service.dart';
 import '../domain/budget_models.dart';
 import 'widgets/budget_quick_action_card.dart';
@@ -17,7 +18,13 @@ import 'widgets/spending_progress_card.dart';
 
 class BudgetScreen extends StatefulWidget {
   final AuthService authService;
-  const BudgetScreen({super.key, required this.authService});
+  final BudgetService? budgetService;
+
+  const BudgetScreen({
+    super.key,
+    required this.authService,
+    this.budgetService,
+  });
 
   @override
   State<BudgetScreen> createState() => _BudgetScreenState();
@@ -25,17 +32,21 @@ class BudgetScreen extends StatefulWidget {
 
 class _BudgetScreenState extends State<BudgetScreen> {
   late final BudgetService _budget;
+  late final BudgetCacheService _cacheService;
   BudgetOverview? _overview;
   List<TodayRecurringPurchase> _todayRecurring = [];
   List<RecurringPurchase> _recurringItems = [];
   RecurringPurchaseOverview? _recurringStats;
   bool _isLoading = true;
   String? _error;
+  bool _isOfflineCached = false;
+  DateTime? _cachedAt;
 
   @override
   void initState() {
     super.initState();
-    _budget = BudgetService(widget.authService);
+    _budget = widget.budgetService ?? BudgetService(widget.authService);
+    _cacheService = BudgetCacheService();
     _load();
   }
 
@@ -49,6 +60,19 @@ class _BudgetScreenState extends State<BudgetScreen> {
       final today = await _budget.getTodayRecurringPurchases();
       final recurringItems = await _budget.getRecurringPurchases();
       final recurringStats = await _budget.getRecurringPurchaseOverview();
+      final profileId = widget.authService.profile?.id;
+      if (mounted && profileId != null) {
+        await _cacheService.save(
+          profileId,
+          BudgetCachePayload(
+            cachedAt: DateTime.now(),
+            overview: ov,
+            todayRecurring: today,
+            recurringItems: recurringItems,
+            recurringStats: recurringStats,
+          ),
+        );
+      }
       if (mounted) {
         setState(() {
           _overview = ov;
@@ -56,9 +80,27 @@ class _BudgetScreenState extends State<BudgetScreen> {
           _recurringItems = recurringItems;
           _recurringStats = recurringStats;
           _isLoading = false;
+          _isOfflineCached = false;
+          _cachedAt = null;
         });
       }
     } catch (e) {
+      final profileId = widget.authService.profile?.id;
+      if (mounted && profileId != null) {
+        final cached = await _cacheService.load(profileId);
+        if (mounted && cached != null) {
+          setState(() {
+            _overview = cached.overview;
+            _todayRecurring = cached.todayRecurring;
+            _recurringItems = cached.recurringItems;
+            _recurringStats = cached.recurringStats;
+            _isLoading = false;
+            _isOfflineCached = true;
+            _cachedAt = cached.cachedAt;
+          });
+          return;
+        }
+      }
       if (mounted) {
         setState(() {
           _error = _arabicError(e);
@@ -68,10 +110,15 @@ class _BudgetScreenState extends State<BudgetScreen> {
     }
   }
 
+  void _onOfflineAction() {
+    _showError('هذه العملية تحتاج إلى اتصال بالإنترنت');
+  }
+
   Future<void> _markRecurring(
     TodayRecurringPurchase item,
     String status,
   ) async {
+    if (_isOfflineCached) { _onOfflineAction(); return; }
     try {
       await _budget.markRecurringPurchaseOccurrence(
         recurringPurchaseId: item.recurringPurchaseId,
@@ -85,6 +132,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   Future<void> _deleteExpense(String id) async {
+    if (_isOfflineCached) { _onOfflineAction(); return; }
     final ok = await _confirm('حذف المصروف', 'هل تريد حذف هذا المصروف؟');
     if (!ok) return;
     try {
@@ -96,6 +144,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   Future<void> _deactivateSub(String id) async {
+    if (_isOfflineCached) { _onOfflineAction(); return; }
     final ok = await _confirm(
       'إلغاء الاشتراك',
       'هل تريد إلغاء تفعيل هذا الاشتراك؟',
@@ -134,6 +183,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+
+
   void _goSetup() => context
       .push('/budget/setup', extra: _overview?.budgetPlan)
       .then((_) => _load());
@@ -149,6 +200,13 @@ class _BudgetScreenState extends State<BudgetScreen> {
               children: [
                 if (_error != null)
                   ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
+                if (_isOfflineCached)
+                  ZadInfoBanner(
+                    _cachedAt != null
+                        ? 'أنت تشاهد آخر نسخة محفوظة\nآخر تحديث: ${_fmtDateTime(_cachedAt!)}'
+                        : 'أنت تشاهد آخر نسخة محفوظة',
+                    kind: ZadBannerKind.warning,
+                  ),
                 if (_overview != null) ..._body(_overview!),
               ],
             ),
@@ -186,32 +244,43 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 icon: Icons.add_circle_outline,
                 label: 'إضافة مصروف',
                 filled: true,
-                onTap: () =>
-                    context.push('/budget/expense/new').then((_) => _load()),
+                enabled: !_isOfflineCached,
+                onTap: _isOfflineCached
+                    ? _onOfflineAction
+                    : () => context
+                        .push('/budget/expense/new')
+                        .then((_) => _load()),
               ),
             ),
             Expanded(
               child: BudgetQuickActionCard(
                 icon: Icons.tune_outlined,
                 label: 'إعداد الميزانية',
-                onTap: _goSetup,
+                enabled: !_isOfflineCached,
+                onTap: _isOfflineCached ? _onOfflineAction : _goSetup,
               ),
             ),
             Expanded(
               child: BudgetQuickActionCard(
                 icon: Icons.autorenew_outlined,
                 label: 'الاشتراكات',
-                onTap: () => context
-                    .push('/budget/subscription/new')
-                    .then((_) => _load()),
+                enabled: !_isOfflineCached,
+                onTap: _isOfflineCached
+                    ? _onOfflineAction
+                    : () => context
+                        .push('/budget/subscription/new')
+                        .then((_) => _load()),
               ),
             ),
             Expanded(
               child: BudgetQuickActionCard(
                 icon: Icons.shopping_basket_outlined,
                 label: 'المشتريات',
-                onTap: () =>
-                    context.push('/budget/recurring').then((_) => _load()),
+                enabled: !_isOfflineCached,
+                onTap: _isOfflineCached
+                    ? _onOfflineAction
+                    : () =>
+                        context.push('/budget/recurring').then((_) => _load()),
               ),
             ),
           ],
@@ -516,6 +585,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   static String _fmtDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  static String _fmtDateTime(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   static String _statusText(String status) {
     if (status == 'purchased') {

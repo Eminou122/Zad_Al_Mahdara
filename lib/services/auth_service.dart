@@ -162,4 +162,10 @@ class AuthService extends ChangeNotifier {
       );
     }
   }
+
+  @visibleForTesting
+  void setTestProfile(UserProfile p) {
+    _profile = p;
+    notifyListeners();
+  }
 }

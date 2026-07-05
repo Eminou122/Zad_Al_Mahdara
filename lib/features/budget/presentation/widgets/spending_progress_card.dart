@@ -71,17 +71,24 @@ class SpendingProgressCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'استهلاك الميزانية',
-                style: Theme.of(context).textTheme.titleSmall,
+              Flexible(
+                child: Text(
+                  'استهلاك الميزانية',
+                  style: Theme.of(context).textTheme.titleSmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              Text(
-                '${(ratio * 100).round()}%',
-                // Muted like Stitch; state color lives in the bar + status.
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: ZadTokens.textMuted,
+              const SizedBox(width: ZadTokens.s2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '${(ratio * 100).round()}%',
+                  // Muted like Stitch; state color lives in the bar + status.
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: ZadTokens.textMuted,
+                  ),
                 ),
               ),
             ],
@@ -90,15 +97,25 @@ class SpendingProgressCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'المصروف',
-                style: TextStyle(color: ZadTokens.textMuted, fontSize: 13),
+              const Flexible(
+                child: Text(
+                  'المصروف',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: ZadTokens.textMuted, fontSize: 13),
+                ),
               ),
-              Text(
-                '${consumed.toStringAsFixed(2)} / ${total.toStringAsFixed(2)} MRU',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
+              const SizedBox(width: ZadTokens.s2),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: Text(
+                    '${consumed.toStringAsFixed(2)} / ${total.toStringAsFixed(2)} MRU',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -125,16 +142,26 @@ class SpendingProgressCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'مصروف اليوم',
-                style: TextStyle(color: ZadTokens.textMuted, fontSize: 13),
+              const Flexible(
+                child: Text(
+                  'مصروف اليوم',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: ZadTokens.textMuted, fontSize: 13),
+                ),
               ),
-              Text(
-                '${s.todaySpending.toStringAsFixed(2)} MRU',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: todayColor,
+              const SizedBox(width: ZadTokens.s2),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: Text(
+                    '${s.todaySpending.toStringAsFixed(2)} MRU',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: todayColor,
+                    ),
+                  ),
                 ),
               ),
             ],

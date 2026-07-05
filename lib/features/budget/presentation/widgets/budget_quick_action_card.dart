@@ -8,6 +8,7 @@ class BudgetQuickActionCard extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool filled;
+  final bool enabled;
 
   const BudgetQuickActionCard({
     super.key,
@@ -15,16 +16,16 @@ class BudgetQuickActionCard extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.filled = false,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
+    final muted = !enabled;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Material(
-          // Stitch: gold disk + dark-gold icon for the primary action,
-          // cream disks + green icons for the rest, all softly elevated.
           color: filled ? ZadTokens.gold : ZadTokens.surfaceContainer,
           elevation: 1,
           shadowColor: const Color(0x22000000),
@@ -39,7 +40,11 @@ class BudgetQuickActionCard extends StatelessWidget {
               child: Icon(
                 icon,
                 size: 24,
-                color: filled ? ZadTokens.goldDark : ZadTokens.primary,
+                color: muted
+                    ? ZadTokens.textMuted
+                    : filled
+                        ? ZadTokens.goldDark
+                        : ZadTokens.primary,
               ),
             ),
           ),
@@ -50,10 +55,10 @@ class BudgetQuickActionCard extends StatelessWidget {
           textAlign: TextAlign.center,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11.5,
             fontWeight: FontWeight.w600,
-            color: ZadTokens.text,
+            color: muted ? ZadTokens.textMuted : ZadTokens.text,
           ),
         ),
       ],

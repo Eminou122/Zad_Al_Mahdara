@@ -23,6 +23,15 @@ class BudgetPlan {
     note: j['note'] as String?,
     isActive: j['is_active'] as bool,
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'total_money': totalMoney,
+    'start_date': startDate.toIso8601String(),
+    'end_date': endDate.toIso8601String(),
+    'note': note,
+    'is_active': isActive,
+  };
 }
 
 class BudgetSummary {
@@ -83,6 +92,24 @@ class BudgetSummary {
     todayRecurringSkippedCount:
         ((j['today_recurring_skipped_count'] ?? 0) as num).toInt(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'days_total': daysTotal,
+    'days_remaining': daysRemaining,
+    'total_spent': totalSpent,
+    'subscription_total': subscriptionTotal,
+    'remaining_money': remainingMoney,
+    'safe_daily_limit': safeDailyLimit,
+    'today_spending': todaySpending,
+    'is_over_daily_limit': isOverDailyLimit,
+    'planned_recurring_total': plannedRecurringTotal,
+    'actual_recurring_total': actualRecurringTotal,
+    'skipped_recurring_total': skippedRecurringTotal,
+    'skipped_recurring_count': skippedRecurringCount,
+    'today_recurring_expected_total': todayRecurringExpectedTotal,
+    'today_recurring_purchased_total': todayRecurringPurchasedTotal,
+    'today_recurring_skipped_count': todayRecurringSkippedCount,
+  };
 }
 
 class AppSubscription {
@@ -113,6 +140,16 @@ class AppSubscription {
     notifyDaysBefore: (j['notify_days_before'] as num).toInt(),
     isActive: j['is_active'] as bool,
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'amount': amount,
+    'start_date': startDate.toIso8601String(),
+    'end_date': endDate.toIso8601String(),
+    'notify_days_before': notifyDaysBefore,
+    'is_active': isActive,
+  };
 }
 
 class Expense {
@@ -143,6 +180,16 @@ class Expense {
     expenseDate: DateTime.parse(j['expense_date'] as String),
     source: j['source'] as String,
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'item_name': itemName,
+    'amount': amount,
+    'category': category,
+    'note': note,
+    'expense_date': expenseDate.toIso8601String(),
+    'source': source,
+  };
 }
 
 class BudgetOverview {
@@ -176,6 +223,13 @@ class BudgetOverview {
         .map((e) => Expense.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'budget_plan': budgetPlan?.toJson(),
+    'summary': summary?.toJson(),
+    'active_subscriptions': activeSubscriptions.map((e) => e.toJson()).toList(),
+    'recent_expenses': recentExpenses.map((e) => e.toJson()).toList(),
+  };
 }
 
 class RecurringPurchase {
@@ -216,6 +270,19 @@ class RecurringPurchase {
         note: j['note'] as String?,
         isActive: j['is_active'] as bool,
       );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'price': price,
+    'frequency': frequency,
+    'interval_days': intervalDays,
+    'start_date': startDate.toIso8601String(),
+    'end_date': endDate.toIso8601String(),
+    'reminder_time': reminderTime,
+    'note': note,
+    'is_active': isActive,
+  };
 }
 
 class TodayRecurringPurchase {
@@ -259,6 +326,20 @@ class TodayRecurringPurchase {
         status: j['status'] as String,
         expenseId: j['expense_id'] as String?,
       );
+
+  Map<String, dynamic> toJson() => {
+    'recurring_purchase_id': recurringPurchaseId,
+    'occurrence_id': occurrenceId,
+    'name': name,
+    'price': price,
+    'frequency': frequency,
+    'interval_days': intervalDays,
+    'reminder_time': reminderTime,
+    'note': note,
+    'occurrence_date': occurrenceDate.toIso8601String(),
+    'status': status,
+    'expense_id': expenseId,
+  };
 }
 
 class RecurringPurchaseOverview {
@@ -295,4 +376,15 @@ class RecurringPurchaseOverview {
     skippedTotal: ((j['skipped_total'] ?? 0) as num).toDouble(),
     skippedCount: ((j['skipped_count'] ?? 0) as num).toInt(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'active_recurring_count': activeRecurringCount,
+    'today_expected_total': todayExpectedTotal,
+    'today_purchased_total': todayPurchasedTotal,
+    'today_skipped_count': todaySkippedCount,
+    'planned_total': plannedTotal,
+    'actual_purchased_total': actualPurchasedTotal,
+    'skipped_total': skippedTotal,
+    'skipped_count': skippedCount,
+  };
 }
