@@ -116,12 +116,18 @@ void main() {
   group('ZadSwipeNavState.targetIndex (swipe next/previous logic)', () {
     final routes = ZadBottomNav.routesFor(false);
 
+    test('commit distance is max(90px, 22% of screen width)', () {
+      expect(ZadSwipeNav.commitDistance(320), 90); // floor wins on tiny phones
+      expect(ZadSwipeNav.commitDistance(800), closeTo(176, 0.001));
+    });
+
     test('swipe right (positive signal) moves to next index', () {
       final target = ZadSwipeNav.targetIndex(
         index: 0,
-        dragDistance: 100,
+        dragDistance: 200,
         velocity: 0,
         routesLength: routes.length,
+        screenWidth: 800,
       );
       expect(target, 1);
     });
@@ -129,9 +135,10 @@ void main() {
     test('swipe left (negative signal) moves to previous index', () {
       final target = ZadSwipeNav.targetIndex(
         index: 1,
-        dragDistance: -100,
+        dragDistance: -200,
         velocity: 0,
         routesLength: routes.length,
+        screenWidth: 800,
       );
       expect(target, 0);
     });
@@ -142,8 +149,21 @@ void main() {
         dragDistance: 10,
         velocity: 1000,
         routesLength: routes.length,
+        screenWidth: 800,
       );
       expect(target, 1);
+    });
+
+    test('drag past the old 60px threshold but below the deliberate '
+        'commit distance is now ignored', () {
+      final target = ZadSwipeNav.targetIndex(
+        index: 0,
+        dragDistance: 100, // < max(90, 800*0.22) = 176
+        velocity: 0,
+        routesLength: routes.length,
+        screenWidth: 800,
+      );
+      expect(target, isNull);
     });
 
     test('small accidental drag below both thresholds is ignored', () {
@@ -152,6 +172,7 @@ void main() {
         dragDistance: 5,
         velocity: 20,
         routesLength: routes.length,
+        screenWidth: 800,
       );
       expect(target, isNull);
     });
@@ -159,9 +180,10 @@ void main() {
     test('swiping past the last tab is a no-op', () {
       final target = ZadSwipeNav.targetIndex(
         index: routes.length - 1,
-        dragDistance: 100,
+        dragDistance: 200,
         velocity: 0,
         routesLength: routes.length,
+        screenWidth: 800,
       );
       expect(target, isNull);
     });
@@ -169,9 +191,10 @@ void main() {
     test('swiping past the first tab is a no-op', () {
       final target = ZadSwipeNav.targetIndex(
         index: 0,
-        dragDistance: -100,
+        dragDistance: -200,
         velocity: 0,
         routesLength: routes.length,
+        screenWidth: 800,
       );
       expect(target, isNull);
     });
@@ -339,7 +362,7 @@ void main() {
 
       final initialPos = _childGlobalOffset(childKey);
 
-      // Horizontal: dx=30, dy=0 (above 18px lock, below 60px nav threshold)
+      // Horizontal: dx=30, dy=0 (above 24px lock, below commit distance)
       final gesture = await tester.startGesture(const Offset(200, 200));
       await gesture.moveTo(const Offset(230, 200));
       await tester.pump();
@@ -420,13 +443,50 @@ void main() {
       await gesture.moveTo(const Offset(250, 200)); // dx=50, dy=0
       await tester.pump();
 
-      // From index 0 (/home) with 4 routes, allRoutes[1] = /budget → 'الميزانية'
-      expect(find.text('الميزانية'), findsOneWidget);
+      // From index 0 (/home) in routes ['/home', '/teams'] → '/teams' = 'الفرق'
+      expect(find.text('الفرق'), findsOneWidget);
     });
 
-    testWidgets('fast horizontal flick under 60px navigates via velocity', (
+    testWidgets('ambiguous small diagonal drag does not move the page', (
       tester,
     ) async {
+      final childKey = GlobalKey();
+      await tester.pumpWidget(_buildSwipeNav(childKey: childKey));
+      await tester.pump();
+
+      final initialPos = _childGlobalOffset(childKey);
+
+      // dx=15, dy=10: neither vertical lock (dy < 12) nor horizontal lock
+      // (dx < 24) → gesture stays undecided, root must not move.
+      final gesture = await tester.startGesture(const Offset(200, 200));
+      await gesture.moveTo(const Offset(215, 210));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(_childGlobalOffset(childKey), equals(initialPos));
+    });
+
+    testWidgets('small horizontal movement below the 24px lock does not move '
+        'the page', (tester) async {
+      final childKey = GlobalKey();
+      await tester.pumpWidget(_buildSwipeNav(childKey: childKey));
+      await tester.pump();
+
+      final initialPos = _childGlobalOffset(childKey);
+
+      // dx=15, dy=0: purely horizontal but below the deliberate 24px lock.
+      final gesture = await tester.startGesture(const Offset(200, 200));
+      await gesture.moveTo(const Offset(215, 200));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(_childGlobalOffset(childKey), equals(initialPos));
+    });
+
+    testWidgets('fast horizontal flick under commit distance navigates via '
+        'velocity', (tester) async {
       await tester.pumpWidget(
         MaterialApp.router(
           routerConfig: _testRouter(const Text('الصفحة الرئيسية')),
@@ -436,9 +496,9 @@ void main() {
 
       expect(find.text('الصفحة الرئيسية'), findsOneWidget);
 
-      // Fast flick: dx=50 → velocity=50/0.12≈417 px/s (≥300)
+      // Fast flick: dx=80 → velocity=80/0.12≈667 px/s (≥500)
       final gesture = await tester.startGesture(const Offset(200, 200));
-      await gesture.moveTo(const Offset(250, 200));
+      await gesture.moveTo(const Offset(280, 200));
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
@@ -655,8 +715,9 @@ void main() {
                 child: ZadSwipeNav(
                   routes: const ['/home', '/budget', '/teams', '/notifications'],
                   index: 0,
-                  screenBuilder: (route) =>
-                      SizedBox(key: neighborKey, width: 800, height: 600),
+                  screenBuilder: (route) => route == '/budget'
+                      ? SizedBox(key: neighborKey, width: 800, height: 600)
+                      : const SizedBox(width: 800, height: 600),
                   child: const SizedBox.expand(
                     child: Center(child: Text('content')),
                   ),
@@ -690,8 +751,9 @@ void main() {
                 child: ZadSwipeNav(
                   routes: const ['/home', '/budget', '/teams', '/notifications'],
                   index: 1,
-                  screenBuilder: (route) =>
-                      SizedBox(key: neighborKey, width: 800, height: 600),
+                  screenBuilder: (route) => route == '/home'
+                      ? SizedBox(key: neighborKey, width: 800, height: 600)
+                      : const SizedBox(width: 800, height: 600),
                   child: const SizedBox.expand(
                     child: Center(child: Text('content')),
                   ),
@@ -735,7 +797,7 @@ void main() {
         );
         await tester.pump();
 
-        // Below the 60px commit threshold → will cancel/snap back.
+        // Below the commit distance and velocity → will cancel/snap back.
         final gesture = await tester.startGesture(const Offset(400, 300));
         await gesture.moveBy(const Offset(30, 0));
         await tester.pump();
@@ -768,7 +830,9 @@ void main() {
                 child: ZadSwipeNav(
                   routes: routes,
                   index: 0,
-                  screenBuilder: (r) => Text('SCREEN:$r'),
+                  // The shell renders the current tab from this builder too.
+                  screenBuilder: (r) =>
+                      Text(r == '/home' ? 'HOME_PAGE' : 'SCREEN:$r'),
                   child: const Center(child: Text('HOME_PAGE')),
                 ),
                 transitionsBuilder: (_, animation, _, child) =>
@@ -798,7 +862,8 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('HOME_PAGE'), findsOneWidget);
 
-        // Well past the 60px commit threshold.
+        // 100px in one frame → horizontal-dominant flick well above the
+        // 500 px/s velocity threshold.
         final gesture = await tester.startGesture(const Offset(400, 300));
         await gesture.moveBy(const Offset(100, 0));
         await tester.pump();
@@ -930,8 +995,9 @@ void main() {
                 child: ZadSwipeNav(
                   routes: routes,
                   index: 0,
-                  screenBuilder: (r) =>
-                      SizedBox(key: neighborKey, width: 800, height: 600),
+                  screenBuilder: (r) => r == '/budget'
+                      ? SizedBox(key: neighborKey, width: 800, height: 600)
+                      : const SizedBox(width: 800, height: 600),
                   child: const Center(child: Text('HOME_PAGE')),
                 ),
                 transitionsBuilder: (_, animation, _, child) =>
@@ -994,6 +1060,349 @@ void main() {
         expect(find.text('الصفحة الرئيسية'), findsNothing);
       },
     );
+  });
+
+  group('ZadSwipeNav edge clamp (Gate 29.12)', () {
+    Widget buildAt({
+      required List<String> routes,
+      required int index,
+      GlobalKey? childKey,
+    }) {
+      return MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: MediaQuery(
+            data: const MediaQueryData(size: Size(800, 600)),
+            child: ZadSwipeNav(
+              routes: routes,
+              index: index,
+              child: SizedBox.expand(
+                key: childKey,
+                child: const Center(child: Text('content')),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    const userRoutes = ['/home', '/budget', '/teams', '/notifications'];
+    const adminRoutes = ['/budget', '/teams', '/home', '/notifications', '/admin'];
+
+    testWidgets('at the first route, outward drag does not move the page and '
+        'shows no neighbor', (tester) async {
+      final childKey = GlobalKey();
+      await tester.pumpWidget(
+        buildAt(routes: userRoutes, index: 0, childKey: childKey),
+      );
+      await tester.pump();
+      final initialPos = _childGlobalOffset(childKey);
+
+      // Negative drag at index 0 points at index -1 → no neighbor.
+      final gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(-200, 0));
+      await tester.pump();
+
+      expect(_childGlobalOffset(childKey), equals(initialPos));
+      // No fake neighbor placeholder (48px centered icon) either.
+      expect(
+        tester.widgetList<Icon>(find.byType(Icon)).where((i) => i.size == 48),
+        isEmpty,
+      );
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(_childGlobalOffset(childKey), equals(initialPos));
+    });
+
+    testWidgets('at the last route, outward drag does not move the page and '
+        'shows no neighbor', (tester) async {
+      final childKey = GlobalKey();
+      await tester.pumpWidget(
+        buildAt(
+          routes: userRoutes,
+          index: userRoutes.length - 1,
+          childKey: childKey,
+        ),
+      );
+      await tester.pump();
+      final initialPos = _childGlobalOffset(childKey);
+
+      // Positive drag at the last index points past the end → no neighbor.
+      final gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(200, 0));
+      await tester.pump();
+
+      expect(_childGlobalOffset(childKey), equals(initialPos));
+      expect(
+        tester.widgetList<Icon>(find.byType(Icon)).where((i) => i.size == 48),
+        isEmpty,
+      );
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(_childGlobalOffset(childKey), equals(initialPos));
+    });
+
+    testWidgets('valid inward drag still works from the first and last route',
+        (tester) async {
+      final childKey = GlobalKey();
+
+      // First route, inward (positive → index 1).
+      await tester.pumpWidget(
+        buildAt(routes: userRoutes, index: 0, childKey: childKey),
+      );
+      await tester.pump();
+      var initialPos = _childGlobalOffset(childKey);
+      var gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(200, 0));
+      await tester.pump();
+      expect(_childGlobalOffset(childKey).dx, greaterThan(initialPos.dx + 100));
+      // Cancel instead of releasing: a 200px one-frame drag would commit,
+      // and there is no GoRouter in this harness.
+      await gesture.cancel();
+      await tester.pumpAndSettle();
+
+      // Last route, inward (negative → index length-2).
+      await tester.pumpWidget(
+        buildAt(
+          routes: userRoutes,
+          index: userRoutes.length - 1,
+          childKey: childKey,
+        ),
+      );
+      await tester.pump();
+      initialPos = _childGlobalOffset(childKey);
+      gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(-200, 0));
+      await tester.pump();
+      expect(_childGlobalOffset(childKey).dx, lessThan(initialPos.dx - 100));
+      await gesture.cancel();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('admin 5-route strip clamps at both ends too', (tester) async {
+      final childKey = GlobalKey();
+
+      // Last admin route (index 4), outward.
+      await tester.pumpWidget(
+        buildAt(routes: adminRoutes, index: 4, childKey: childKey),
+      );
+      await tester.pump();
+      var initialPos = _childGlobalOffset(childKey);
+      var gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(200, 0));
+      await tester.pump();
+      expect(_childGlobalOffset(childKey), equals(initialPos));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // Same position, inward is allowed. Cancel (not up): a 200px
+      // one-frame drag would commit and there is no GoRouter here.
+      gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(-200, 0));
+      await tester.pump();
+      expect(_childGlobalOffset(childKey).dx, lessThan(initialPos.dx - 100));
+      await gesture.cancel();
+      await tester.pumpAndSettle();
+
+      // First admin route (index 0), outward.
+      await tester.pumpWidget(
+        buildAt(routes: adminRoutes, index: 0, childKey: childKey),
+      );
+      await tester.pump();
+      initialPos = _childGlobalOffset(childKey);
+      gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(-200, 0));
+      await tester.pump();
+      expect(_childGlobalOffset(childKey), equals(initialPos));
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('outward flick at the boundary does not navigate', (
+      tester,
+    ) async {
+      // /home is index 0 in _testRouter's ['/home', '/teams'].
+      await tester.pumpWidget(
+        MaterialApp.router(
+          routerConfig: _testRouter(const Text('الصفحة الرئيسية')),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Fast outward flick (negative at index 0).
+      final gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(-200, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(find.text('الصفحة الرئيسية'), findsOneWidget);
+      expect(find.byType(Placeholder), findsNothing);
+    });
+  });
+
+  group('ZadSwipeNav persistent shell — no re-fetch (Gate 29.12)', () {
+    setUp(_ProbeScreen.reset);
+
+    testWidgets('screenBuilder builds each route once across repeated drags '
+        'and never rebuilds the cached current section', (tester) async {
+      final calls = <String, int>{};
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: MediaQuery(
+              data: const MediaQueryData(size: Size(800, 600)),
+              child: ZadSwipeNav(
+                routes: const ['/home', '/budget', '/teams', '/notifications'],
+                index: 0,
+                screenBuilder: (r) {
+                  calls[r] = (calls[r] ?? 0) + 1;
+                  return _ProbeScreen(r);
+                },
+                child: const SizedBox(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(calls, {'/home': 1});
+
+      // Partial drag below both commit thresholds (35px total, ≈292 px/s
+      // even with the test harness's zero-delta timestamps) → snaps back,
+      // no navigation attempted.
+      Future<void> slowCancelledDrag() async {
+        final gesture = await tester.startGesture(const Offset(400, 300));
+        await gesture.moveBy(const Offset(30, 0));
+        await tester.pump();
+        await gesture.moveBy(const Offset(5, 0));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+      }
+
+      await slowCancelledDrag();
+      expect(calls, {'/home': 1, '/budget': 1});
+
+      // Second drag toward the same neighbor: nothing is built again and
+      // nothing is re-mounted (no initState → no re-fetch).
+      await slowCancelledDrag();
+      expect(calls, {'/home': 1, '/budget': 1});
+      expect(_ProbeScreen.mounts, {'/home': 1, '/budget': 1});
+      // The cached current section is not even rebuilt by the drag frames.
+      expect(_ProbeScreen.builds['/home'], 1);
+    });
+
+    testWidgets('committed swipe keeps both sections mounted exactly once', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final router = _shellRouter(const ['/home', '/budget']);
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      expect(find.text('LIVE:/home'), findsOneWidget);
+
+      // Deliberate commit: 200px ≥ commit distance (176 at 800px width).
+      final gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(200, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(find.text('LIVE:/budget'), findsOneWidget);
+      // Neither section was mounted twice: the neighbor previewed during
+      // the drag IS the arriving section (no second initState/fetch), and
+      // the departing section stays alive offstage.
+      expect(_ProbeScreen.mounts, {'/home': 1, '/budget': 1});
+      expect(find.text('LIVE:/home', skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets('router.go tab changes (bottom-nav style) keep cached tabs '
+        'alive and sync the visible section', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final router = _shellRouter(const ['/home', '/budget']);
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      router.go('/budget');
+      await tester.pumpAndSettle();
+      expect(find.text('LIVE:/budget'), findsOneWidget);
+
+      router.go('/home');
+      await tester.pumpAndSettle();
+      expect(find.text('LIVE:/home'), findsOneWidget);
+
+      // Round trip re-mounted nothing.
+      expect(_ProbeScreen.mounts, {'/home': 1, '/budget': 1});
+    });
+  });
+
+  group('ZadSwipeNav shell + Teams boundary clamp (Gate 29.12)', () {
+    testWidgets('at the last root route, an outward drag at the Teams '
+        'internal boundary moves nothing and never builds a fake neighbor', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final routes = ['/home', '/teams'];
+      final router = GoRouter(
+        initialLocation: '/teams',
+        routes: [
+          for (final path in routes)
+            GoRoute(
+              path: path,
+              pageBuilder: (_, state) => CustomTransitionPage<void>(
+                key: const ValueKey('zad-root-shell-test'),
+                child: ZadSwipeNav(
+                  routes: routes,
+                  index: routes.indexOf(path),
+                  screenBuilder: (r) => r == '/teams'
+                      ? const _PageViewChild(initialPage: 1)
+                      : const Center(child: Text('HOME_SCREEN')),
+                  child: const SizedBox(),
+                ),
+                transitionsBuilder: (_, animation, _, child) =>
+                    FadeTransition(opacity: animation, child: child),
+              ),
+            ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      // Teams internal PageView starts at its last page.
+      expect(find.text('الفرق العامة'), findsOneWidget);
+      final initialPos = tester.getTopLeft(find.text('الفرق العامة'));
+
+      // Positive drag: Teams has no further internal page AND root has no
+      // higher route → clamped, nothing moves, no neighbor is built.
+      final gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(200, 0));
+      await tester.pump();
+      // Root must not move. A couple of px of drift is the Teams
+      // PageView's own Material 3 stretch-overscroll, not a root swipe.
+      expect(
+        (tester.getTopLeft(find.text('الفرق العامة')).dx - initialPos.dx).abs(),
+        lessThan(8),
+      );
+      expect(find.text('HOME_SCREEN', skipOffstage: false), findsNothing);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(find.text('الفرق العامة'), findsOneWidget);
+
+      // Inward drag still belongs to the Teams PageView first.
+      await tester.drag(find.byType(PageView), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('فرقي'), findsOneWidget);
+    });
   });
 
   group('TeamsScreen real-widget behavior', () {
@@ -1093,6 +1502,64 @@ void main() {
       expect(find.text('BUDGET'), findsOneWidget);
     });
   });
+}
+
+/// Root-tab probe: counts mounts (initState) and builds per route, so tests
+/// can prove the persistent shell never re-mounts (→ never re-fetches) and
+/// never needlessly rebuilds a cached section.
+class _ProbeScreen extends StatefulWidget {
+  final String route;
+  const _ProbeScreen(this.route);
+
+  static final mounts = <String, int>{};
+  static final builds = <String, int>{};
+  static void reset() {
+    mounts.clear();
+    builds.clear();
+  }
+
+  @override
+  State<_ProbeScreen> createState() => _ProbeScreenState();
+}
+
+class _ProbeScreenState extends State<_ProbeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _ProbeScreen.mounts.update(widget.route, (v) => v + 1, ifAbsent: () => 1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _ProbeScreen.builds.update(widget.route, (v) => v + 1, ifAbsent: () => 1);
+    return Center(child: Text('LIVE:${widget.route}'));
+  }
+}
+
+/// Mimics AppRouter._mainPage: every root route shares ONE page key, so
+/// switching tabs updates the page in place and the ZadSwipeNav shell (and
+/// its cached screens) survives the change.
+GoRouter _shellRouter(List<String> routes) {
+  return GoRouter(
+    initialLocation: routes.first,
+    routes: [
+      for (final path in routes)
+        GoRoute(
+          path: path,
+          pageBuilder: (_, state) => CustomTransitionPage<void>(
+            key: const ValueKey('zad-root-shell-test'),
+            child: ZadSwipeNav(
+              routes: routes,
+              index: routes.indexOf(path),
+              screenBuilder: (r) => _ProbeScreen(r),
+              child: const SizedBox(),
+            ),
+            transitionsBuilder: (_, animation, _, child) =>
+                FadeTransition(opacity: animation, child: child),
+          ),
+        ),
+    ],
+  );
 }
 
 /// Dispatches [PageControllerRegistration] after the first frame.

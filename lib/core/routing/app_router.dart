@@ -39,14 +39,9 @@ class AppRouter {
     '/',
   };
 
-  // Previous main-tab index, so the transition direction reflects whether
-  // the user is moving toward the start or end of the tab strip. Null until
-  // the first main tab is shown, so the initial app load never slides.
-  int? _lastMainIndex;
-
   /// Builds the real screen for a root route — used by [ZadSwipeNav] to
-  /// render the actual neighboring section during a gallery-style swipe
-  /// drag (current + one neighbor only, built lazily while dragging).
+  /// populate its persistent per-route screen cache (each screen is built
+  /// once per session and kept alive, so tab switches never re-fetch).
   Widget _buildMainScreen(String route) {
     return switch (route) {
       '/home' => HomeScreen(authService: authService),
@@ -58,72 +53,29 @@ class AppRouter {
     };
   }
 
-  /// Premium, subtle page transition for the 5 bottom-nav root tabs: a fast
-  /// fade + small horizontal drift (not a full-width push — the bottom nav
-  /// each screen carries stays visually put). Direction matches the tab's
-  /// position in the (RTL-ordered) nav strip; see ZadSwipeNav for the same
-  /// left/right convention used for swipe.
+  /// Shared page for the bottom-nav root tabs. All five use one page key,
+  /// so switching tabs updates this page IN PLACE instead of replacing the
+  /// route — ZadSwipeNav's State (and every root screen cached inside it)
+  /// survives the switch, which is what prevents re-mount/re-fetch on
+  /// every swipe or tab tap. Tab-to-tab motion is animated by ZadSwipeNav
+  /// itself (the filmstrip, for both swipes and taps); the fade below only
+  /// plays when entering the shell from a non-tab page (login/splash/
+  /// account), so a gesture-driven commit never gets a second transition.
   Page<void> _mainPage(GoRouterState state, Widget child) {
-    final path = state.matchedLocation;
     final routes = ZadBottomNav.routesFor(authService.isAdmin);
-    final index = routes.indexOf(path);
-    final previous = _lastMainIndex;
-    final forward = (previous == null || index == -1 || previous == index)
-        ? null // first load or unchanged index: fade only, no direction
-        : index > previous;
-    if (index != -1) _lastMainIndex = index;
-
-    final wrapped = ZadSwipeNav(
-      routes: routes,
-      index: index,
-      screenBuilder: _buildMainScreen,
-      child: child,
-    );
-
-    // Gesture-driven commit: ZadSwipeNav's filmstrip has already animated
-    // the change to completion (neighbor at x = 0), so any transition here
-    // would replay motion on top of a visually finished slide — show the
-    // new page instantly instead.
-    if (state.extra == ZadSwipeNav.swipeCommitExtra) {
-      return CustomTransitionPage<void>(
-        key: state.pageKey,
-        child: wrapped,
-        transitionDuration: Duration.zero,
-        reverseTransitionDuration: Duration.zero,
-        transitionsBuilder: (_, _, _, child) => child,
-      );
-    }
-
+    final index = routes.indexOf(state.matchedLocation);
     return CustomTransitionPage<void>(
-      key: state.pageKey,
-      child: wrapped,
+      key: const ValueKey('zad-root-shell'),
+      child: ZadSwipeNav(
+        routes: routes,
+        index: index,
+        screenBuilder: _buildMainScreen,
+        child: child,
+      ),
       transitionDuration: const Duration(milliseconds: 320),
       reverseTransitionDuration: const Duration(milliseconds: 320),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        if (forward == null || MediaQuery.of(context).disableAnimations) {
-          return FadeTransition(opacity: animation, child: child);
-        }
-        // Target tab lives to the left when moving forward (higher index)
-        // in this RTL strip, so it enters from the left, and vice versa.
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        );
-        final beginOffset = Offset(forward ? -0.045 : 0.045, 0);
-        return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween(begin: 0.985, end: 1.0).animate(curved),
-            child: SlideTransition(
-              position: Tween(
-                begin: beginOffset,
-                end: Offset.zero,
-              ).animate(curved),
-              child: child,
-            ),
-          ),
-        );
-      },
+      transitionsBuilder: (_, animation, _, child) =>
+          FadeTransition(opacity: animation, child: child),
     );
   }
 
