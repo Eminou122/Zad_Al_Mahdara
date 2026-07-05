@@ -6,21 +6,68 @@ import 'zad_session_scope.dart';
 import '../theme/zad_tokens.dart';
 
 /// Wraps a bottom-nav root-tab screen with horizontal swipe-to-switch-tab.
-/// Uses raw [Listener] (no arena competition with child scrollables).
-/// During drag the page follows the finger via transform.
-/// Child sections (e.g. Teams with PageView) register their PageController
-/// via [PageControllerRegistration] so root defers navigation when the
-/// child consumes the gesture internally.
+///
+/// Uses a raw [Listener] (not [GestureDetector]) to track pointer events
+/// because Flutter's [HorizontalDragGestureRecognizer] accepts gestures
+/// based on Euclidean distance (not horizontal-only displacement) and
+/// zeroes out `dy` in [DragUpdateDetails.delta], making axis-lock
+/// checking impossible inside its callbacks. A real root [PageView] was
+/// considered (see Gate 29.7 report) but rejected: nesting it around a
+/// section that itself owns a horizontal [PageView] (Teams) would put two
+/// same-axis [Scrollable]s in the same gesture arena, which Flutter has no
+/// clean built-in way to arbitrate — exactly the kind of low-level conflict
+/// this gate is meant to remove, not relocate.
+///
+/// The listener applies per-event axis dominance checking: if the first
+/// non-trivial move of a gesture is vertical-dominant, the entire
+/// gesture is ignored.
+///
+/// Child sections register their [PageController] via
+/// [PageControllerRegistration]. On the move that resolves axis-lock to
+/// horizontal, root checks the child's current scroll boundary
+/// ([ScrollMetrics.extentBefore]/[extentAfter] — generic, no Teams-specific
+/// code) in the drag's direction: if the child still has room to move,
+/// root stays completely inert for the rest of the gesture and the
+/// pointer events reach the child's own [PageView] untouched. Root only
+/// drives its own drag when the child is already at that boundary (or no
+/// child is registered).
+///
+/// During a root-owned drag, the current section follows the finger via
+/// [Transform.translate] and the actual neighboring root screen (built by
+/// [screenBuilder], current + one neighbor only, and only while dragging)
+/// is offset by `dragOffset ∓ screenWidth` — a real filmstrip position, so
+/// its near edge touches the current page and it reaches `x = 0` exactly
+/// when the drag reaches full screen width, like a gallery/photo carousel.
+///
+/// On release, a single [AnimationController] (`_settleCtrl`) drives both
+/// pages together to their resting position: on cancel, back to
+/// `dragOffset = 0`; on commit, all the way to `dragOffset = ±screenWidth`
+/// (current fully off-screen, neighbor at `x = 0`) — only then is
+/// `context.go()` called once, so the filmstrip finishes its slide before
+/// GoRouter's own route transition takes over.
 class ZadSwipeNav extends StatefulWidget {
   final Widget child;
   final List<String> routes;
   final int index;
+
+  /// Sentinel passed as `extra` to [GoRouterHelper.go] when a committed
+  /// swipe navigates, so the router can skip its own page transition —
+  /// the filmstrip has already animated the change; playing a second
+  /// fade/drift on top would create a visible seam.
+  static const swipeCommitExtra = 'zad-swipe-commit';
+
+  /// Builds the real screen for a root route, used to render the
+  /// neighboring section during drag. Optional so unit/widget tests that
+  /// don't care about the gallery preview can omit it (falls back to a
+  /// lightweight icon+label placeholder).
+  final Widget Function(String route)? screenBuilder;
 
   const ZadSwipeNav({
     super.key,
     required this.child,
     required this.routes,
     required this.index,
+    this.screenBuilder,
   });
 
   static const _minDistance = 60.0;
@@ -46,18 +93,21 @@ class ZadSwipeNav extends StatefulWidget {
   State<ZadSwipeNav> createState() => _ZadSwipeNavState();
 }
 
-enum _SwipeIntent { undecided, horizontal, vertical }
+class _Sample {
+  final double dx;
+  final Duration at;
+  _Sample(this.dx, this.at);
+}
 
 class _ZadSwipeNavState extends State<ZadSwipeNav>
     with SingleTickerProviderStateMixin {
   double _dragOffset = 0;
   bool _handled = false;
-  bool _isDragging = false;
 
-  // Axis lock
-  _SwipeIntent _intent = _SwipeIntent.undecided;
-  double _cumulativeDx = 0;
-  double _cumulativeDy = 0;
+  // Listener trackers
+  double _listenerTotalDx = 0;
+  double _listenerTotalDy = 0;
+  bool _gestureLive = false;
 
   // Velocity tracking
   final _recent = <_Sample>[];
@@ -65,39 +115,215 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
 
   // Child PageController tracking
   PageController? _childPc;
-  double? _childPageAtDown;
 
-  // Cancel animation
-  late AnimationController _cancelCtrl;
-  double _cancelFrom = 0;
+  // Decided once per gesture, the move axis-lock resolves to horizontal:
+  // true means the registered child still has room to move in this
+  // drag's direction, so root stays inert and lets the child's own
+  // PageView handle the whole gesture.
+  bool _deferToChild = false;
+
+  // Settle animation: drives _dragOffset from _settleFrom to _settleTo.
+  // _settleTo == 0 for a cancel (snap back); _settleTo == ±screenWidth for
+  // a commit (finish the filmstrip slide). _commitRoute is non-null only
+  // for the commit case — context.go() fires once, on completion.
+  late AnimationController _settleCtrl;
+  double _settleFrom = 0;
+  double _settleTo = 0;
+  String? _commitRoute;
 
   @override
   void initState() {
     super.initState();
-    _cancelCtrl = AnimationController(
+    _settleCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 250),
-    )..addListener(() {
+    )
+      ..addListener(() {
         if (!mounted) return;
         setState(() {
-          _dragOffset = _cancelFrom * (1.0 - _cancelCtrl.value);
+          _dragOffset =
+              _settleFrom + (_settleTo - _settleFrom) * _settleCtrl.value;
         });
+      })
+      ..addStatusListener((status) {
+        if (status != AnimationStatus.completed) return;
+        final route = _commitRoute;
+        _commitRoute = null;
+        if (route != null && mounted) {
+          context.go(route, extra: ZadSwipeNav.swipeCommitExtra);
+        }
       });
   }
 
   @override
   void dispose() {
-    _cancelCtrl.dispose();
+    _settleCtrl.dispose();
     super.dispose();
+  }
+
+  /// Does the registered child [PageController] still have room to move
+  /// further in the direction of [dx]? Generic scroll-boundary check
+  /// (works for any child PageView, any page count — not Teams-specific).
+  bool _childCanMove(double dx) {
+    final pc = _childPc;
+    if (pc == null || !pc.hasClients) return false;
+    final pos = pc.position;
+    // Positive dx (drag right) moves toward a higher page index — same
+    // convention as ZadSwipeNav.targetIndex — so it needs room *after*;
+    // negative dx (drag left) needs room *before*.
+    if (dx > 0) return pos.extentAfter > 0;
+    if (dx < 0) return pos.extentBefore > 0;
+    return false;
+  }
+
+  // ── Listener callbacks ──
+
+  void _onDown(PointerDownEvent event) {
+    _settleCtrl.stop();
+    _commitRoute = null;
+    _dragOffset = 0;
+    _handled = false;
+    _gestureLive = false;
+    _deferToChild = false;
+    _listenerTotalDx = 0;
+    _listenerTotalDy = 0;
+    _recent.clear();
   }
 
   double _velocity() {
     if (_recent.isEmpty) return 0;
-    final now = DateTime.now();
-    _recent.removeWhere((s) => now.difference(s.at).abs() > _maxSampleAge);
+    final now = _recent.last.at;
+    _recent.removeWhere((s) => (now - s.at).abs() > _maxSampleAge);
     if (_recent.isEmpty) return 0;
     final totalDx = _recent.fold<double>(0, (s, e) => s + e.dx);
     return totalDx / (_maxSampleAge.inMilliseconds / 1000.0);
+  }
+
+  void _onMove(PointerMoveEvent event) {
+    if (_handled || _deferToChild) return;
+
+    _listenerTotalDx += event.delta.dx;
+    _listenerTotalDy += event.delta.dy.abs();
+
+    // First move: accept only if the gesture is horizontal-dominant
+    if (!_gestureLive) {
+      if (_listenerTotalDy > _listenerTotalDx.abs() * 1.4) {
+        // Vertical-dominant → mark handled for the entire gesture
+        _handled = true;
+        return;
+      }
+      _gestureLive = true;
+
+      // Axis resolved to horizontal: decide ownership once for this
+      // gesture. If the child can still move that way, this gesture is
+      // the child's — root never touches _dragOffset for it.
+      if (_childCanMove(_listenerTotalDx)) {
+        _deferToChild = true;
+        return;
+      }
+    }
+
+    _recent.add(_Sample(event.delta.dx, event.timeStamp));
+
+    setState(() {
+      _dragOffset += event.delta.dx;
+    });
+  }
+
+  void _onUp(PointerUpEvent event) {
+    if (_handled || _deferToChild) return;
+    if (!_gestureLive) return;
+
+    final target = ZadSwipeNav.targetIndex(
+      index: widget.index,
+      dragDistance: _listenerTotalDx,
+      velocity: _velocity(),
+      routesLength: widget.routes.length,
+    );
+    if (target != null && target >= 0 && target < widget.routes.length) {
+      _handled = true;
+      // Use the same forward/backward signal that picked target (not
+      // _dragOffset's sign) — a fast whip-back flick can end with a net
+      // distance opposite the velocity that actually decided the target.
+      _commitTo(widget.routes[target], forward: target > widget.index);
+    } else {
+      _animateBack();
+    }
+  }
+
+  void _onPointerCancel(PointerCancelEvent event) {
+    _animateBack();
+  }
+
+  /// Finishes the filmstrip slide to completion (current page fully
+  /// off-screen, neighbor at `x = 0`) before navigating — so the drag
+  /// visually completes instead of being cut off mid-slide.
+  void _commitTo(String route, {required bool forward}) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    _settleFrom = _dragOffset;
+    _settleTo = screenWidth * (forward ? 1 : -1);
+    _commitRoute = route;
+    _settleCtrl.forward(from: 0);
+  }
+
+  void _animateBack() {
+    if (_dragOffset == 0) return;
+    _settleFrom = _dragOffset;
+    _settleTo = 0;
+    _commitRoute = null;
+    _settleCtrl.forward(from: 0);
+  }
+
+  static const _neighborIconMap = {
+    '/home': Icons.home_outlined,
+    '/budget': Icons.account_balance_wallet_outlined,
+    '/teams': Icons.groups_outlined,
+    '/notifications': Icons.notifications_outlined,
+    '/admin': Icons.admin_panel_settings_outlined,
+  };
+
+  static const _neighborLabelMap = {
+    '/home': 'الرئيسية',
+    '/budget': 'الميزانية',
+    '/teams': 'الفرق',
+    '/notifications': 'التنبيهات',
+    '/admin': 'الإدارة',
+  };
+
+  /// Real neighbor screen (current + one neighbor only, built lazily —
+  /// only while actively dragging) for a true gallery/carousel feel.
+  /// Falls back to a lightweight icon+label placeholder when no
+  /// [ZadSwipeNav.screenBuilder] was supplied (e.g. unit tests).
+  Widget _buildNeighborPreview(String neighborRoute) {
+    final builder = widget.screenBuilder;
+    if (builder == null) {
+      return Container(
+        color: ZadTokens.surface,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _neighborIconMap[neighborRoute] ?? Icons.circle_outlined,
+              size: 48,
+              color: ZadTokens.textMuted,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _neighborLabelMap[neighborRoute] ?? '',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: ZadTokens.textMuted,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return KeyedSubtree(
+      key: ValueKey('zad-swipe-neighbor-$neighborRoute'),
+      child: builder(neighborRoute),
+    );
   }
 
   @override
@@ -107,27 +333,24 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
     final isAdmin = ZadSessionScope.maybeOf(context)?.isAdmin ?? false;
     final allRoutes = ZadBottomNav.routesFor(isAdmin);
 
-    // Neighbor label to show during drag
-    String? neighborLabel;
-    if (_intent == _SwipeIntent.horizontal &&
-        _dragOffset.abs() > 20 &&
-        !_cancelCtrl.isAnimating) {
+    // Neighbor info during drag — stays mounted for the entire settle
+    // animation (cancel or commit), not just the raw finger-driven drag,
+    // so it never pops in/out out of sync with the current page.
+    String? neighborRoute;
+    if (_dragOffset.abs() > 0) {
       final dir = _dragOffset > 0 ? 1 : -1;
       final ni = widget.index + dir;
       if (ni >= 0 && ni < allRoutes.length) {
-        neighborLabel = switch (allRoutes[ni]) {
-          '/home' => 'الرئيسية',
-          '/budget' => 'الميزانية',
-          '/teams' => 'الفرق',
-          '/notifications' => 'التنبيهات',
-          '/admin' => 'الإدارة',
-          _ => null,
-        };
+        neighborRoute = allRoutes[ni];
       }
     }
 
-    final showNeighbor = neighborLabel != null;
-    final neighborOnLeft = _dragOffset > 0;
+    // Filmstrip offset: the neighbor's near edge touches the current
+    // page's trailing edge, and it reaches x = 0 exactly when the drag
+    // reaches full screen width — a real adjacent page, not a static
+    // underlay.
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final neighborOffset = _dragOffset - screenWidth * (_dragOffset > 0 ? 1 : -1);
 
     return NotificationListener<PageControllerRegistration>(
       onNotification: (n) {
@@ -139,151 +362,46 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
         onPointerDown: _onDown,
         onPointerMove: _onMove,
         onPointerUp: _onUp,
-        onPointerCancel: (_) => _cancelDrag(),
+        onPointerCancel: _onPointerCancel,
         child: Stack(
           children: [
-            // Neighbor preview
-            if (showNeighbor)
+            // Gallery-style neighbor page — offset like a real filmstrip.
+            if (neighborRoute != null)
               Positioned.fill(
-                left: neighborOnLeft ? 0 : null,
-                right: neighborOnLeft ? null : 0,
                 child: IgnorePointer(
-                  child: Container(
-                    width: _dragOffset.abs().clamp(0, 120),
-                    color: ZadTokens.surfaceContainer,
-                    alignment: neighborOnLeft
-                        ? AlignmentDirectional.centerStart
-                        : AlignmentDirectional.centerEnd,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      neighborLabel,
-                      style: const TextStyle(
-                        color: ZadTokens.textMuted,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                  child: Transform.translate(
+                    offset: Offset(neighborOffset, 0),
+                    child: _buildNeighborPreview(neighborRoute),
                   ),
                 ),
               ),
-            // Current page
-            AnimatedBuilder(
-              animation: _cancelCtrl,
-              builder: (context, _) {
-                return Transform.translate(
-                  offset: Offset(_dragOffset, 0),
-                  child: widget.child,
-                );
-              },
+            // Current page — slides to reveal neighbor
+            Transform.translate(
+              offset: Offset(_dragOffset, 0),
+              child: widget.child,
             ),
+            // Each root screen carries its own bottom nav inside its
+            // Scaffold, so during a filmstrip drag both navs would slide
+            // with their pages. This stable overlay (same widget, same
+            // bottom position) covers them while the strip is moving, so
+            // the nav appears fixed — like a real tabbed gallery. Only in
+            // real-gallery mode (screenBuilder != null); the active pill
+            // updates when the route commits, matching bottom-nav taps.
+            if (neighborRoute != null && widget.screenBuilder != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  child: ZadBottomNav.forLocation(
+                        widget.routes[widget.index],
+                      ) ??
+                      const SizedBox.shrink(),
+                ),
+              ),
           ],
         ),
       ),
     );
   }
-
-  void _onDown(PointerDownEvent event) {
-    _cancelCtrl.stop();
-    _dragOffset = 0;
-    _handled = false;
-    _isDragging = true;
-    _recent.clear();
-    _childPageAtDown = _childPc?.page;
-    _intent = _SwipeIntent.undecided;
-    _cumulativeDx = 0;
-    _cumulativeDy = 0;
-  }
-
-  void _onMove(PointerMoveEvent event) {
-    if (_handled) return;
-
-    _cumulativeDx += event.delta.dx;
-    _cumulativeDy += event.delta.dy;
-
-    if (_intent == _SwipeIntent.vertical) return;
-
-    if (_intent == _SwipeIntent.undecided) {
-      // Vertical lock: strong vertical movement wins
-      if (_cumulativeDy.abs() > 12 &&
-          _cumulativeDy.abs() >= _cumulativeDx.abs() * 1.1) {
-        _intent = _SwipeIntent.vertical;
-        setState(() => _dragOffset = 0);
-        _recent.clear();
-        return;
-      }
-      // Horizontal lock: clear horizontal dominance wins
-      if (_cumulativeDx.abs() > 18 &&
-          _cumulativeDx.abs() > _cumulativeDy.abs() * 1.4) {
-        _intent = _SwipeIntent.horizontal;
-      } else {
-        // Still undecided: accumulate samples but don't move page
-        _recent.add(_Sample(event.delta.dx, DateTime.now()));
-        return;
-      }
-    }
-
-    // Horizontal intent: apply finger-following drag
-    setState(() {
-      _dragOffset += event.delta.dx;
-    });
-    _recent.add(_Sample(event.delta.dx, DateTime.now()));
-  }
-
-  void _onUp(PointerUpEvent event) {
-    if (!_isDragging || _handled) return;
-    _isDragging = false;
-
-    if (_intent != _SwipeIntent.horizontal) {
-      _animateBack();
-      return;
-    }
-
-    // Check if a child PageView consumed the gesture
-    final pc = _childPc;
-    final double consumed;
-    if (pc != null && pc.hasClients) {
-      final pageNow = pc.page;
-      consumed = (_childPageAtDown != null && pageNow != null)
-          ? (pageNow - _childPageAtDown!).abs()
-          : 0;
-    } else {
-      consumed = 0;
-    }
-
-    // If the child page changed, the gesture was consumed internally
-    if (consumed > 0.01) {
-      _animateBack();
-      return;
-    }
-
-    final target = ZadSwipeNav.targetIndex(
-      index: widget.index,
-      dragDistance: _dragOffset,
-      velocity: _velocity(),
-      routesLength: widget.routes.length,
-    );
-    if (target != null && target >= 0 && target < widget.routes.length) {
-      _handled = true;
-      context.go(widget.routes[target]);
-    } else {
-      _animateBack();
-    }
-  }
-
-  void _cancelDrag() {
-    _isDragging = false;
-    _animateBack();
-  }
-
-  void _animateBack() {
-    if (_dragOffset == 0) return;
-    _cancelFrom = _dragOffset;
-    _cancelCtrl.forward(from: 0);
-  }
-}
-
-class _Sample {
-  final double dx;
-  final DateTime at;
-  _Sample(this.dx, this.at);
 }

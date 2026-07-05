@@ -44,6 +44,20 @@ class AppRouter {
   // the first main tab is shown, so the initial app load never slides.
   int? _lastMainIndex;
 
+  /// Builds the real screen for a root route — used by [ZadSwipeNav] to
+  /// render the actual neighboring section during a gallery-style swipe
+  /// drag (current + one neighbor only, built lazily while dragging).
+  Widget _buildMainScreen(String route) {
+    return switch (route) {
+      '/home' => HomeScreen(authService: authService),
+      '/budget' => BudgetScreen(authService: authService),
+      '/teams' => TeamsScreen(authService: authService),
+      '/notifications' => const NotificationsScreen(),
+      '/admin' => AdminScreen(authService: authService),
+      _ => const SizedBox.shrink(),
+    };
+  }
+
   /// Premium, subtle page transition for the 5 bottom-nav root tabs: a fast
   /// fade + small horizontal drift (not a full-width push — the bottom nav
   /// each screen carries stays visually put). Direction matches the tab's
@@ -59,9 +73,30 @@ class AppRouter {
         : index > previous;
     if (index != -1) _lastMainIndex = index;
 
+    final wrapped = ZadSwipeNav(
+      routes: routes,
+      index: index,
+      screenBuilder: _buildMainScreen,
+      child: child,
+    );
+
+    // Gesture-driven commit: ZadSwipeNav's filmstrip has already animated
+    // the change to completion (neighbor at x = 0), so any transition here
+    // would replay motion on top of a visually finished slide — show the
+    // new page instantly instead.
+    if (state.extra == ZadSwipeNav.swipeCommitExtra) {
+      return CustomTransitionPage<void>(
+        key: state.pageKey,
+        child: wrapped,
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        transitionsBuilder: (_, _, _, child) => child,
+      );
+    }
+
     return CustomTransitionPage<void>(
       key: state.pageKey,
-      child: ZadSwipeNav(routes: routes, index: index, child: child),
+      child: wrapped,
       transitionDuration: const Duration(milliseconds: 320),
       reverseTransitionDuration: const Duration(milliseconds: 320),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {

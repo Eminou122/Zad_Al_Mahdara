@@ -4,6 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:zad_al_mahdara/core/widgets/zad_bottom_nav.dart';
 import 'package:zad_al_mahdara/core/widgets/zad_nested_swipe_scope.dart';
 import 'package:zad_al_mahdara/core/widgets/zad_swipe_nav.dart';
+import 'package:zad_al_mahdara/features/teams/data/team_service.dart';
+import 'package:zad_al_mahdara/features/teams/domain/team_models.dart';
+import 'package:zad_al_mahdara/features/teams/presentation/teams_screen.dart';
+import 'package:zad_al_mahdara/services/auth_service.dart';
 
 /// Minimal GoRouter so ZadSwipeNav can call context.go() without crashing.
 /// Routes: /home (page 0) and /teams (page 1), both via ZadSwipeNav.
@@ -43,14 +47,15 @@ Widget _buildSwipeNav({GlobalKey? childKey}) {
   return MaterialApp(
     home: Directionality(
       textDirection: TextDirection.rtl,
-      child: ZadSwipeNav(
-        routes: const ['/home', '/teams'],
-        index: 0,
-        child: SizedBox(
-          key: childKey,
-          width: 400,
-          height: 800,
-          child: const Text('content'),
+      child: MediaQuery(
+        data: const MediaQueryData(size: Size(800, 600)),
+        child: ZadSwipeNav(
+          routes: const ['/home', '/teams'],
+          index: 0,
+          child: SizedBox.expand(
+            key: childKey,
+            child: const Center(child: Text('content')),
+          ),
         ),
       ),
     ),
@@ -418,6 +423,675 @@ void main() {
       // From index 0 (/home) with 4 routes, allRoutes[1] = /budget → 'الميزانية'
       expect(find.text('الميزانية'), findsOneWidget);
     });
+
+    testWidgets('fast horizontal flick under 60px navigates via velocity', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp.router(
+          routerConfig: _testRouter(const Text('الصفحة الرئيسية')),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('الصفحة الرئيسية'), findsOneWidget);
+
+      // Fast flick: dx=50 → velocity=50/0.12≈417 px/s (≥300)
+      final gesture = await tester.startGesture(const Offset(200, 200));
+      await gesture.moveTo(const Offset(250, 200));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // Should have navigated to /teams (index 1) → Placeholder appears
+      expect(find.byType(Placeholder), findsOneWidget);
+      expect(find.text('الصفحة الرئيسية'), findsNothing);
+    });
+
+    testWidgets('fast vertical flick with tiny horizontal jitter does NOT navigate', (
+      tester,
+    ) async {
+      final childKey = GlobalKey();
+      await tester.pumpWidget(_buildSwipeNav(childKey: childKey));
+      await tester.pump();
+
+      final initialPos = _childGlobalOffset(childKey);
+
+      // Fast vertical flick: dx=3, dy=-150 → vertical-dominant on first move
+      final gesture = await tester.startGesture(const Offset(200, 500));
+      await gesture.moveTo(const Offset(203, 350));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      // First move is vertical-dominant → rejected → page did not move
+      expect(_childGlobalOffset(childKey), equals(initialPos));
+    });
+  });
+
+  group('ZadSwipeNav nested boundary defer (Teams-style child PageView)', () {
+    /// Router with two root tabs; /teams (index 1) embeds a real nested
+    /// PageView (like Teams' فرقي/الفرق العامة) that starts on [teamsPage].
+    GoRouter buildRouter(int teamsPage) {
+      final routes = ['/home', '/teams'];
+      return GoRouter(
+        initialLocation: '/teams',
+        routes: [
+          GoRoute(
+            path: '/home',
+            pageBuilder: (_, state) => CustomTransitionPage<void>(
+              key: state.pageKey,
+              child: ZadSwipeNav(
+                routes: routes,
+                index: 0,
+                child: const Center(child: Text('HOME_PAGE')),
+              ),
+              transitionsBuilder: (_, animation, _, child) =>
+                  FadeTransition(opacity: animation, child: child),
+            ),
+          ),
+          GoRoute(
+            path: '/teams',
+            pageBuilder: (_, state) => CustomTransitionPage<void>(
+              key: state.pageKey,
+              child: ZadSwipeNav(
+                routes: routes,
+                index: 1,
+                child: _PageViewChild(initialPage: teamsPage),
+              ),
+              transitionsBuilder: (_, animation, _, child) =>
+                  FadeTransition(opacity: animation, child: child),
+            ),
+          ),
+        ],
+      );
+    }
+
+    testWidgets(
+      'Teams internal swipe moves its own page first and root does not navigate',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 600));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          MaterialApp.router(routerConfig: buildRouter(0)),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('فرقي'), findsOneWidget);
+
+        // Child (page 0) has room to move forward (dx>0) → root defers.
+        final gesture = await tester.startGesture(const Offset(700, 300));
+        await gesture.moveBy(const Offset(500, 0));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        // Teams' own internal page moved to "الفرق العامة"...
+        expect(find.text('الفرق العامة'), findsOneWidget);
+        // ...and root never navigated away from /teams.
+        expect(find.text('HOME_PAGE'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'root navigates when Teams internal PageView is already at that boundary',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(800, 600));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          MaterialApp.router(routerConfig: buildRouter(0)),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('فرقي'), findsOneWidget);
+
+        // Child is on page 0 (first page) — no room backward (dx<0) →
+        // root owns the gesture and navigates to the previous root tab.
+        final gesture = await tester.startGesture(const Offset(700, 300));
+        await gesture.moveBy(const Offset(-500, 0));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(find.text('HOME_PAGE'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'vertical scroll inside a Teams-like child does not move root',
+      (tester) async {
+        final childKey = GlobalKey();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Directionality(
+              textDirection: TextDirection.rtl,
+              child: MediaQuery(
+                data: const MediaQueryData(size: Size(800, 600)),
+                child: ZadSwipeNav(
+                  routes: const ['/home', '/teams'],
+                  index: 1,
+                  child: SizedBox(
+                    key: childKey,
+                    width: 800,
+                    height: 600,
+                    child: _PageViewChild(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final initialPos = _childGlobalOffset(childKey);
+        final gesture = await tester.startGesture(const Offset(400, 200));
+        await gesture.moveTo(const Offset(402, 400)); // dx=2, dy=200
+        await tester.pump();
+        await gesture.up();
+        await tester.pump();
+
+        expect(_childGlobalOffset(childKey), equals(initialPos));
+      },
+    );
+  });
+
+  group('ZadSwipeNav.screenBuilder (real gallery-style neighbor)', () {
+    testWidgets(
+      'renders the real neighbor screen during drag, not the icon placeholder',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Directionality(
+              textDirection: TextDirection.rtl,
+              child: MediaQuery(
+                data: const MediaQueryData(size: Size(800, 600)),
+                child: ZadSwipeNav(
+                  routes: const ['/home', '/budget', '/teams', '/notifications'],
+                  index: 0,
+                  screenBuilder: (route) => Text('SCREEN:$route'),
+                  child: const SizedBox.expand(
+                    child: Center(child: Text('content')),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final gesture = await tester.startGesture(const Offset(200, 200));
+        await gesture.moveTo(const Offset(250, 200)); // dx=50 → next = /budget
+        await tester.pump();
+
+        expect(find.text('SCREEN:/budget'), findsOneWidget);
+        // The icon+label placeholder (48px centered icon) must be gone.
+        // ('الميزانية' itself may legitimately appear in the stable
+        // bottom-nav overlay, so check for the placeholder icon instead.)
+        expect(
+          tester
+              .widgetList<Icon>(find.byType(Icon))
+              .where((i) => i.size == 48),
+          isEmpty,
+        );
+      },
+    );
+  });
+
+  group('ZadSwipeNav filmstrip offset (Gate 29.8)', () {
+    Offset globalPosOf(GlobalKey key) =>
+        (key.currentContext!.findRenderObject() as RenderBox)
+            .localToGlobal(Offset.zero);
+
+    testWidgets(
+      'neighbor is offset like a real filmstrip on a partial positive drag, not pinned at Offset.zero',
+      (tester) async {
+        final neighborKey = GlobalKey();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Directionality(
+              textDirection: TextDirection.rtl,
+              child: MediaQuery(
+                data: const MediaQueryData(size: Size(800, 600)),
+                child: ZadSwipeNav(
+                  routes: const ['/home', '/budget', '/teams', '/notifications'],
+                  index: 0,
+                  screenBuilder: (route) =>
+                      SizedBox(key: neighborKey, width: 800, height: 600),
+                  child: const SizedBox.expand(
+                    child: Center(child: Text('content')),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final gesture = await tester.startGesture(const Offset(400, 300));
+        await gesture.moveBy(const Offset(200, 0)); // dragOffset ~200
+        await tester.pump();
+
+        // Expected: dragOffset - screenWidth = 200 - 800 = -600.
+        expect(globalPosOf(neighborKey).dx, closeTo(-600, 0.5));
+        expect(globalPosOf(neighborKey), isNot(Offset.zero));
+      },
+    );
+
+    testWidgets(
+      'neighbor is offset like a real filmstrip on a partial negative drag',
+      (tester) async {
+        final neighborKey = GlobalKey();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Directionality(
+              textDirection: TextDirection.rtl,
+              child: MediaQuery(
+                data: const MediaQueryData(size: Size(800, 600)),
+                child: ZadSwipeNav(
+                  routes: const ['/home', '/budget', '/teams', '/notifications'],
+                  index: 1,
+                  screenBuilder: (route) =>
+                      SizedBox(key: neighborKey, width: 800, height: 600),
+                  child: const SizedBox.expand(
+                    child: Center(child: Text('content')),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final gesture = await tester.startGesture(const Offset(400, 300));
+        await gesture.moveBy(const Offset(-200, 0)); // dragOffset ~-200
+        await tester.pump();
+
+        // Expected: dragOffset + screenWidth = -200 + 800 = 600.
+        expect(globalPosOf(neighborKey).dx, closeTo(600, 0.5));
+        expect(globalPosOf(neighborKey), isNot(Offset.zero));
+      },
+    );
+
+    testWidgets(
+      'cancel keeps the neighbor mounted throughout the snap-back animation',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Directionality(
+              textDirection: TextDirection.rtl,
+              child: MediaQuery(
+                data: const MediaQueryData(size: Size(800, 600)),
+                child: ZadSwipeNav(
+                  routes: const ['/home', '/budget', '/teams', '/notifications'],
+                  index: 0,
+                  screenBuilder: (route) => Text('SCREEN:$route'),
+                  child: const SizedBox.expand(
+                    child: Center(child: Text('content')),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Below the 60px commit threshold → will cancel/snap back.
+        final gesture = await tester.startGesture(const Offset(400, 300));
+        await gesture.moveBy(const Offset(30, 0));
+        await tester.pump();
+        expect(find.text('SCREEN:/budget'), findsOneWidget);
+
+        await gesture.up();
+        // Mid-animation frame (settle duration is 250ms): neighbor must
+        // still be mounted, not removed at the first frame of snap-back.
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.text('SCREEN:/budget'), findsOneWidget);
+
+        // Once the snap-back finishes, dragOffset is back to 0 and the
+        // neighbor is gone.
+        await tester.pumpAndSettle();
+        expect(find.text('SCREEN:/budget'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'commit finishes the filmstrip slide before calling context.go',
+      (tester) async {
+        final routes = ['/home', '/budget'];
+        final router = GoRouter(
+          initialLocation: '/home',
+          routes: [
+            GoRoute(
+              path: '/home',
+              pageBuilder: (_, state) => CustomTransitionPage<void>(
+                key: state.pageKey,
+                child: ZadSwipeNav(
+                  routes: routes,
+                  index: 0,
+                  screenBuilder: (r) => Text('SCREEN:$r'),
+                  child: const Center(child: Text('HOME_PAGE')),
+                ),
+                transitionsBuilder: (_, animation, _, child) =>
+                    FadeTransition(opacity: animation, child: child),
+              ),
+            ),
+            GoRoute(
+              path: '/budget',
+              pageBuilder: (_, state) => CustomTransitionPage<void>(
+                key: state.pageKey,
+                child: ZadSwipeNav(
+                  routes: routes,
+                  index: 1,
+                  child: const Center(child: Text('BUDGET_PAGE')),
+                ),
+                transitionsBuilder: (_, animation, _, child) =>
+                    FadeTransition(opacity: animation, child: child),
+              ),
+            ),
+          ],
+        );
+
+        await tester.binding.setSurfaceSize(const Size(800, 600));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+        await tester.pumpAndSettle();
+        expect(find.text('HOME_PAGE'), findsOneWidget);
+
+        // Well past the 60px commit threshold.
+        final gesture = await tester.startGesture(const Offset(400, 300));
+        await gesture.moveBy(const Offset(100, 0));
+        await tester.pump();
+        await gesture.up();
+
+        // Immediately after release: still mid-slide, must NOT have
+        // navigated yet (settle duration is 250ms).
+        await tester.pump(const Duration(milliseconds: 20));
+        expect(find.text('HOME_PAGE'), findsOneWidget);
+        expect(find.text('BUDGET_PAGE'), findsNothing);
+
+        // Once the filmstrip finishes sliding, navigation has happened.
+        await tester.pumpAndSettle();
+        expect(find.text('BUDGET_PAGE'), findsOneWidget);
+      },
+    );
+  });
+
+  group('ZadSwipeNav stable bottom nav + seamless commit (Gate 29.10)', () {
+    testWidgets(
+      'stable bottom-nav overlay stays fixed while the filmstrip slides',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Directionality(
+              textDirection: TextDirection.rtl,
+              child: MediaQuery(
+                data: const MediaQueryData(size: Size(800, 600)),
+                child: ZadSwipeNav(
+                  routes: const ['/home', '/budget', '/teams', '/notifications'],
+                  index: 0,
+                  screenBuilder: (route) => Text('SCREEN:$route'),
+                  child: const SizedBox.expand(
+                    child: Center(child: Text('content')),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // No overlay at rest.
+        expect(find.byType(ZadBottomNav), findsNothing);
+
+        final gesture = await tester.startGesture(const Offset(400, 300));
+        await gesture.moveBy(const Offset(120, 0));
+        await tester.pump();
+
+        // Overlay present during drag and horizontally fixed (x == 0)
+        // even though the pages are offset by 120.
+        expect(find.byType(ZadBottomNav), findsOneWidget);
+        final navBox =
+            tester.renderObject(find.byType(ZadBottomNav)) as RenderBox;
+        expect(navBox.localToGlobal(Offset.zero).dx, 0);
+
+        await gesture.moveBy(const Offset(100, 0));
+        await tester.pump();
+        expect(navBox.localToGlobal(Offset.zero).dx, 0);
+      },
+    );
+
+    testWidgets(
+      'committed swipe passes swipeCommitExtra so the router can skip its transition',
+      (tester) async {
+        Object? receivedExtra;
+        final routes = ['/home', '/budget'];
+        final router = GoRouter(
+          initialLocation: '/home',
+          routes: [
+            GoRoute(
+              path: '/home',
+              pageBuilder: (_, state) => CustomTransitionPage<void>(
+                key: state.pageKey,
+                child: ZadSwipeNav(
+                  routes: routes,
+                  index: 0,
+                  child: const Center(child: Text('HOME_PAGE')),
+                ),
+                transitionsBuilder: (_, animation, _, child) =>
+                    FadeTransition(opacity: animation, child: child),
+              ),
+            ),
+            GoRoute(
+              path: '/budget',
+              pageBuilder: (_, state) {
+                receivedExtra = state.extra;
+                return CustomTransitionPage<void>(
+                  key: state.pageKey,
+                  child: const Center(child: Text('BUDGET_PAGE')),
+                  transitionsBuilder: (_, animation, _, child) =>
+                      FadeTransition(opacity: animation, child: child),
+                );
+              },
+            ),
+          ],
+        );
+
+        await tester.binding.setSurfaceSize(const Size(800, 600));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(const Offset(400, 300));
+        await gesture.moveBy(const Offset(100, 0));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(find.text('BUDGET_PAGE'), findsOneWidget);
+        expect(receivedExtra, ZadSwipeNav.swipeCommitExtra);
+      },
+    );
+
+    testWidgets(
+      'commit drives the neighbor to x ≈ 0 before navigating',
+      (tester) async {
+        final neighborKey = GlobalKey();
+        var navigated = false;
+        final routes = ['/home', '/budget'];
+        final router = GoRouter(
+          initialLocation: '/home',
+          routes: [
+            GoRoute(
+              path: '/home',
+              pageBuilder: (_, state) => CustomTransitionPage<void>(
+                key: state.pageKey,
+                child: ZadSwipeNav(
+                  routes: routes,
+                  index: 0,
+                  screenBuilder: (r) =>
+                      SizedBox(key: neighborKey, width: 800, height: 600),
+                  child: const Center(child: Text('HOME_PAGE')),
+                ),
+                transitionsBuilder: (_, animation, _, child) =>
+                    FadeTransition(opacity: animation, child: child),
+              ),
+            ),
+            GoRoute(
+              path: '/budget',
+              pageBuilder: (_, state) {
+                navigated = true;
+                return CustomTransitionPage<void>(
+                  key: state.pageKey,
+                  child: const Center(child: Text('BUDGET_PAGE')),
+                  transitionsBuilder: (_, animation, _, child) =>
+                      FadeTransition(opacity: animation, child: child),
+                );
+              },
+            ),
+          ],
+        );
+
+        await tester.binding.setSurfaceSize(const Size(800, 600));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+        await tester.pumpAndSettle();
+
+        final gesture = await tester.startGesture(const Offset(400, 300));
+        await gesture.moveBy(const Offset(100, 0));
+        await tester.pump();
+        await gesture.up();
+        await tester.pump(); // first frame starts the settle ticker (t = 0)
+
+        // 240ms into the 250ms settle: neighbor nearly at x = 0
+        // (linear controller: expected ≈ -28), navigation not yet fired.
+        await tester.pump(const Duration(milliseconds: 240));
+        final navBox = neighborKey.currentContext!.findRenderObject()
+            as RenderBox;
+        expect(navBox.localToGlobal(Offset.zero).dx.abs(), lessThan(60));
+        expect(navigated, isFalse);
+
+        await tester.pumpAndSettle();
+        expect(navigated, isTrue);
+        expect(find.text('BUDGET_PAGE'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'browser-style route change (router.go) shows the new section',
+      (tester) async {
+        final router = _testRouter(const Text('الصفحة الرئيسية'));
+        await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+        await tester.pumpAndSettle();
+        expect(find.text('الصفحة الرئيسية'), findsOneWidget);
+
+        router.go('/teams');
+        await tester.pumpAndSettle();
+
+        expect(find.byType(Placeholder), findsOneWidget);
+        expect(find.text('الصفحة الرئيسية'), findsNothing);
+      },
+    );
+  });
+
+  group('TeamsScreen real-widget behavior', () {
+    testWidgets('FAB appears only on "فرقي" and segmented control switches',
+        (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: TeamsScreen(
+              authService: AuthService(),
+              service: _FakeTeamService(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Page 0 "فرقي": team visible, FAB present.
+      expect(find.text('فريق الغداء'), findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+
+      // Tap "الفرق العامة" segment → page 1, FAB gone, empty state.
+      await tester.tap(find.text('الفرق العامة'));
+      await tester.pumpAndSettle();
+      expect(find.byType(FloatingActionButton), findsNothing);
+      expect(find.text('لا توجد فرق عامة'), findsOneWidget);
+
+      // Tap back to "فرقي" → FAB returns.
+      await tester.tap(find.text('فرقي'));
+      await tester.pumpAndSettle();
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+    });
+
+    testWidgets('internal swipe changes the Teams page first', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: TeamsScreen(
+              authService: AuthService(),
+              service: _FakeTeamService(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+
+      // Positive dx (drag right) → higher page index in this RTL app.
+      // 500px (past halfway on the 800px surface) so the settle direction
+      // is unambiguous.
+      await tester.drag(find.byType(PageView), const Offset(500, 0));
+      await tester.pumpAndSettle();
+
+      // Now on "الفرق العامة": FAB gone, public empty state shown.
+      expect(find.byType(FloatingActionButton), findsNothing);
+      expect(find.text('لا توجد فرق عامة'), findsOneWidget);
+    });
+  });
+
+  group('ZadBottomNav navigation', () {
+    testWidgets('tapping a tab navigates to its route', (tester) async {
+      final router = GoRouter(
+        initialLocation: '/home',
+        routes: [
+          GoRoute(
+            path: '/home',
+            builder: (_, _) => const Scaffold(
+              body: Center(child: Text('HOME')),
+              bottomNavigationBar: ZadBottomNav(current: ZadTab.home),
+            ),
+          ),
+          GoRoute(
+            path: '/budget',
+            builder: (_, _) => const Scaffold(
+              body: Center(child: Text('BUDGET')),
+              bottomNavigationBar: ZadBottomNav(current: ZadTab.budget),
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      expect(find.text('HOME'), findsOneWidget);
+
+      await tester.tap(find.text('الميزانية'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('BUDGET'), findsOneWidget);
+    });
   });
 }
 
@@ -446,12 +1120,15 @@ class _NotificationDispatcherState extends State<_NotificationDispatcher> {
 /// A widget that wraps a two-page PageView inside a
 /// [PageControllerRegistration]-dispatching shell.
 class _PageViewChild extends StatefulWidget {
+  final int initialPage;
+  const _PageViewChild({this.initialPage = 0});
+
   @override
   State<_PageViewChild> createState() => _PageViewChildState();
 }
 
 class _PageViewChildState extends State<_PageViewChild> {
-  final _pc = PageController();
+  late final _pc = PageController(initialPage: widget.initialPage);
 
   @override
   void initState() {
@@ -482,4 +1159,29 @@ class _PageViewChildState extends State<_PageViewChild> {
       ),
     );
   }
+}
+
+/// In-memory TeamService: one team on "فرقي", none on "الفرق العامة".
+class _FakeTeamService extends TeamService {
+  _FakeTeamService() : super(AuthService());
+
+  @override
+  Future<List<TeamSummary>> getMyTeams() async => const [
+        TeamSummary(
+          id: 't1',
+          name: 'فريق الغداء',
+          teamType: 'lunch',
+          isPublic: false,
+          status: 'open',
+          leaderName: 'قائد',
+          memberCount: 3,
+          activeMemberCount: 3,
+          inactiveMemberCount: 0,
+          myRole: 'leader',
+          isLeader: true,
+        ),
+      ];
+
+  @override
+  Future<List<TeamSummary>> getPublicTeams() async => const [];
 }

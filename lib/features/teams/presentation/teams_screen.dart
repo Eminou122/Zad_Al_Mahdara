@@ -16,7 +16,12 @@ const _cardBorder = Color(0xFFF2E0CC);
 
 class TeamsScreen extends StatefulWidget {
   final AuthService authService;
-  const TeamsScreen({super.key, required this.authService});
+
+  /// Injectable for widget tests (same pattern as AdminScreen/BudgetScreen);
+  /// production always uses the default [TeamService].
+  final TeamService? service;
+
+  const TeamsScreen({super.key, required this.authService, this.service});
 
   @override
   State<TeamsScreen> createState() => _TeamsScreenState();
@@ -35,7 +40,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
   @override
   void initState() {
     super.initState();
-    _svc = TeamService(widget.authService);
+    _svc = widget.service ?? TeamService(widget.authService);
     _pageController = PageController();
     _pageController.addListener(_onPageChanged);
     _load();
