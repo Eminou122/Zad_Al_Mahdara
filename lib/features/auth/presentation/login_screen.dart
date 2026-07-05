@@ -22,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _pinCtrl = TextEditingController();
   bool _loading = false;
   bool _showPin = false;
+  bool _retrying = false;
   String? _error;
 
   @override
@@ -29,6 +30,12 @@ class _LoginScreenState extends State<LoginScreen> {
     _phoneCtrl.dispose();
     _pinCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _retrySessionRestore() async {
+    setState(() => _retrying = true);
+    await widget.authService.retrySessionRestore();
+    if (mounted) setState(() => _retrying = false);
   }
 
   Future<void> _submit() async {
@@ -112,6 +119,25 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: ZadTokens.s4),
+                      if (widget.authService.sessionRestoreFailed) ...[
+                        const ZadInfoBanner(
+                          'تعذر التحقق من الجلسة، تحقق من اتصالك بالإنترنت',
+                          kind: ZadBannerKind.warning,
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _retrying ? null : _retrySessionRestore,
+                          icon: _retrying
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh),
+                          label: const Text('إعادة المحاولة'),
+                        ),
+                        const SizedBox(height: ZadTokens.s3),
+                      ],
                       if (_error != null)
                         ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
                       TextField(

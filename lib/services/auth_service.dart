@@ -30,6 +30,7 @@ class UserProfile {
 class AuthService extends ChangeNotifier {
   UserProfile? _profile;
   bool _isLoadingSession = true;
+  bool _sessionRestoreFailed = false;
 
   UserProfile? get profile      => _profile;
   bool get isAuthenticated      => _profile != null;
@@ -37,6 +38,14 @@ class AuthService extends ChangeNotifier {
   bool get isLoadingSession     => _isLoadingSession;
   String get displayName        => _profile?.displayName ?? '';
   String? get currentToken      => SessionStorage.read();
+
+  /// True when a stored session token exists but the last attempt to
+  /// verify it failed for a reason other than the server explicitly
+  /// rejecting it (network error, timeout, backend unreachable). The
+  /// token is kept — this is not a logout — but [isAuthenticated] stays
+  /// false until a retry succeeds, so no screen treats the session as
+  /// verified in the meantime.
+  bool get sessionRestoreFailed => _sessionRestoreFailed;
 
   AuthService() {
     _initSession();
@@ -52,21 +61,57 @@ class AuthService extends ChangeNotifier {
     }
     final token = SessionStorage.read();
     if (token != null) {
-      try {
-        final result = await _client.rpc(
-          'get_current_profile_by_session',
-          params: {'p_session_token': token},
-        );
-        if (result != null) {
-          _profile = UserProfile.fromJson(Map<String, dynamic>.from(result as Map));
-        } else {
-          SessionStorage.clear();
-        }
-      } catch (_) {
-        SessionStorage.clear();
-      }
+      await _restoreWithToken(token);
     }
     _isLoadingSession = false;
+    notifyListeners();
+  }
+
+  /// Verifies [token] against the backend and applies exactly one of three
+  /// outcomes:
+  ///  - a profile comes back → session is valid, restore succeeds.
+  ///  - the RPC returns null → the backend explicitly found no matching,
+  ///    non-revoked, non-expired session (its actual contract — it never
+  ///    throws for this), so the token really is invalid: clear it.
+  ///  - anything throws → the call itself could not be completed (network,
+  ///    timeout, backend unavailable). That says nothing about whether the
+  ///    token is valid, so it is kept, and the failure is surfaced via
+  ///    [sessionRestoreFailed] instead of a silent logout.
+  Future<void> _restoreWithToken(String token) async {
+    try {
+      final profileJson = await fetchProfileBySessionToken(token);
+      if (profileJson != null) {
+        _profile = UserProfile.fromJson(profileJson);
+        _sessionRestoreFailed = false;
+      } else {
+        SessionStorage.clear();
+        _profile = null;
+        _sessionRestoreFailed = false;
+      }
+    } catch (_) {
+      _profile = null;
+      _sessionRestoreFailed = true;
+    }
+  }
+
+  /// Isolated so tests can simulate success/invalid/network-failure
+  /// without a real Supabase client.
+  @protected
+  Future<Map<String, dynamic>?> fetchProfileBySessionToken(String token) async {
+    final result = await _client.rpc(
+      'get_current_profile_by_session',
+      params: {'p_session_token': token},
+    );
+    return result == null ? null : Map<String, dynamic>.from(result as Map);
+  }
+
+  /// Re-attempts session restore after a failed (network/backend) attempt.
+  /// No-op if there is no stored token. Safe to call repeatedly (e.g. from
+  /// a "retry" button on the login screen).
+  Future<void> retrySessionRestore() async {
+    final token = SessionStorage.read();
+    if (token == null) return;
+    await _restoreWithToken(token);
     notifyListeners();
   }
 
@@ -142,6 +187,7 @@ class AuthService extends ChangeNotifier {
     }
     SessionStorage.clear();
     _profile = null;
+    _sessionRestoreFailed = false;
     notifyListeners();
   }
 
@@ -152,6 +198,7 @@ class AuthService extends ChangeNotifier {
     _profile = UserProfile.fromJson(
       Map<String, dynamic>.from(json['profile'] as Map),
     );
+    _sessionRestoreFailed = false;
     notifyListeners();
   }
 
