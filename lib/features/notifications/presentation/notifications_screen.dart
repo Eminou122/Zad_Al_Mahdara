@@ -104,7 +104,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                         ),
                         const SizedBox(height: ZadTokens.s5),
                         Text(
-                          'لا توجد تنبيهات حالياً',
+                          'التنبيهات قادمة قريبًا',
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(
@@ -114,7 +114,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                         ),
                         const SizedBox(height: ZadTokens.s3),
                         const Text(
-                          'ستظهر التنبيهات هنا قريباً. سنقوم بإشعارك عند وجود تحديثات جديدة في ميزانيتك أو فرقك الدراسية.',
+                          'نعمل على إضافة التنبيهات لمساعدتك في متابعة ميزانيتك وفرقك. لا حاجة لأي إجراء منك الآن.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: ZadTokens.textMuted,
