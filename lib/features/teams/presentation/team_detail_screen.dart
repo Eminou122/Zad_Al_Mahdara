@@ -56,6 +56,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   String? _shoppingError;
   final Set<String> _busyMembers = {};
   final Set<String> _markingItems = {};
+  final Set<String> _removingItems = {};
 
   @override
   void initState() {
@@ -219,6 +220,29 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const ZadSectionHeader('قائمة المشتريات'),
+            if (o.canEditList)
+              Padding(
+                padding: const EdgeInsets.only(bottom: ZadTokens.s2),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'تعديل القائمة',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: ZadTokens.goldDark,
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => _openShoppingItemSheet(),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('إضافة عنصر'),
+                    ),
+                  ],
+                ),
+              ),
             if (o.responsibleMember != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: ZadTokens.s3),
@@ -263,6 +287,30 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                           ),
                         ),
                       ),
+                      if (o.canEditList) ...[
+                        IconButton(
+                          tooltip: 'تعديل',
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          onPressed: _removingItems.contains(item.id)
+                              ? null
+                              : () => _openShoppingItemSheet(existing: item),
+                        ),
+                        IconButton(
+                          tooltip: 'إزالة',
+                          visualDensity: VisualDensity.compact,
+                          icon: _removingItems.contains(item.id)
+                              ? const SizedBox(
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.delete_outline, size: 18,
+                                  color: ZadTokens.danger),
+                          onPressed: _removingItems.contains(item.id)
+                              ? null
+                              : () => _removeShoppingItem(item),
+                        ),
+                      ],
                     ]),
                     const SizedBox(height: 2),
                     Wrap(spacing: 4, children: [
@@ -302,6 +350,73 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     } catch (e) {
       if (mounted) {
         setState(() => _markingItems.remove(itemId));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(userErrorText(e))),
+        );
+      }
+    }
+  }
+
+  Future<void> _openShoppingItemSheet({TeamShoppingItem? existing}) async {
+    final token = widget.authService.currentToken;
+    if (token == null) return;
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: _ShoppingItemSheet(
+          existing: existing,
+          onSubmit: (name, quantityNote, isRequired) async {
+            final overview = existing == null
+                ? await _shoppingSvc.addItem(
+                    sessionToken: token,
+                    teamId: widget.teamId,
+                    name: name,
+                    quantityNote: quantityNote,
+                    isRequired: isRequired,
+                  )
+                : await _shoppingSvc.updateItem(
+                    sessionToken: token,
+                    teamId: widget.teamId,
+                    itemId: existing.id,
+                    name: name,
+                    quantityNote: quantityNote,
+                    isRequired: isRequired,
+                  );
+            if (mounted) setState(() => _shoppingOverview = overview);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _removeShoppingItem(TeamShoppingItem item) async {
+    final token = widget.authService.currentToken;
+    if (token == null) return;
+    final ok = await zadConfirm(
+      context,
+      title: 'إزالة العنصر',
+      body: 'سيتم إزالة "${item.name}" من قائمة المشتريات.',
+      confirmLabel: 'إزالة',
+    );
+    if (!ok) return;
+    setState(() => _removingItems.add(item.id));
+    try {
+      final overview = await _shoppingSvc.deactivateItem(
+        sessionToken: token,
+        teamId: widget.teamId,
+        itemId: item.id,
+      );
+      if (mounted) {
+        setState(() {
+          _shoppingOverview = overview;
+          _removingItems.remove(item.id);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _removingItems.remove(item.id));
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(userErrorText(e))),
         );
@@ -1262,6 +1377,142 @@ class _HeroBadge extends StatelessWidget {
           fontWeight: FontWeight.bold,
           color: gold ? ZadTokens.primaryDark : Colors.white,
         ),
+      ),
+    );
+  }
+}
+
+/// Leader-only add/edit sheet for a single shopping list item.
+class _ShoppingItemSheet extends StatefulWidget {
+  final TeamShoppingItem? existing;
+  final Future<void> Function(
+    String name,
+    String? quantityNote,
+    bool isRequired,
+  ) onSubmit;
+
+  const _ShoppingItemSheet({this.existing, required this.onSubmit});
+
+  @override
+  State<_ShoppingItemSheet> createState() => _ShoppingItemSheetState();
+}
+
+class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
+  late final _nameCtrl = TextEditingController(text: widget.existing?.name);
+  late final _noteCtrl =
+      TextEditingController(text: widget.existing?.quantityNote);
+  late bool _isRequired = widget.existing?.isRequired ?? true;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _nameCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'اسم العنصر مطلوب');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onSubmit(
+        name,
+        _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        _isRequired,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = userErrorText(e);
+          _saving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(ZadTokens.s4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: ZadTokens.s2),
+              child: ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
+            ),
+          TextField(
+            controller: _nameCtrl,
+            enabled: !_saving,
+            decoration: const InputDecoration(labelText: 'اسم العنصر'),
+          ),
+          const SizedBox(height: ZadTokens.s3),
+          TextField(
+            controller: _noteCtrl,
+            enabled: !_saving,
+            decoration: const InputDecoration(labelText: 'ملاحظة الكمية'),
+          ),
+          const SizedBox(height: ZadTokens.s3),
+          Row(
+            children: [
+              Expanded(
+                child: ChoiceChip(
+                  label: const Text('أساسي'),
+                  selected: _isRequired,
+                  onSelected: _saving
+                      ? null
+                      : (_) => setState(() => _isRequired = true),
+                ),
+              ),
+              const SizedBox(width: ZadTokens.s2),
+              Expanded(
+                child: ChoiceChip(
+                  label: const Text('اختياري'),
+                  selected: !_isRequired,
+                  onSelected: _saving
+                      ? null
+                      : (_) => setState(() => _isRequired = false),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: ZadTokens.s4),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed:
+                      _saving ? null : () => Navigator.pop(context, false),
+                  child: const Text('إلغاء'),
+                ),
+              ),
+              const SizedBox(width: ZadTokens.s2),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _saving ? null : _submit,
+                  child: _saving
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('حفظ'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

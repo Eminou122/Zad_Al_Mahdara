@@ -120,6 +120,17 @@ class _FakeTeamShoppingService extends TeamShoppingService {
   String? lastMarkedItemId;
   bool? lastMarkedBought;
 
+  String? lastAddedName;
+  String? lastAddedQuantityNote;
+  bool? lastAddedIsRequired;
+
+  String? lastUpdatedItemId;
+  String? lastUpdatedName;
+
+  String? lastDeactivatedItemId;
+
+  Object? actionError;
+
   _FakeTeamShoppingService({this.overview, this.error});
 
   @override
@@ -146,6 +157,59 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     overview = _sampleShoppingOverview(
       canMark: overview?.canMark ?? true,
       itemCount: overview?.items.length ?? 2,
+    );
+    return overview!;
+  }
+
+  @override
+  Future<TeamShoppingOverview> addItem({
+    required String sessionToken,
+    required String teamId,
+    required String name,
+    String? quantityNote,
+    bool isRequired = true,
+  }) async {
+    if (actionError != null) throw actionError!;
+    lastAddedName = name;
+    lastAddedQuantityNote = quantityNote;
+    lastAddedIsRequired = isRequired;
+    overview = _sampleShoppingOverview(
+      canEditList: overview?.canEditList ?? true,
+      itemCount: (overview?.items.length ?? 2) + 1,
+    );
+    return overview!;
+  }
+
+  @override
+  Future<TeamShoppingOverview> updateItem({
+    required String sessionToken,
+    required String teamId,
+    required String itemId,
+    required String name,
+    String? quantityNote,
+    bool isRequired = true,
+  }) async {
+    if (actionError != null) throw actionError!;
+    lastUpdatedItemId = itemId;
+    lastUpdatedName = name;
+    overview = _sampleShoppingOverview(
+      canEditList: overview?.canEditList ?? true,
+      itemCount: overview?.items.length ?? 2,
+    );
+    return overview!;
+  }
+
+  @override
+  Future<TeamShoppingOverview> deactivateItem({
+    required String sessionToken,
+    required String teamId,
+    required String itemId,
+  }) async {
+    if (actionError != null) throw actionError!;
+    lastDeactivatedItemId = itemId;
+    overview = _sampleShoppingOverview(
+      canEditList: overview?.canEditList ?? true,
+      itemCount: ((overview?.items.length ?? 2) - 1).clamp(0, 999),
     );
     return overview!;
   }
@@ -306,6 +370,143 @@ void main() {
       expect(find.text('حليب'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'canEditList=false hides تعديل القائمة and إضافة عنصر',
+    (tester) async {
+      await _pump(
+        tester,
+        overview: _sampleShoppingOverview(canEditList: false),
+      );
+      expect(find.text('تعديل القائمة'), findsNothing);
+      expect(find.text('إضافة عنصر'), findsNothing);
+    },
+  );
+
+  testWidgets('canEditList=true shows تعديل القائمة', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    expect(find.text('تعديل القائمة'), findsOneWidget);
+    expect(find.text('إضافة عنصر'), findsOneWidget);
+  });
+
+  testWidgets('leader can open add item form', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('اسم العنصر'), findsOneWidget);
+    expect(find.text('ملاحظة الكمية'), findsOneWidget);
+    expect(find.text('أساسي'), findsWidgets);
+    expect(find.text('اختياري'), findsWidgets);
+    expect(find.text('حفظ'), findsOneWidget);
+    expect(find.text('إلغاء'), findsOneWidget);
+  });
+
+  testWidgets('empty name validation works', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('اسم العنصر مطلوب'), findsOneWidget);
+  });
+
+  testWidgets('add item calls TeamShoppingService.addItem', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العنصر'), 'أرز');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastAddedName, 'أرز');
+    expect(find.text('اسم العنصر'), findsNothing);
+  });
+
+  testWidgets('edit item calls TeamShoppingService.updateItem', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.edit_outlined).first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'اسم العنصر'),
+      'خبز محدث',
+    );
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastUpdatedItemId, 'item-0');
+    expect(shoppingService.lastUpdatedName, 'خبز محدث');
+  });
+
+  testWidgets('remove item calls TeamShoppingService.deactivateItem', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.delete_outline).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('إزالة العنصر'), findsOneWidget);
+    await tester.tap(find.text('إزالة'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastDeactivatedItemId, 'item-0');
+  });
+
+  testWidgets('normal member cannot see edit/remove controls', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: false),
+    );
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    expect(find.byIcon(Icons.delete_outline), findsNothing);
+  });
 
   testWidgets('existing TeamDetailScreen behavior still passes', (tester) async {
     await _pump(tester);
