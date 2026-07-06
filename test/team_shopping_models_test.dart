@@ -146,6 +146,53 @@ void main() {
 
       expect(item.bought, false);
     });
+
+    test('parses price null', () {
+      final item = TeamShoppingItem.fromJson({
+        'id': 'item-5',
+        'name': 'سكر',
+        'position': 5,
+        'bought': false,
+        'price': null,
+      });
+
+      expect(item.price, isNull);
+    });
+
+    test('parses price 0', () {
+      final item = TeamShoppingItem.fromJson({
+        'id': 'item-6',
+        'name': 'ملح',
+        'position': 6,
+        'bought': false,
+        'price': 0,
+      });
+
+      expect(item.price, 0.0);
+    });
+
+    test('parses price positive', () {
+      final item = TeamShoppingItem.fromJson({
+        'id': 'item-7',
+        'name': 'أرز',
+        'position': 7,
+        'bought': false,
+        'price': 150.5,
+      });
+
+      expect(item.price, 150.5);
+    });
+
+    test('missing price key does not crash and defaults to null', () {
+      final item = TeamShoppingItem.fromJson({
+        'id': 'item-8',
+        'name': 'زيت',
+        'position': 8,
+        'bought': false,
+      });
+
+      expect(item.price, isNull);
+    });
   });
 
   group('toJson roundtrip', () {
@@ -170,8 +217,10 @@ void main() {
         bought: true,
         markedByName: 'أحمد',
         markedAt: DateTime(2026, 7, 5, 8, 30),
+        price: 150.0,
       );
       final json = original.toJson();
+      expect(json['price'], 150.0);
       final restored = TeamShoppingItem.fromJson(json);
       expect(restored.id, original.id);
       expect(restored.name, original.name);
@@ -181,6 +230,7 @@ void main() {
       expect(restored.bought, original.bought);
       expect(restored.markedByName, original.markedByName);
       expect(restored.markedAt, original.markedAt);
+      expect(restored.price, original.price);
     });
 
     test('TeamShoppingItem roundtrip with null optionals', () {
@@ -197,6 +247,7 @@ void main() {
       expect(restored.markedByName, isNull);
       expect(restored.markedAt, isNull);
       expect(restored.isRequired, false);
+      expect(restored.price, isNull);
     });
 
     test('TeamShoppingOverview roundtrip with full payload', () {

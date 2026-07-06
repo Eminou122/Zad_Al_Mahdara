@@ -61,6 +61,7 @@ TeamShoppingOverview _sampleShoppingOverview({
   bool canEditList = false,
   bool includeResponsible = true,
   int itemCount = 2,
+  double? firstItemPrice,
 }) =>
     TeamShoppingOverview(
       turnDate: DateTime(2026, 7, 5),
@@ -83,6 +84,7 @@ TeamShoppingOverview _sampleShoppingOverview({
           bought: bought,
           markedByName: bought ? 'أحمد' : null,
           markedAt: bought ? DateTime(2026, 7, 5, 8, 30) : null,
+          price: i == 0 ? firstItemPrice : null,
         );
       }),
     );
@@ -123,9 +125,11 @@ class _FakeTeamShoppingService extends TeamShoppingService {
   String? lastAddedName;
   String? lastAddedQuantityNote;
   bool? lastAddedIsRequired;
+  double? lastAddedPrice;
 
   String? lastUpdatedItemId;
   String? lastUpdatedName;
+  double? lastUpdatedPrice;
 
   String? lastDeactivatedItemId;
 
@@ -168,14 +172,17 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     required String name,
     String? quantityNote,
     bool isRequired = true,
+    double? price,
   }) async {
     if (actionError != null) throw actionError!;
     lastAddedName = name;
     lastAddedQuantityNote = quantityNote;
     lastAddedIsRequired = isRequired;
+    lastAddedPrice = price;
     overview = _sampleShoppingOverview(
       canEditList: overview?.canEditList ?? true,
       itemCount: (overview?.items.length ?? 2) + 1,
+      firstItemPrice: price,
     );
     return overview!;
   }
@@ -188,13 +195,16 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     required String name,
     String? quantityNote,
     bool isRequired = true,
+    double? price,
   }) async {
     if (actionError != null) throw actionError!;
     lastUpdatedItemId = itemId;
     lastUpdatedName = name;
+    lastUpdatedPrice = price;
     overview = _sampleShoppingOverview(
       canEditList: overview?.canEditList ?? true,
       itemCount: overview?.items.length ?? 2,
+      firstItemPrice: price,
     );
     return overview!;
   }
@@ -517,6 +527,131 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('أعضاء الفريق'), findsOneWidget);
     expect(find.text('محمد'), findsWidgets);
+  });
+
+  testWidgets('item row shows price when available', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(firstItemPrice: 150.0),
+    );
+    expect(find.text('150 MRU'), findsOneWidget);
+  });
+
+  testWidgets('item row shows no price text when price is null', (tester) async {
+    await _pump(tester);
+    expect(find.textContaining('MRU'), findsNothing);
+  });
+
+  testWidgets('add sheet shows السعر field', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('السعر'), findsOneWidget);
+    expect(find.text('MRU'), findsOneWidget);
+  });
+
+  testWidgets('empty price submits null', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العنصر'), 'أرز');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastAddedPrice, isNull);
+  });
+
+  testWidgets('valid price submits numeric value', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العنصر'), 'أرز');
+    await tester.enterText(find.widgetWithText(TextField, 'السعر'), '150');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastAddedPrice, 150.0);
+  });
+
+  testWidgets('invalid price shows أدخل سعرًا صحيحًا', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العنصر'), 'أرز');
+    await tester.enterText(find.widgetWithText(TextField, 'السعر'), 'abc');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('أدخل سعرًا صحيحًا'), findsOneWidget);
+  });
+
+  testWidgets('edit sheet pre-fills existing price', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: true, firstItemPrice: 150.0),
+    );
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.edit_outlined).first);
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, '150'), findsOneWidget);
+  });
+
+  testWidgets('edit with cleared price submits null', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canEditList: true, firstItemPrice: 150.0),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.edit_outlined).first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, '150'), '');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastUpdatedPrice, isNull);
   });
 }
 

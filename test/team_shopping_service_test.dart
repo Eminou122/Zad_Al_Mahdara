@@ -40,6 +40,7 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     required String name,
     String? quantityNote,
     bool isRequired = true,
+    double? price,
   }) async {
     if (error != null) throw error!;
     lastRpc = 'add_team_shopping_item';
@@ -49,6 +50,7 @@ class _FakeTeamShoppingService extends TeamShoppingService {
       'p_name': name,
       'p_quantity_note': quantityNote,
       'p_is_required': isRequired,
+      'p_price': price,
     };
     return returnValue ?? _sampleOverview();
   }
@@ -61,6 +63,7 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     required String name,
     String? quantityNote,
     bool isRequired = true,
+    double? price,
   }) async {
     if (error != null) throw error!;
     lastRpc = 'update_team_shopping_item';
@@ -71,6 +74,7 @@ class _FakeTeamShoppingService extends TeamShoppingService {
       'p_name': name,
       'p_quantity_note': quantityNote,
       'p_is_required': isRequired,
+      'p_price': price,
     };
     return returnValue ?? _sampleOverview();
   }
@@ -191,6 +195,27 @@ void main() {
       expect(service.lastParams!['p_quantity_note'], isNull);
     });
 
+    test('addItem forwards p_price when price provided', () async {
+      await service.addItem(
+        sessionToken: 'token-1',
+        teamId: 'team-1',
+        name: 'أرز',
+        price: 150.0,
+      );
+
+      expect(service.lastParams!['p_price'], 150.0);
+    });
+
+    test('addItem forwards null price when omitted', () async {
+      await service.addItem(
+        sessionToken: 'token-1',
+        teamId: 'team-1',
+        name: 'أرز',
+      );
+
+      expect(service.lastParams!['p_price'], isNull);
+    });
+
     test('updateItem calls update_team_shopping_item RPC', () async {
       final result = await service.updateItem(
         sessionToken: 'token-1',
@@ -207,6 +232,29 @@ void main() {
       expect(service.lastParams!['p_quantity_note'], '3 رغيف');
       expect(service.lastParams!['p_is_required'], false);
       expect(result.canEditList, false);
+    });
+
+    test('updateItem forwards p_price when price provided', () async {
+      await service.updateItem(
+        sessionToken: 'token-1',
+        teamId: 'team-1',
+        itemId: 'item-1',
+        name: 'خبز طازج',
+        price: 200.5,
+      );
+
+      expect(service.lastParams!['p_price'], 200.5);
+    });
+
+    test('updateItem forwards null price when omitted', () async {
+      await service.updateItem(
+        sessionToken: 'token-1',
+        teamId: 'team-1',
+        itemId: 'item-1',
+        name: 'خبز طازج',
+      );
+
+      expect(service.lastParams!['p_price'], isNull);
     });
 
     test('deactivateItem calls deactivate_team_shopping_item RPC', () async {

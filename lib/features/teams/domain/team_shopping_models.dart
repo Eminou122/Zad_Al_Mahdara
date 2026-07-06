@@ -28,6 +28,7 @@ class TeamShoppingItem {
   final bool bought;
   final String? markedByName;
   final DateTime? markedAt;
+  final double? price;
 
   const TeamShoppingItem({
     required this.id,
@@ -38,6 +39,7 @@ class TeamShoppingItem {
     required this.bought,
     this.markedByName,
     this.markedAt,
+    this.price,
   });
 
   factory TeamShoppingItem.fromJson(Map<String, dynamic> j) =>
@@ -52,6 +54,7 @@ class TeamShoppingItem {
         markedAt: j['marked_at'] != null
             ? DateTime.parse(j['marked_at'] as String)
             : null,
+        price: (j['price'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -63,6 +66,7 @@ class TeamShoppingItem {
         'bought': bought,
         'marked_by_name': markedByName,
         'marked_at': markedAt?.toIso8601String(),
+        'price': price,
       };
 }
 

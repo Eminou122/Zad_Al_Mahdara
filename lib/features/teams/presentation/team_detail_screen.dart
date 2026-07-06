@@ -22,6 +22,12 @@ import '../domain/team_turn_models.dart';
 const _warmBorder = Color(0xFFF2E0CC);
 const _paleGreen = Color(0xFFB1F1C8);
 
+String _formatShoppingPrice(double price) {
+  final isWhole = price == price.roundToDouble();
+  final value = isWhole ? price.toStringAsFixed(0) : price.toStringAsFixed(2);
+  return '$value MRU';
+}
+
 class TeamDetailScreen extends StatefulWidget {
   final AuthService authService;
   final String teamId;
@@ -320,6 +326,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                       if (item.quantityNote != null)
                         Text(item.quantityNote!,
                           style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
+                      if (item.price != null)
+                        Text(_formatShoppingPrice(item.price!),
+                          style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
                     ]),
                   ],
                 ),
@@ -367,7 +376,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: _ShoppingItemSheet(
           existing: existing,
-          onSubmit: (name, quantityNote, isRequired) async {
+          onSubmit: (name, quantityNote, isRequired, price) async {
             final overview = existing == null
                 ? await _shoppingSvc.addItem(
                     sessionToken: token,
@@ -375,6 +384,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                     name: name,
                     quantityNote: quantityNote,
                     isRequired: isRequired,
+                    price: price,
                   )
                 : await _shoppingSvc.updateItem(
                     sessionToken: token,
@@ -383,6 +393,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                     name: name,
                     quantityNote: quantityNote,
                     isRequired: isRequired,
+                    price: price,
                   );
             if (mounted) setState(() => _shoppingOverview = overview);
           },
@@ -1389,6 +1400,7 @@ class _ShoppingItemSheet extends StatefulWidget {
     String name,
     String? quantityNote,
     bool isRequired,
+    double? price,
   ) onSubmit;
 
   const _ShoppingItemSheet({this.existing, required this.onSubmit});
@@ -1401,14 +1413,23 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
   late final _nameCtrl = TextEditingController(text: widget.existing?.name);
   late final _noteCtrl =
       TextEditingController(text: widget.existing?.quantityNote);
+  late final _priceCtrl =
+      TextEditingController(text: _initialPriceText(widget.existing?.price));
   late bool _isRequired = widget.existing?.isRequired ?? true;
   bool _saving = false;
   String? _error;
+
+  static String? _initialPriceText(double? price) {
+    if (price == null) return null;
+    final isWhole = price == price.roundToDouble();
+    return isWhole ? price.toStringAsFixed(0) : price.toStringAsFixed(2);
+  }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _noteCtrl.dispose();
+    _priceCtrl.dispose();
     super.dispose();
   }
 
@@ -1417,6 +1438,15 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
     if (name.isEmpty) {
       setState(() => _error = 'اسم العنصر مطلوب');
       return;
+    }
+    final priceText = _priceCtrl.text.trim();
+    double? price;
+    if (priceText.isNotEmpty) {
+      price = double.tryParse(priceText);
+      if (price == null || price < 0) {
+        setState(() => _error = 'أدخل سعرًا صحيحًا');
+        return;
+      }
     }
     setState(() {
       _saving = true;
@@ -1427,6 +1457,7 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
         name,
         _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
         _isRequired,
+        price,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -1462,6 +1493,16 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
             controller: _noteCtrl,
             enabled: !_saving,
             decoration: const InputDecoration(labelText: 'ملاحظة الكمية'),
+          ),
+          const SizedBox(height: ZadTokens.s3),
+          TextField(
+            controller: _priceCtrl,
+            enabled: !_saving,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'السعر',
+              suffixText: 'MRU',
+            ),
           ),
           const SizedBox(height: ZadTokens.s3),
           Row(
