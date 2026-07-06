@@ -518,6 +518,105 @@ void main() {
     expect(find.byIcon(Icons.delete_outline), findsNothing);
   });
 
+  testWidgets(
+    'permission matrix: canEditList=true, canMark=false shows edit controls, hides checkbox, no mark call',
+    (tester) async {
+      final shoppingService = _FakeTeamShoppingService(
+        overview: _sampleShoppingOverview(canEditList: true, canMark: false),
+      );
+      await tester.pumpWidget(
+        _buildTest(
+          _FakeAuthService(),
+          teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+          turnService: _FakeTurnService(state: _sampleTurnState()),
+          shoppingService: shoppingService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('تعديل القائمة'), findsOneWidget);
+      expect(find.text('إضافة عنصر'), findsOneWidget);
+      expect(find.byIcon(Icons.edit_outlined), findsWidgets);
+      expect(find.byIcon(Icons.delete_outline), findsWidgets);
+      expect(find.byType(Checkbox), findsNothing);
+      expect(shoppingService.lastMarkedItemId, isNull);
+    },
+  );
+
+  testWidgets(
+    'permission matrix: canEditList=false, canMark=true shows checkbox, hides edit controls, marks via service',
+    (tester) async {
+      final shoppingService = _FakeTeamShoppingService(
+        overview: _sampleShoppingOverview(canEditList: false, canMark: true),
+      );
+      await tester.pumpWidget(
+        _buildTest(
+          _FakeAuthService(),
+          teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+          turnService: _FakeTurnService(state: _sampleTurnState()),
+          shoppingService: shoppingService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('تعديل القائمة'), findsNothing);
+      expect(find.text('إضافة عنصر'), findsNothing);
+      expect(find.byIcon(Icons.edit_outlined), findsNothing);
+      expect(find.byIcon(Icons.delete_outline), findsNothing);
+      expect(find.byType(Checkbox), findsWidgets);
+
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pumpAndSettle();
+
+      expect(shoppingService.lastMarkedItemId, 'item-0');
+      expect(shoppingService.lastMarkedBought, true);
+    },
+  );
+
+  testWidgets(
+    'permission matrix: canEditList=true, canMark=true shows both, marks via service',
+    (tester) async {
+      final shoppingService = _FakeTeamShoppingService(
+        overview: _sampleShoppingOverview(canEditList: true, canMark: true),
+      );
+      await tester.pumpWidget(
+        _buildTest(
+          _FakeAuthService(),
+          teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+          turnService: _FakeTurnService(state: _sampleTurnState()),
+          shoppingService: shoppingService,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('تعديل القائمة'), findsOneWidget);
+      expect(find.text('إضافة عنصر'), findsOneWidget);
+      expect(find.byType(Checkbox), findsWidgets);
+
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pumpAndSettle();
+
+      expect(shoppingService.lastMarkedItemId, 'item-0');
+      expect(shoppingService.lastMarkedBought, true);
+    },
+  );
+
+  testWidgets(
+    'permission matrix: canEditList=false, canMark=false is fully read-only',
+    (tester) async {
+      await _pump(
+        tester,
+        overview: _sampleShoppingOverview(canEditList: false, canMark: false),
+      );
+
+      expect(find.text('تعديل القائمة'), findsNothing);
+      expect(find.text('إضافة عنصر'), findsNothing);
+      expect(find.byIcon(Icons.edit_outlined), findsNothing);
+      expect(find.byIcon(Icons.delete_outline), findsNothing);
+      expect(find.byType(Checkbox), findsNothing);
+    },
+  );
+
   testWidgets('existing TeamDetailScreen behavior still passes', (tester) async {
     await _pump(tester);
 
