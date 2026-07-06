@@ -8,10 +8,13 @@ import '../../../core/widgets/zad_bottom_nav.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_confirm.dart';
 import '../../../core/widgets/zad_info_banner.dart';
+import '../../../core/widgets/zad_section_header.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
+import '../data/team_shopping_service.dart';
 import '../data/team_turn_service.dart';
 import '../domain/team_models.dart';
+import '../domain/team_shopping_models.dart';
 import '../domain/team_turn_models.dart';
 
 // Stitch team_detail accents (screen-local, not shared tokens):
@@ -22,10 +25,16 @@ const _paleGreen = Color(0xFFB1F1C8);
 class TeamDetailScreen extends StatefulWidget {
   final AuthService authService;
   final String teamId;
+  final TeamService? teamService;
+  final TeamTurnService? turnService;
+  final TeamShoppingService? shoppingService;
   const TeamDetailScreen({
     super.key,
     required this.authService,
     required this.teamId,
+    this.teamService,
+    this.turnService,
+    this.shoppingService,
   });
 
   @override
@@ -35,19 +44,25 @@ class TeamDetailScreen extends StatefulWidget {
 class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   late final TeamService _svc;
   late final TeamTurnService _turnSvc;
+  late final TeamShoppingService _shoppingSvc;
   TeamDetail? _detail;
   TeamTurnState? _turnState;
+  TeamShoppingOverview? _shoppingOverview;
   bool _loading = true;
   bool _turnLoading = false;
+  bool _shoppingLoading = false;
   bool _routeSubscribed = false;
   String? _error;
+  String? _shoppingError;
   final Set<String> _busyMembers = {};
+  final Set<String> _markingItems = {};
 
   @override
   void initState() {
     super.initState();
-    _svc = TeamService(widget.authService);
-    _turnSvc = TeamTurnService(widget.authService);
+    _svc = widget.teamService ?? TeamService(widget.authService);
+    _turnSvc = widget.turnService ?? TeamTurnService(widget.authService);
+    _shoppingSvc = widget.shoppingService ?? TeamShoppingService();
     _load();
   }
 
@@ -92,6 +107,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     try {
       _turnState = await _turnSvc.getTurnState(widget.teamId);
     } catch (_) {} // turn state is non-fatal; card shows empty
+    await _loadShopping();
     if (mounted) {
       setState(() {
         _loading = false;
@@ -104,6 +120,193 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
       final turnState = await _turnSvc.getTurnState(widget.teamId);
       if (mounted) setState(() => _turnState = turnState);
     } catch (_) {}
+  }
+
+  Future<void> _loadShopping() async {
+    final token = widget.authService.currentToken;
+    if (token == null) return;
+    setState(() {
+      _shoppingLoading = true;
+      _shoppingError = null;
+    });
+    try {
+      final overview = await _shoppingSvc.getShoppingList(
+        sessionToken: token,
+        teamId: widget.teamId,
+      );
+      if (mounted) {
+        setState(() {
+          _shoppingOverview = overview;
+          _shoppingLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _shoppingError = userErrorText(e);
+          _shoppingLoading = false;
+        });
+      }
+    }
+  }
+
+  List<Widget> _shoppingCard() {
+    final o = _shoppingOverview;
+    if (_shoppingLoading) {
+      return [
+        ZadCard(
+          margin: const EdgeInsets.only(bottom: ZadTokens.s4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(width: double.infinity,
+                child: ZadSectionHeader('قائمة المشتريات'),
+              ),
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(ZadTokens.s4),
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+    if (_shoppingError != null) {
+      return [
+        ZadCard(
+          margin: const EdgeInsets.only(bottom: ZadTokens.s4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(width: double.infinity,
+                child: ZadSectionHeader('قائمة المشتريات'),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: ZadTokens.s2),
+                child: ZadInfoBanner(_shoppingError!, kind: ZadBannerKind.warning),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+    if (o == null) {
+      return [
+        ZadCard(
+          margin: const EdgeInsets.only(bottom: ZadTokens.s4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(width: double.infinity,
+                child: ZadSectionHeader('قائمة المشتريات'),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: ZadTokens.s2),
+                child: Text('لم تتوفر قائمة المشتريات حالياً',
+                  style: TextStyle(color: ZadTokens.textMuted)),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+    return [
+      ZadCard(
+        margin: const EdgeInsets.only(bottom: ZadTokens.s4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const ZadSectionHeader('قائمة المشتريات'),
+            if (o.responsibleMember != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: ZadTokens.s3),
+                child: Text(
+                  'المسؤول اليوم: ${o.responsibleMember!.displayName}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+              ),
+            if (o.items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: ZadTokens.s4),
+                child: Center(
+                  child: Text('لم تتم إضافة عناصر بعد',
+                    style: TextStyle(color: ZadTokens.textMuted)),
+                ),
+              )
+            else
+              ...o.items.map((item) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(children: [
+                      if (o.canMark)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(end: ZadTokens.s2 - 2),
+                          child: SizedBox(
+                            width: 24, height: 24,
+                            child: Checkbox(
+                              value: item.bought,
+                              onChanged: _markingItems.contains(item.id)
+                                  ? null : (v) => _markItem(item.id, v ?? false),
+                            ),
+                          ),
+                        ),
+                      Expanded(
+                        child: Text(item.name,
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14,
+                            decoration: item.bought ? TextDecoration.lineThrough : null,
+                            color: item.bought ? ZadTokens.textMuted : null,
+                          ),
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 2),
+                    Wrap(spacing: 4, children: [
+                      if (item.isRequired) const _Badge('أساسي', gold: true),
+                      if (!item.isRequired) const _Badge('اختياري'),
+                      if (item.bought) const _Badge('تم الشراء'),
+                      if (item.quantityNote != null)
+                        Text(item.quantityNote!,
+                          style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
+                    ]),
+                  ],
+                ),
+              )),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  Future<void> _markItem(String itemId, bool bought) async {
+    final token = widget.authService.currentToken;
+    if (token == null) return;
+    setState(() => _markingItems.add(itemId));
+    try {
+      final overview = await _shoppingSvc.markItemStatus(
+        sessionToken: token,
+        teamId: widget.teamId,
+        itemId: itemId,
+        bought: bought,
+      );
+      if (mounted) {
+        setState(() {
+          _shoppingOverview = overview;
+          _markingItems.remove(itemId);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _markingItems.remove(itemId));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(userErrorText(e))),
+        );
+      }
+    }
   }
 
   void _setMemberBusy(String memberId, bool busy) {
@@ -430,6 +633,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                       ),
                     ),
                   const SizedBox(height: ZadTokens.s4),
+                  ..._shoppingCard(),
                   ZadAnimatedEntry(
                     delay: const Duration(milliseconds: 60),
                     child: _TurnCard(
@@ -554,11 +758,15 @@ class _TurnCard extends StatelessWidget {
                 color: ZadTokens.goldDark,
               ),
               const SizedBox(width: ZadTokens.s2),
-              Text(
-                'نظام النوبات اليومي',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(color: ZadTokens.goldDark),
+              Flexible(
+                child: Text(
+                  'نظام النوبات اليومي',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(color: ZadTokens.goldDark),
+                ),
               ),
             ],
           ),
@@ -805,6 +1013,31 @@ class _TurnCard extends StatelessWidget {
   }
 }
 
+class _Badge extends StatelessWidget {
+  final String label;
+  final bool gold;
+  const _Badge(this.label, {this.gold = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: gold ? ZadTokens.goldSoft : ZadTokens.surfaceContainer,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          color: gold ? ZadTokens.primaryDark : ZadTokens.textMuted,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
 class _MemberTile extends StatelessWidget {
   final int displayPosition;
   final TeamMember member;
@@ -989,13 +1222,16 @@ class _HeroStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 18, color: ZadTokens.gold),
         const SizedBox(width: ZadTokens.s1 + 2),
-        Text(
-          text,
-          style: const TextStyle(color: Colors.white, fontSize: 13),
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+          ),
         ),
       ],
     );
