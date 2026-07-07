@@ -34,6 +34,8 @@ class TeamShoppingService {
     String? quantityNote,
     bool isRequired = true,
     double? price,
+    double? quantityValue,
+    String? quantityUnit,
   }) async {
     final res = await _c.rpc('add_team_shopping_item', params: {
       'p_session_token': sessionToken,
@@ -42,6 +44,8 @@ class TeamShoppingService {
       'p_quantity_note': quantityNote,
       'p_is_required': isRequired,
       'p_price': price,
+      'p_quantity_value': quantityValue,
+      'p_quantity_unit': quantityUnit,
     });
     return _overview(res);
   }
@@ -54,6 +58,8 @@ class TeamShoppingService {
     String? quantityNote,
     bool isRequired = true,
     double? price,
+    double? quantityValue,
+    String? quantityUnit,
   }) async {
     final res = await _c.rpc('update_team_shopping_item', params: {
       'p_session_token': sessionToken,
@@ -63,6 +69,8 @@ class TeamShoppingService {
       'p_quantity_note': quantityNote,
       'p_is_required': isRequired,
       'p_price': price,
+      'p_quantity_value': quantityValue,
+      'p_quantity_unit': quantityUnit,
     });
     return _overview(res);
   }

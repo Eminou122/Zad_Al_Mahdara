@@ -62,6 +62,8 @@ TeamShoppingOverview _sampleShoppingOverview({
   bool includeResponsible = true,
   int itemCount = 2,
   double? firstItemPrice,
+  double? firstItemQuantityValue,
+  String? firstItemQuantityUnit,
 }) =>
     TeamShoppingOverview(
       turnDate: DateTime(2026, 7, 5),
@@ -79,6 +81,8 @@ TeamShoppingOverview _sampleShoppingOverview({
           id: 'item-$i',
           name: i == 0 ? 'خبز' : 'حليب',
           quantityNote: i == 0 ? '2 رغيف' : null,
+          quantityValue: i == 0 ? firstItemQuantityValue : null,
+          quantityUnit: i == 0 ? firstItemQuantityUnit : null,
           isRequired: i == 0,
           position: i + 1,
           bought: bought,
@@ -126,10 +130,14 @@ class _FakeTeamShoppingService extends TeamShoppingService {
   String? lastAddedQuantityNote;
   bool? lastAddedIsRequired;
   double? lastAddedPrice;
+  double? lastAddedQuantityValue;
+  String? lastAddedQuantityUnit;
 
   String? lastUpdatedItemId;
   String? lastUpdatedName;
   double? lastUpdatedPrice;
+  double? lastUpdatedQuantityValue;
+  String? lastUpdatedQuantityUnit;
 
   String? lastDeactivatedItemId;
 
@@ -173,16 +181,22 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     String? quantityNote,
     bool isRequired = true,
     double? price,
+    double? quantityValue,
+    String? quantityUnit,
   }) async {
     if (actionError != null) throw actionError!;
     lastAddedName = name;
     lastAddedQuantityNote = quantityNote;
     lastAddedIsRequired = isRequired;
     lastAddedPrice = price;
+    lastAddedQuantityValue = quantityValue;
+    lastAddedQuantityUnit = quantityUnit;
     overview = _sampleShoppingOverview(
       canEditList: overview?.canEditList ?? true,
       itemCount: (overview?.items.length ?? 2) + 1,
       firstItemPrice: price,
+      firstItemQuantityValue: quantityValue,
+      firstItemQuantityUnit: quantityUnit,
     );
     return overview!;
   }
@@ -196,15 +210,21 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     String? quantityNote,
     bool isRequired = true,
     double? price,
+    double? quantityValue,
+    String? quantityUnit,
   }) async {
     if (actionError != null) throw actionError!;
     lastUpdatedItemId = itemId;
     lastUpdatedName = name;
     lastUpdatedPrice = price;
+    lastUpdatedQuantityValue = quantityValue;
+    lastUpdatedQuantityUnit = quantityUnit;
     overview = _sampleShoppingOverview(
       canEditList: overview?.canEditList ?? true,
       itemCount: overview?.items.length ?? 2,
       firstItemPrice: price,
+      firstItemQuantityValue: quantityValue,
+      firstItemQuantityUnit: quantityUnit,
     );
     return overview!;
   }
@@ -633,7 +653,7 @@ void main() {
       tester,
       overview: _sampleShoppingOverview(firstItemPrice: 150.0),
     );
-    expect(find.text('150 MRU'), findsOneWidget);
+    expect(find.text('السعر: 150 MRU'), findsOneWidget);
   });
 
   testWidgets('item row shows no price text when price is null', (tester) async {
@@ -650,7 +670,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('السعر'), findsOneWidget);
-    expect(find.text('MRU'), findsOneWidget);
+    // Two "MRU" texts now: the mru_value unit chip and the price suffix.
+    expect(find.text('MRU'), findsNWidgets(2));
   });
 
   testWidgets('empty price submits null', (tester) async {
@@ -751,6 +772,194 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(shoppingService.lastUpdatedPrice, isNull);
+  });
+
+  testWidgets('add sheet shows quantity field and all six unit labels',
+      (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'الكمية'), findsOneWidget);
+    expect(find.text('كغ'), findsOneWidget);
+    expect(find.text('بكط'), findsOneWidget);
+    expect(find.text('بطة'), findsOneWidget);
+    expect(find.text('وحدة'), findsOneWidget);
+    expect(find.text('MRU'), findsWidgets);
+    expect(find.text('أخرى'), findsOneWidget);
+  });
+
+  testWidgets('entering 2 and selecting كغ submits quantityValue=2 and quantityUnit=kg',
+      (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العنصر'), 'أرز');
+    await tester.enterText(find.widgetWithText(TextField, 'الكمية'), '2');
+    await tester.tap(find.text('كغ'));
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastAddedQuantityValue, 2.0);
+    expect(shoppingService.lastAddedQuantityUnit, 'kg');
+  });
+
+  testWidgets('selecting MRU submits quantityUnit=mru_value', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العنصر'), 'زيت');
+    await tester.enterText(find.widgetWithText(TextField, 'الكمية'), '10');
+    await tester.tap(find.widgetWithText(ChoiceChip, 'MRU'));
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastAddedQuantityValue, 10.0);
+    expect(shoppingService.lastAddedQuantityUnit, 'mru_value');
+  });
+
+  testWidgets('quantity note-only existing item still displays correctly',
+      (tester) async {
+    await _pump(tester);
+    expect(find.text('2 رغيف'), findsOneWidget);
+  });
+
+  testWidgets('structured quantity displays as الكمية: 2 كغ', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        firstItemQuantityValue: 2.0,
+        firstItemQuantityUnit: 'kg',
+      ),
+    );
+    expect(find.text('الكمية: 2 كغ'), findsOneWidget);
+  });
+
+  testWidgets(
+      'mru_value quantity with price displays separately: الكمية and السعر',
+      (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        firstItemQuantityValue: 10.0,
+        firstItemQuantityUnit: 'mru_value',
+        firstItemPrice: 10.0,
+      ),
+    );
+    expect(find.text('الكمية: 10 MRU'), findsOneWidget);
+    expect(find.text('السعر: 10 MRU'), findsOneWidget);
+  });
+
+  testWidgets('clearing structured quantity submits null/null', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(
+        canEditList: true,
+        firstItemQuantityValue: 2.0,
+        firstItemQuantityUnit: 'kg',
+      ),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.edit_outlined).first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, '2'), '');
+    await tester.pump();
+    // deselect the pre-selected chip
+    await tester.tap(find.widgetWithText(ChoiceChip, 'كغ'));
+    await tester.pump();
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastUpdatedQuantityValue, isNull);
+    expect(shoppingService.lastUpdatedQuantityUnit, isNull);
+  });
+
+  testWidgets('validation rejects quantity number without unit', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العنصر'), 'أرز');
+    await tester.enterText(find.widgetWithText(TextField, 'الكمية'), '2');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('اختر نوع الكمية'), findsOneWidget);
+  });
+
+  testWidgets('validation rejects unit without quantity number', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العنصر'), 'أرز');
+    await tester.tap(find.text('كغ'));
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('أدخل رقم الكمية'), findsOneWidget);
+  });
+
+  testWidgets('validation rejects negative/invalid quantity value',
+      (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العنصر'), 'أرز');
+    await tester.enterText(find.widgetWithText(TextField, 'الكمية'), '-1');
+    await tester.tap(find.text('كغ'));
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('أدخل كمية صحيحة'), findsOneWidget);
   });
 }
 

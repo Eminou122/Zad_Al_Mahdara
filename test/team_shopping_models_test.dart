@@ -193,6 +193,46 @@ void main() {
 
       expect(item.price, isNull);
     });
+
+    test('parses quantity_value and quantity_unit', () {
+      final item = TeamShoppingItem.fromJson({
+        'id': 'item-9',
+        'name': 'أرز',
+        'position': 9,
+        'bought': false,
+        'quantity_value': 2,
+        'quantity_unit': 'kg',
+      });
+
+      expect(item.quantityValue, 2.0);
+      expect(item.quantityUnit, 'kg');
+    });
+
+    test('handles null quantity_value and quantity_unit', () {
+      final item = TeamShoppingItem.fromJson({
+        'id': 'item-10',
+        'name': 'سكر',
+        'position': 10,
+        'bought': false,
+        'quantity_value': null,
+        'quantity_unit': null,
+      });
+
+      expect(item.quantityValue, isNull);
+      expect(item.quantityUnit, isNull);
+    });
+
+    test('missing quantity_value/quantity_unit keys do not crash', () {
+      final item = TeamShoppingItem.fromJson({
+        'id': 'item-11',
+        'name': 'شاي',
+        'position': 11,
+        'bought': false,
+      });
+
+      expect(item.quantityValue, isNull);
+      expect(item.quantityUnit, isNull);
+    });
   });
 
   group('toJson roundtrip', () {
@@ -212,6 +252,8 @@ void main() {
         id: 'item-1',
         name: 'خبز',
         quantityNote: '2 رغيف',
+        quantityValue: 2.0,
+        quantityUnit: 'kg',
         isRequired: true,
         position: 1,
         bought: true,
@@ -221,10 +263,14 @@ void main() {
       );
       final json = original.toJson();
       expect(json['price'], 150.0);
+      expect(json['quantity_value'], 2.0);
+      expect(json['quantity_unit'], 'kg');
       final restored = TeamShoppingItem.fromJson(json);
       expect(restored.id, original.id);
       expect(restored.name, original.name);
       expect(restored.quantityNote, original.quantityNote);
+      expect(restored.quantityValue, original.quantityValue);
+      expect(restored.quantityUnit, original.quantityUnit);
       expect(restored.isRequired, original.isRequired);
       expect(restored.position, original.position);
       expect(restored.bought, original.bought);
@@ -244,6 +290,8 @@ void main() {
       final json = original.toJson();
       final restored = TeamShoppingItem.fromJson(json);
       expect(restored.quantityNote, isNull);
+      expect(restored.quantityValue, isNull);
+      expect(restored.quantityUnit, isNull);
       expect(restored.markedByName, isNull);
       expect(restored.markedAt, isNull);
       expect(restored.isRequired, false);

@@ -28,6 +28,28 @@ String _formatShoppingPrice(double price) {
   return '$value MRU';
 }
 
+// Hassaniya labels for structured shopping quantity units. mru_value means
+// "buy this many MRU worth of the item" (a requested amount), not a
+// currency total — kept visually separate from price via the السعر/الكمية
+// prefixes below so the two never read as the same number.
+const _kShoppingQuantityUnits = <MapEntry<String, String>>[
+  MapEntry('kg', 'كغ'),
+  MapEntry('packet', 'بكط'),
+  MapEntry('can', 'بطة'),
+  MapEntry('piece', 'وحدة'),
+  MapEntry('mru_value', 'MRU'),
+  MapEntry('other', 'أخرى'),
+];
+
+String _quantityUnitLabel(String unit) => _kShoppingQuantityUnits
+    .firstWhere((e) => e.key == unit, orElse: () => MapEntry(unit, unit))
+    .value;
+
+String _formatShoppingQuantityValue(double value) {
+  final isWhole = value == value.roundToDouble();
+  return isWhole ? value.toStringAsFixed(0) : value.toStringAsFixed(2);
+}
+
 class TeamDetailScreen extends StatefulWidget {
   final AuthService authService;
   final String teamId;
@@ -323,11 +345,16 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                       if (item.isRequired) const _Badge('أساسي', gold: true),
                       if (!item.isRequired) const _Badge('اختياري'),
                       if (item.bought) const _Badge('تم الشراء'),
-                      if (item.quantityNote != null)
+                      if (item.quantityValue != null && item.quantityUnit != null)
+                        Text(
+                          'الكمية: ${_formatShoppingQuantityValue(item.quantityValue!)} '
+                          '${_quantityUnitLabel(item.quantityUnit!)}',
+                          style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted))
+                      else if (item.quantityNote != null)
                         Text(item.quantityNote!,
                           style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
                       if (item.price != null)
-                        Text(_formatShoppingPrice(item.price!),
+                        Text('السعر: ${_formatShoppingPrice(item.price!)}',
                           style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
                     ]),
                   ],
@@ -376,7 +403,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: _ShoppingItemSheet(
           existing: existing,
-          onSubmit: (name, quantityNote, isRequired, price) async {
+          onSubmit: (name, quantityNote, isRequired, price, quantityValue,
+              quantityUnit) async {
             final overview = existing == null
                 ? await _shoppingSvc.addItem(
                     sessionToken: token,
@@ -385,6 +413,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                     quantityNote: quantityNote,
                     isRequired: isRequired,
                     price: price,
+                    quantityValue: quantityValue,
+                    quantityUnit: quantityUnit,
                   )
                 : await _shoppingSvc.updateItem(
                     sessionToken: token,
@@ -394,6 +424,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                     quantityNote: quantityNote,
                     isRequired: isRequired,
                     price: price,
+                    quantityValue: quantityValue,
+                    quantityUnit: quantityUnit,
                   );
             if (mounted) setState(() => _shoppingOverview = overview);
           },
@@ -1401,6 +1433,8 @@ class _ShoppingItemSheet extends StatefulWidget {
     String? quantityNote,
     bool isRequired,
     double? price,
+    double? quantityValue,
+    String? quantityUnit,
   ) onSubmit;
 
   const _ShoppingItemSheet({this.existing, required this.onSubmit});
@@ -1415,14 +1449,17 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
       TextEditingController(text: widget.existing?.quantityNote);
   late final _priceCtrl =
       TextEditingController(text: _initialPriceText(widget.existing?.price));
+  late final _quantityValueCtrl = TextEditingController(
+      text: _initialPriceText(widget.existing?.quantityValue));
+  late String? _quantityUnit = widget.existing?.quantityUnit;
   late bool _isRequired = widget.existing?.isRequired ?? true;
   bool _saving = false;
   String? _error;
 
-  static String? _initialPriceText(double? price) {
-    if (price == null) return null;
-    final isWhole = price == price.roundToDouble();
-    return isWhole ? price.toStringAsFixed(0) : price.toStringAsFixed(2);
+  static String? _initialPriceText(double? value) {
+    if (value == null) return null;
+    final isWhole = value == value.roundToDouble();
+    return isWhole ? value.toStringAsFixed(0) : value.toStringAsFixed(2);
   }
 
   @override
@@ -1430,6 +1467,7 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
     _nameCtrl.dispose();
     _noteCtrl.dispose();
     _priceCtrl.dispose();
+    _quantityValueCtrl.dispose();
     super.dispose();
   }
 
@@ -1448,6 +1486,24 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
         return;
       }
     }
+    final quantityText = _quantityValueCtrl.text.trim();
+    double? quantityValue;
+    String? quantityUnit = _quantityUnit;
+    if (quantityText.isEmpty && quantityUnit == null) {
+      // both empty: no structured quantity, submit null/null.
+    } else if (quantityText.isEmpty) {
+      setState(() => _error = 'أدخل رقم الكمية');
+      return;
+    } else if (quantityUnit == null) {
+      setState(() => _error = 'اختر نوع الكمية');
+      return;
+    } else {
+      quantityValue = double.tryParse(quantityText);
+      if (quantityValue == null || quantityValue < 0) {
+        setState(() => _error = 'أدخل كمية صحيحة');
+        return;
+      }
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -1458,6 +1514,8 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
         _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
         _isRequired,
         price,
+        quantityValue,
+        quantityUnit,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -1487,6 +1545,29 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
             controller: _nameCtrl,
             enabled: !_saving,
             decoration: const InputDecoration(labelText: 'اسم العنصر'),
+          ),
+          const SizedBox(height: ZadTokens.s3),
+          TextField(
+            controller: _quantityValueCtrl,
+            enabled: !_saving,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'الكمية'),
+          ),
+          const SizedBox(height: ZadTokens.s2),
+          Wrap(
+            spacing: ZadTokens.s2,
+            runSpacing: ZadTokens.s1,
+            children: [
+              for (final unit in _kShoppingQuantityUnits)
+                ChoiceChip(
+                  label: Text(unit.value),
+                  selected: _quantityUnit == unit.key,
+                  onSelected: _saving
+                      ? null
+                      : (_) => setState(() => _quantityUnit =
+                          _quantityUnit == unit.key ? null : unit.key),
+                ),
+            ],
           ),
           const SizedBox(height: ZadTokens.s3),
           TextField(

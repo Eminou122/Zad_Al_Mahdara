@@ -23,6 +23,8 @@ class TeamShoppingItem {
   final String id;
   final String name;
   final String? quantityNote;
+  final double? quantityValue;
+  final String? quantityUnit;
   final bool isRequired;
   final int position;
   final bool bought;
@@ -34,6 +36,8 @@ class TeamShoppingItem {
     required this.id,
     required this.name,
     this.quantityNote,
+    this.quantityValue,
+    this.quantityUnit,
     required this.isRequired,
     required this.position,
     required this.bought,
@@ -47,6 +51,8 @@ class TeamShoppingItem {
         id: j['id'] as String,
         name: j['name'] as String,
         quantityNote: j['quantity_note'] as String?,
+        quantityValue: (j['quantity_value'] as num?)?.toDouble(),
+        quantityUnit: j['quantity_unit'] as String?,
         isRequired: j['is_required'] as bool? ?? true,
         position: (j['position'] as num).toInt(),
         bought: j['bought'] as bool? ?? false,
@@ -61,6 +67,8 @@ class TeamShoppingItem {
         'id': id,
         'name': name,
         'quantity_note': quantityNote,
+        'quantity_value': quantityValue,
+        'quantity_unit': quantityUnit,
         'is_required': isRequired,
         'position': position,
         'bought': bought,

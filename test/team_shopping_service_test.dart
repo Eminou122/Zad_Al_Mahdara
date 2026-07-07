@@ -41,6 +41,8 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     String? quantityNote,
     bool isRequired = true,
     double? price,
+    double? quantityValue,
+    String? quantityUnit,
   }) async {
     if (error != null) throw error!;
     lastRpc = 'add_team_shopping_item';
@@ -51,6 +53,8 @@ class _FakeTeamShoppingService extends TeamShoppingService {
       'p_quantity_note': quantityNote,
       'p_is_required': isRequired,
       'p_price': price,
+      'p_quantity_value': quantityValue,
+      'p_quantity_unit': quantityUnit,
     };
     return returnValue ?? _sampleOverview();
   }
@@ -64,6 +68,8 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     String? quantityNote,
     bool isRequired = true,
     double? price,
+    double? quantityValue,
+    String? quantityUnit,
   }) async {
     if (error != null) throw error!;
     lastRpc = 'update_team_shopping_item';
@@ -75,6 +81,8 @@ class _FakeTeamShoppingService extends TeamShoppingService {
       'p_quantity_note': quantityNote,
       'p_is_required': isRequired,
       'p_price': price,
+      'p_quantity_value': quantityValue,
+      'p_quantity_unit': quantityUnit,
     };
     return returnValue ?? _sampleOverview();
   }
@@ -216,6 +224,31 @@ void main() {
       expect(service.lastParams!['p_price'], isNull);
     });
 
+    test('addItem forwards p_quantity_value and p_quantity_unit when provided',
+        () async {
+      await service.addItem(
+        sessionToken: 'token-1',
+        teamId: 'team-1',
+        name: 'أرز',
+        quantityValue: 2.0,
+        quantityUnit: 'kg',
+      );
+
+      expect(service.lastParams!['p_quantity_value'], 2.0);
+      expect(service.lastParams!['p_quantity_unit'], 'kg');
+    });
+
+    test('addItem forwards null quantity fields when omitted', () async {
+      await service.addItem(
+        sessionToken: 'token-1',
+        teamId: 'team-1',
+        name: 'أرز',
+      );
+
+      expect(service.lastParams!['p_quantity_value'], isNull);
+      expect(service.lastParams!['p_quantity_unit'], isNull);
+    });
+
     test('updateItem calls update_team_shopping_item RPC', () async {
       final result = await service.updateItem(
         sessionToken: 'token-1',
@@ -255,6 +288,34 @@ void main() {
       );
 
       expect(service.lastParams!['p_price'], isNull);
+    });
+
+    test(
+        'updateItem forwards p_quantity_value and p_quantity_unit when provided',
+        () async {
+      await service.updateItem(
+        sessionToken: 'token-1',
+        teamId: 'team-1',
+        itemId: 'item-1',
+        name: 'خبز طازج',
+        quantityValue: 10.0,
+        quantityUnit: 'mru_value',
+      );
+
+      expect(service.lastParams!['p_quantity_value'], 10.0);
+      expect(service.lastParams!['p_quantity_unit'], 'mru_value');
+    });
+
+    test('updateItem forwards null quantity fields when omitted', () async {
+      await service.updateItem(
+        sessionToken: 'token-1',
+        teamId: 'team-1',
+        itemId: 'item-1',
+        name: 'خبز طازج',
+      );
+
+      expect(service.lastParams!['p_quantity_value'], isNull);
+      expect(service.lastParams!['p_quantity_unit'], isNull);
     });
 
     test('deactivateItem calls deactivate_team_shopping_item RPC', () async {
