@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/routing/route_observer.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
+import '../../../core/utils/ltr_fragment.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_bottom_nav.dart';
 import '../../../core/widgets/zad_card.dart';
@@ -382,14 +383,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                       if (item.bought) const _Badge('تم الشراء'),
                       if (item.quantityValue != null && item.quantityUnit != null)
                         Text(
-                          'الكمية: ${_formatShoppingQuantityValue(item.quantityValue!)} '
-                          '${_quantityUnitLabel(item.quantityUnit!)}',
+                          'الكمية: ${ltrFragment('${_formatShoppingQuantityValue(item.quantityValue!)} '
+                              '${_quantityUnitLabel(item.quantityUnit!)}')}',
                           style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted))
                       else if (item.quantityNote != null)
                         Text(item.quantityNote!,
                           style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
                       if (item.price != null)
-                        Text('السعر: ${_formatShoppingPrice(item.price!)}',
+                        Text('السعر: ${ltrFragment(_formatShoppingPrice(item.price!))}',
                           style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
                     ]),
                   ],
@@ -866,7 +867,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                             ),
                           ),
                           Text(
-                            'العدد الكلي: ${d.members.length}',
+                            'العدد الكلي: ${ltrFragment('${d.members.length}')}',
                             style: const TextStyle(
                               color: ZadTokens.textMuted,
                               fontSize: 13,
@@ -1160,7 +1161,7 @@ class _TurnCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   'آخر دور مكتمل: ${s.lastCompletedTurn!.displayName} '
-                  '(${s.lastCompletedTurn!.turnDate})',
+                  '(${ltrFragment(s.lastCompletedTurn!.turnDate)})',
                   style: const TextStyle(
                     fontSize: 12,
                     color: ZadTokens.textMuted,

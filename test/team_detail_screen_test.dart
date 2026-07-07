@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zad_al_mahdara/core/routing/route_observer.dart';
+import 'package:zad_al_mahdara/core/utils/ltr_fragment.dart';
 import 'package:zad_al_mahdara/core/widgets/zad_section_header.dart';
 import 'package:zad_al_mahdara/features/teams/data/team_service.dart';
 import 'package:zad_al_mahdara/features/teams/data/team_shopping_service.dart';
@@ -751,12 +752,22 @@ void main() {
     expect(find.text('محمد'), findsWidgets);
   });
 
+  testWidgets('total member count line isolates the number as LTR',
+      (tester) async {
+    await _pump(tester);
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+
+    // _sampleTeamDetail() has exactly one member.
+    expect(find.text('العدد الكلي: ${ltrFragment('1')}'), findsOneWidget);
+  });
+
   testWidgets('item row shows price when available', (tester) async {
     await _pump(
       tester,
       overview: _sampleShoppingOverview(firstItemPrice: 150.0),
     );
-    expect(find.text('السعر: 150 MRU'), findsOneWidget);
+    expect(find.text('السعر: ${ltrFragment('150 MRU')}'), findsOneWidget);
   });
 
   testWidgets('item row shows no price text when price is null', (tester) async {
@@ -964,7 +975,10 @@ void main() {
         firstItemQuantityUnit: 'kg',
       ),
     );
-    expect(find.text('الكمية: 2 كغ'), findsOneWidget);
+    // Exact match (label outside, LRI/PDI-wrapped fragment inside) proves
+    // the fix directly: this string only matches if the isolate marks are
+    // present exactly around "2 كغ" and nowhere else.
+    expect(find.text('الكمية: ${ltrFragment('2 كغ')}'), findsOneWidget);
   });
 
   testWidgets(
@@ -978,8 +992,8 @@ void main() {
         firstItemPrice: 10.0,
       ),
     );
-    expect(find.text('الكمية: 10 MRU'), findsOneWidget);
-    expect(find.text('السعر: 10 MRU'), findsOneWidget);
+    expect(find.text('الكمية: ${ltrFragment('10 MRU')}'), findsOneWidget);
+    expect(find.text('السعر: ${ltrFragment('10 MRU')}'), findsOneWidget);
   });
 
   testWidgets('clearing structured quantity submits null/null', (tester) async {
