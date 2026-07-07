@@ -95,6 +95,24 @@ class TeamService {
         .toList();
   }
 
+  Future<List<TeamMemberCandidate>> getTeamMemberCandidates(
+    String teamId, {
+    String? query,
+  }) async {
+    final res = await _c.rpc(
+      'get_team_member_candidates',
+      params: {
+        'p_session_token': _token,
+        'p_team_id': teamId,
+        'p_query': query,
+      },
+    );
+    return (res as List)
+        .map((e) =>
+            TeamMemberCandidate.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
   Future<TeamDetail> addTeamMember({
     required String teamId,
     required String profileId,

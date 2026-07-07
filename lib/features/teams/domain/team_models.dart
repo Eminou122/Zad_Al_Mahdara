@@ -185,3 +185,47 @@ class StudentResult {
     phoneMasked: j['phone_masked'] as String,
   );
 }
+
+class TeamMemberCandidate {
+  final String profileId;
+  final String displayName;
+  final String? phoneMasked;
+  final bool isActive;
+  final bool alreadyInCurrentTeam;
+  final String? conflictingTeamId;
+  final String? conflictingTeamName;
+  final String? conflictingTeamType;
+  final bool canAdd;
+  final String status;
+
+  const TeamMemberCandidate({
+    required this.profileId,
+    required this.displayName,
+    this.phoneMasked,
+    required this.isActive,
+    required this.alreadyInCurrentTeam,
+    this.conflictingTeamId,
+    this.conflictingTeamName,
+    this.conflictingTeamType,
+    required this.canAdd,
+    required this.status,
+  });
+
+  bool get isAvailable => status == 'available';
+  bool get isAlreadyAdded => status == 'already_added';
+  bool get isConflictSameCategory => status == 'conflict_same_category';
+
+  factory TeamMemberCandidate.fromJson(Map<String, dynamic> j) =>
+      TeamMemberCandidate(
+        profileId: j['profile_id'] as String,
+        displayName: j['display_name'] as String,
+        phoneMasked: j['phone_masked'] as String?,
+        isActive: j['is_active'] as bool? ?? true,
+        alreadyInCurrentTeam: j['already_in_current_team'] as bool? ?? false,
+        conflictingTeamId: j['conflicting_team_id'] as String?,
+        conflictingTeamName: j['conflicting_team_name'] as String?,
+        conflictingTeamType: j['conflicting_team_type'] as String?,
+        canAdd: j['can_add'] as bool? ?? false,
+        status: j['status'] as String,
+      );
+}

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
+import '../../../core/utils/ltr_fragment.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
@@ -15,10 +18,12 @@ const _paleGreen = Color(0xFFB1F1C8);
 class AddTeamMemberScreen extends StatefulWidget {
   final AuthService authService;
   final String teamId;
+  final TeamService? teamService;
   const AddTeamMemberScreen({
     super.key,
     required this.authService,
     required this.teamId,
+    this.teamService,
   });
 
   @override
@@ -30,75 +35,89 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
   final _searchCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
-  List<StudentResult> _results = [];
-  bool _searching = false;
+  List<TeamMemberCandidate> _candidates = [];
+  String? _currentQuery;
+  bool _loading = true;
+  bool _refreshing = false;
+  bool _hasLoadedOnce = false;
   bool _addingExternal = false;
   String? _error;
   String? _externalError;
   final Set<String> _adding = {};
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
-    _svc = TeamService(widget.authService);
+    _svc = widget.teamService ?? TeamService(widget.authService);
+    _loadCandidates(null);
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _search(String q) async {
-    if (q.trim().length < 2) {
-      setState(() {
-        _results = [];
-        _error = null;
-      });
-      return;
-    }
+  void _onSearchChanged(String q) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      final trimmed = q.trim();
+      _loadCandidates(trimmed.isEmpty ? null : trimmed);
+    });
+  }
+
+  Future<void> _loadCandidates(String? query) async {
+    _currentQuery = query;
     setState(() {
-      _searching = true;
+      if (_hasLoadedOnce) {
+        _refreshing = true;
+      } else {
+        _loading = true;
+      }
       _error = null;
     });
     try {
-      final r = await _svc.searchStudents(q.trim());
+      final r = await _svc.getTeamMemberCandidates(widget.teamId,
+          query: query);
       if (mounted) {
         setState(() {
-          _results = r;
-          _searching = false;
+          _candidates = r;
+          _loading = false;
+          _refreshing = false;
+          _hasLoadedOnce = true;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _error = userErrorText(e);
-          _searching = false;
+          _loading = false;
+          _refreshing = false;
+          _hasLoadedOnce = true;
         });
       }
     }
   }
 
-  Future<void> _add(StudentResult s) async {
-    setState(() => _adding.add(s.profileId));
+  Future<void> _add(TeamMemberCandidate c) async {
+    if (!c.canAdd) return;
+    setState(() => _adding.add(c.profileId));
     try {
-      await _svc.addTeamMember(teamId: widget.teamId, profileId: s.profileId);
+      await _svc.addTeamMember(teamId: widget.teamId, profileId: c.profileId);
       if (mounted) {
-        _searchCtrl.clear();
-        setState(() {
-          _adding.remove(s.profileId);
-          _results = [];
-          _error = null;
-        });
+        setState(() => _adding.remove(c.profileId));
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('تم إضافة الطالب بنجاح')));
+        await _loadCandidates(_currentQuery);
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _adding.remove(s.profileId));
+        setState(() => _adding.remove(c.profileId));
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
@@ -178,7 +197,7 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                     decoration: InputDecoration(
                       hintText: 'ابحث عن طالب بالاسم',
                       prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searching
+                      suffixIcon: _refreshing
                           ? const Padding(
                               padding: EdgeInsets.all(10),
                               child: SizedBox(
@@ -212,7 +231,7 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                         ),
                       ),
                     ),
-                    onChanged: _search,
+                    onChanged: _onSearchChanged,
                   ),
                 ),
                 Padding(
@@ -318,32 +337,40 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
-                    child: _results.isEmpty
-                        ? ListView(
-                            key: const ValueKey('empty'),
-                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
-                            children: [
-                              _CompactEmptyState(
-                                icon: Icons.person_search_outlined,
-                                message: _searchCtrl.text.length < 2
-                                    ? 'ابحث عن طالب للإضافة'
-                                    : 'لا توجد نتائج',
-                              ),
-                            ],
+                    child: _loading
+                        ? const Center(
+                            key: ValueKey('loading'),
+                            child: CircularProgressIndicator(),
                           )
-                        : ListView.builder(
-                            key: const ValueKey('results'),
-                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
-                            itemCount: _results.length,
-                            itemBuilder: (_, i) {
-                              final s = _results[i];
-                              return _StudentResultRow(
-                                student: s,
-                                adding: _adding.contains(s.profileId),
-                                onAdd: () => _add(s),
-                              );
-                            },
-                          ),
+                        : _candidates.isEmpty
+                            ? ListView(
+                                key: const ValueKey('empty'),
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 20, 20, 96),
+                                children: [
+                                  _CompactEmptyState(
+                                    icon: Icons.person_search_outlined,
+                                    message: (_currentQuery == null ||
+                                            _currentQuery!.isEmpty)
+                                        ? 'لا توجد حسابات متاحة'
+                                        : 'لا توجد نتائج',
+                                  ),
+                                ],
+                              )
+                            : ListView.builder(
+                                key: const ValueKey('candidates'),
+                                padding:
+                                    const EdgeInsets.fromLTRB(20, 20, 20, 96),
+                                itemCount: _candidates.length,
+                                itemBuilder: (_, i) {
+                                  final c = _candidates[i];
+                                  return _CandidateRow(
+                                    candidate: c,
+                                    busy: _adding.contains(c.profileId),
+                                    onAdd: () => _add(c),
+                                  );
+                                },
+                              ),
                   ),
                 ),
               ],
@@ -355,14 +382,14 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
   }
 }
 
-class _StudentResultRow extends StatelessWidget {
-  final StudentResult student;
-  final bool adding;
+class _CandidateRow extends StatelessWidget {
+  final TeamMemberCandidate candidate;
+  final bool busy;
   final VoidCallback onAdd;
 
-  const _StudentResultRow({
-    required this.student,
-    required this.adding,
+  const _CandidateRow({
+    required this.candidate,
+    required this.busy,
     required this.onAdd,
   });
 
@@ -377,6 +404,7 @@ class _StudentResultRow extends StatelessWidget {
         border: Border.all(color: _warmBorder),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 44,
@@ -399,7 +427,7 @@ class _StudentResultRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  student.displayName,
+                  candidate.displayName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -407,47 +435,95 @@ class _StudentResultRow extends StatelessWidget {
                     fontSize: 14.5,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  student.phoneMasked,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: ZadTokens.textMuted,
+                if (candidate.phoneMasked != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    ltrFragment(candidate.phoneMasked!),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: ZadTokens.textMuted,
+                    ),
                   ),
-                ),
+                ],
+                if (candidate.isAlreadyAdded) ...[
+                  const SizedBox(height: 4),
+                  const _StatusChip('مضاف'),
+                ] else if (candidate.isConflictSameCategory) ...[
+                  const SizedBox(height: 4),
+                  const _StatusChip('في فريق آخر لنفس الوجبة', warning: true),
+                  if (candidate.conflictingTeamName != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'الفريق: ${candidate.conflictingTeamName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: ZadTokens.textMuted,
+                      ),
+                    ),
+                  ],
+                ],
               ],
             ),
           ),
           const SizedBox(width: ZadTokens.s2),
-          adding
-              ? const SizedBox(
-                  width: 34,
-                  height: 34,
-                  child: Padding(
-                    padding: EdgeInsets.all(7),
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
-              : ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: ZadTokens.primary,
-                    foregroundColor: _paleGreen,
-                    minimumSize: const Size(74, 36),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: const StadiumBorder(),
-                    textStyle: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('إضافة'),
-                  onPressed: onAdd,
+          if (busy)
+            const SizedBox(
+              width: 34,
+              height: 34,
+              child: Padding(
+                padding: EdgeInsets.all(7),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (candidate.canAdd)
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ZadTokens.primary,
+                foregroundColor: _paleGreen,
+                minimumSize: const Size(74, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: const StadiumBorder(),
+                textStyle: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.bold,
                 ),
+              ),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('إضافة'),
+              onPressed: onAdd,
+            ),
         ],
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final bool warning;
+  const _StatusChip(this.label, {this.warning = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = warning ? ZadTokens.warning : ZadTokens.textMuted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.bold,
+          color: color,
+        ),
       ),
     );
   }
