@@ -77,6 +77,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   TeamTurnState? _turnState;
   TeamShoppingOverview? _shoppingOverview;
   bool _loading = true;
+  bool _refreshing = false;
   bool _turnLoading = false;
   bool _shoppingLoading = false;
   bool _routeSubscribed = false;
@@ -117,19 +118,36 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     super.dispose();
   }
 
+  // Cold start (no _detail yet) shows the full-page spinner/error via
+  // _loading/_error. Once data exists, later calls (didPopNext,
+  // pull-to-refresh) run as a silent background refresh via _refreshing
+  // instead, so returning to this screen never tears down and re-animates
+  // content the user can already see.
   Future<void> _load() async {
+    final isInitialLoad = _detail == null;
     setState(() {
-      _loading = true;
+      if (isInitialLoad) {
+        _loading = true;
+      } else {
+        _refreshing = true;
+      }
       _error = null;
     });
     try {
       _detail = await _svc.getTeamDetail(widget.teamId);
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _error = userErrorText(e);
-          _loading = false;
-        });
+        if (isInitialLoad) {
+          setState(() {
+            _error = userErrorText(e);
+            _loading = false;
+          });
+        } else {
+          setState(() => _refreshing = false);
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+        }
       }
       return;
     }
@@ -140,6 +158,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     if (mounted) {
       setState(() {
         _loading = false;
+        _refreshing = false;
       });
     }
   }
@@ -154,9 +173,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   Future<void> _loadShopping() async {
     final token = widget.authService.currentToken;
     if (token == null) return;
+    // Same cold-start-vs-refresh split as _load(): only clear a prior error
+    // (and let _shoppingCard show its spinner-only state) when there's no
+    // list on screen yet; a refresh of an already-visible list keeps
+    // showing the old items until fresh data arrives.
+    final isInitialShoppingLoad = _shoppingOverview == null;
     setState(() {
       _shoppingLoading = true;
-      _shoppingError = null;
+      if (isInitialShoppingLoad) _shoppingError = null;
     });
     try {
       final overview = await _shoppingSvc.getShoppingList(
@@ -166,22 +190,33 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
       if (mounted) {
         setState(() {
           _shoppingOverview = overview;
+          _shoppingError = null;
           _shoppingLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _shoppingError = userErrorText(e);
-          _shoppingLoading = false;
-        });
+        if (isInitialShoppingLoad) {
+          setState(() {
+            _shoppingError = userErrorText(e);
+            _shoppingLoading = false;
+          });
+        } else {
+          setState(() => _shoppingLoading = false);
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+        }
       }
     }
   }
 
   List<Widget> _shoppingCard() {
     final o = _shoppingOverview;
-    if (_shoppingLoading) {
+    // o == null guards below: once a list has loaded once, a background
+    // refresh (_shoppingLoading/_shoppingError changing) must not replace
+    // the visible items with a spinner or error card.
+    if (_shoppingLoading && o == null) {
       return [
         ZadCard(
           margin: const EdgeInsets.only(bottom: ZadTokens.s4),
@@ -202,7 +237,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
         ),
       ];
     }
-    if (_shoppingError != null) {
+    if (_shoppingError != null && o == null) {
       return [
         ZadCard(
           margin: const EdgeInsets.only(bottom: ZadTokens.s4),
@@ -592,10 +627,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    // Only a true cold start (no _detail yet) gets the full-page
+    // spinner/error takeover. Once data exists, _load() runs as a silent
+    // background refresh (_refreshing) and this branch is skipped entirely,
+    // so existing content, scroll position, and entry animations survive.
+    if (_loading && _detail == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    if (_error != null) {
+    if (_error != null && _detail == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('الفريق')),
         body: Center(
@@ -609,7 +648,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     final d = _detail!;
     final team = d.team;
     return Scaffold(
-      appBar: AppBar(title: Text(team.name)),
+      appBar: AppBar(
+        title: Text(team.name),
+        bottom: _refreshing
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : null,
+      ),
       // Stitch team_detail keeps the bottom nav with الفرق active; the FAB
       // floats above it automatically. Back arrow stays (detail page).
       bottomNavigationBar: const ZadBottomNav(current: ZadTab.teams),
