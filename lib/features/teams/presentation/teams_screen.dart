@@ -32,7 +32,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
   List<TeamSummary> _mine = [];
   List<TeamSummary> _public = [];
   bool _loading = true;
-  String? _error;
+  String? _mineError;
+  String? _publicError;
 
   late final PageController _pageController;
   int _teamPage = 0;
@@ -67,27 +68,41 @@ class _TeamsScreenState extends State<TeamsScreen> {
   Future<void> _load() async {
     setState(() {
       _loading = true;
-      _error = null;
+      _mineError = null;
+      _publicError = null;
     });
-    try {
-      final results = await Future.wait([
-        _svc.getMyTeams(),
-        _svc.getPublicTeams(),
-      ]);
-      if (mounted) {
-        setState(() {
-          _mine = results[0];
-          _public = results[1];
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = userErrorText(e);
-          _loading = false;
-        });
-      }
+    List<TeamSummary>? mine;
+    List<TeamSummary>? publicTeams;
+    String? mineError;
+    String? publicError;
+
+    await Future.wait([
+      _svc.getMyTeams().then(
+        (teams) {
+          mine = teams;
+        },
+        onError: (Object e) {
+          mineError = userErrorText(e);
+        },
+      ),
+      _svc.getPublicTeams().then(
+        (teams) {
+          publicTeams = teams;
+        },
+        onError: (Object e) {
+          publicError = userErrorText(e);
+        },
+      ),
+    ]);
+
+    if (mounted) {
+      setState(() {
+        if (mine != null) _mine = mine!;
+        if (publicTeams != null) _public = publicTeams!;
+        _mineError = mineError;
+        _publicError = publicError;
+        _loading = false;
+      });
     }
   }
 
@@ -149,15 +164,6 @@ class _TeamsScreenState extends State<TeamsScreen> {
             ),
             if (_loading)
               const Expanded(child: Center(child: CircularProgressIndicator()))
-            else if (_error != null)
-              Expanded(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(ZadTokens.s4),
-                    child: ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
-                  ),
-                ),
-              )
             else
               Expanded(
                 child: PageView(
@@ -166,11 +172,11 @@ class _TeamsScreenState extends State<TeamsScreen> {
                   children: [
                     RefreshIndicator(
                       onRefresh: _load,
-                      child: _buildList(isMine: true),
+                      child: _buildPage(isMine: true),
                     ),
                     RefreshIndicator(
                       onRefresh: _load,
-                      child: _buildList(isMine: false),
+                      child: _buildPage(isMine: false),
                     ),
                   ],
                 ),
@@ -205,6 +211,36 @@ class _TeamsScreenState extends State<TeamsScreen> {
       ),
     ),
   );
+
+  Widget _buildPage({required bool isMine}) {
+    final error = isMine ? _mineError : _publicError;
+    if (error == null) return _buildList(isMine: isMine);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final side = ((constraints.maxWidth - ZadTokens.contentMaxWidth) / 2)
+            .clamp(ZadTokens.s3, double.infinity);
+        return ListView(
+          padding: EdgeInsets.symmetric(
+            horizontal: side,
+            vertical: ZadTokens.s6,
+          ),
+          children: [
+            ZadInfoBanner(error, kind: ZadBannerKind.danger),
+            const SizedBox(height: ZadTokens.s3),
+            Align(
+              alignment: Alignment.center,
+              child: OutlinedButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+                label: const Text('إعادة المحاولة'),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   Widget _buildList({required bool isMine}) {
     final items = isMine ? _mine : _public;
