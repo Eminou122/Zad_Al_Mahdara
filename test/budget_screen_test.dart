@@ -415,16 +415,47 @@ void main() {
   });
 
   group('viewport', () {
-    testWidgets('renders key elements at 320px (pre-existing SpendingProgressCard overflow allowed)', (tester) async {
+    testWidgets('renders key elements at 320px without overflow', (tester) async {
       tester.view.physicalSize = const Size(320, 800);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
+      // Large figures on purpose: this is the width/data combination that
+      // previously triggered a RenderFlex overflow in SpendingProgressCard.
+      final stressOverview = BudgetOverview(
+        budgetPlan: BudgetPlan(
+          id: 'plan-1',
+          totalMoney: 999999.99,
+          startDate: DateTime(2026, 7, 1),
+          endDate: DateTime(2026, 7, 30),
+          isActive: true,
+        ),
+        summary: const BudgetSummary(
+          daysTotal: 30,
+          daysRemaining: 10,
+          totalSpent: 200,
+          subscriptionTotal: 100,
+          remainingMoney: 700000.5,
+          safeDailyLimit: 70,
+          todaySpending: 88888.88,
+          isOverDailyLimit: false,
+          plannedRecurringTotal: 350,
+          actualRecurringTotal: 25,
+          skippedRecurringTotal: 50,
+          skippedRecurringCount: 2,
+          todayRecurringExpectedTotal: 25,
+          todayRecurringPurchasedTotal: 25,
+          todayRecurringSkippedCount: 0,
+        ),
+        activeSubscriptions: const [],
+        recentExpenses: const [],
+      );
+
       final auth = _authWithProfile('profile-1');
       final service = _StubBudgetService(
         authService: auth,
-        overview: _overview,
+        overview: stressOverview,
         recurringStats: _recurringStats,
       );
 
@@ -432,8 +463,8 @@ void main() {
         BudgetScreen(authService: auth, budgetService: service),
       ));
       await tester.pumpAndSettle();
-      // Overflow warnings from SpendingProgressCard at 320px are pre-existing
-      while (tester.takeException() != null) {}
+      // No manual exception handling: an uncaught RenderFlex overflow
+      // fails this test automatically via flutter_test's teardown.
 
       expect(find.text('ميزانيتي'), findsOneWidget);
       expect(find.text('إجراءات سريعة'), findsOneWidget);
