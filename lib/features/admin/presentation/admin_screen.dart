@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
+import '../../../core/utils/ltr_fragment.dart';
 import '../../../core/widgets/zad_badge.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_confirm.dart';
@@ -626,9 +627,9 @@ class _IssuedCodeDialog extends StatelessWidget {
           onPressed: () async {
             await Clipboard.setData(ClipboardData(text: issued.code));
             if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('تم نسخ الرمز')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('تم نسخ الرمز')));
             }
           },
           icon: const Icon(Icons.copy),
@@ -667,7 +668,7 @@ class _TeamCard extends StatelessWidget {
             children: [
               ZadBadge(_teamType(team.teamType), gold: true),
               ZadBadge(_teamStatus(team.status)),
-              ZadBadge('${team.memberCount} عضو'),
+              ZadBadge('${ltrFragment('${team.memberCount}')} عضو'),
             ],
           ),
           const SizedBox(height: ZadTokens.s2),
@@ -677,8 +678,9 @@ class _TeamCard extends StatelessWidget {
           ),
           const SizedBox(height: ZadTokens.s1),
           Text(
-            'نشطون: ${team.activeMemberCount} • متوقفون: ${team.inactiveMemberCount}'
-            '${team.createdAt == null ? '' : ' • ${_fmtDate(team.createdAt)}'}',
+            'نشطون: ${ltrFragment('${team.activeMemberCount}')} • '
+            'متوقفون: ${ltrFragment('${team.inactiveMemberCount}')}'
+            '${team.createdAt == null ? '' : ' • ${ltrFragment(_fmtDate(team.createdAt))}'}',
             style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted),
           ),
         ],
@@ -708,8 +710,8 @@ class _MetaLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'أضيف: ${_fmtDate(createdAt)}'
-      '${lastLoginAt == null ? '' : ' • آخر دخول: ${_fmtDate(lastLoginAt)}'}',
+      'أضيف: ${ltrFragment(_fmtDate(createdAt))}'
+      '${lastLoginAt == null ? '' : ' • آخر دخول: ${ltrFragment(_fmtDate(lastLoginAt))}'}',
       style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted),
       maxLines: 2,
       overflow: TextOverflow.ellipsis,

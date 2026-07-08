@@ -16,38 +16,37 @@ TeamMemberCandidate _candidate({
   String? conflictingTeamType,
   bool canAdd = true,
   String status = 'available',
-}) =>
-    TeamMemberCandidate(
-      profileId: profileId,
-      displayName: displayName,
-      phoneMasked: phoneMasked,
-      isActive: true,
-      alreadyInCurrentTeam: alreadyInCurrentTeam,
-      conflictingTeamId: conflictingTeamId,
-      conflictingTeamName: conflictingTeamName,
-      conflictingTeamType: conflictingTeamType,
-      canAdd: canAdd,
-      status: status,
-    );
+}) => TeamMemberCandidate(
+  profileId: profileId,
+  displayName: displayName,
+  phoneMasked: phoneMasked,
+  isActive: true,
+  alreadyInCurrentTeam: alreadyInCurrentTeam,
+  conflictingTeamId: conflictingTeamId,
+  conflictingTeamName: conflictingTeamName,
+  conflictingTeamType: conflictingTeamType,
+  canAdd: canAdd,
+  status: status,
+);
 
 TeamDetail _dummyTeamDetail() => TeamDetail(
-      team: TeamInfo(
-        id: 'team-1',
-        name: 'فريق الغداء',
-        teamType: 'lunch',
-        isPublic: true,
-        status: 'open',
-        leaderId: 'leader-1',
-        leaderName: 'محمد',
-        memberCount: 1,
-        activeMemberCount: 1,
-        inactiveMemberCount: 0,
-        createdAt: DateTime(2026, 7, 1),
-      ),
-      members: const [],
-      canEdit: true,
-      isMember: true,
-    );
+  team: TeamInfo(
+    id: 'team-1',
+    name: 'فريق الغداء',
+    teamType: 'lunch',
+    isPublic: true,
+    status: 'open',
+    leaderId: 'leader-1',
+    leaderName: 'محمد',
+    memberCount: 1,
+    activeMemberCount: 1,
+    inactiveMemberCount: 0,
+    createdAt: DateTime(2026, 7, 1),
+  ),
+  members: const [],
+  canEdit: true,
+  isMember: true,
+);
 
 class _FakeTeamService extends TeamService {
   List<TeamMemberCandidate> candidates;
@@ -86,16 +85,18 @@ class _FakeTeamService extends TeamService {
     // on the next candidate fetch, same as real get_team_member_candidates
     // would report after add_team_member's insert.
     candidates = candidates
-        .map((c) => c.profileId == profileId
-            ? _candidate(
-                profileId: c.profileId,
-                displayName: c.displayName,
-                phoneMasked: c.phoneMasked,
-                alreadyInCurrentTeam: true,
-                canAdd: false,
-                status: 'already_added',
-              )
-            : c)
+        .map(
+          (c) => c.profileId == profileId
+              ? _candidate(
+                  profileId: c.profileId,
+                  displayName: c.displayName,
+                  phoneMasked: c.phoneMasked,
+                  alreadyInCurrentTeam: true,
+                  canAdd: false,
+                  status: 'already_added',
+                )
+              : c,
+        )
         .toList();
     return _dummyTeamDetail();
   }
@@ -121,27 +122,33 @@ Widget _buildTest(TeamService teamService) {
 
 void main() {
   testWidgets(
-      'screen initially loads and shows candidates without typing search',
-      (tester) async {
-    final svc = _FakeTeamService(candidates: [
-      _candidate(profileId: 'p1', displayName: 'أحمد'),
-      _candidate(profileId: 'p2', displayName: 'سالم'),
-    ]);
-    await tester.pumpWidget(_buildTest(svc));
-    await tester.pumpAndSettle();
+    'screen initially loads and shows candidates without typing search',
+    (tester) async {
+      final svc = _FakeTeamService(
+        candidates: [
+          _candidate(profileId: 'p1', displayName: 'أحمد'),
+          _candidate(profileId: 'p2', displayName: 'سالم'),
+        ],
+      );
+      await tester.pumpWidget(_buildTest(svc));
+      await tester.pumpAndSettle();
 
-    expect(svc.getCandidatesCallCount, 1);
-    expect(svc.lastQuery, isNull);
-    expect(find.text('أحمد'), findsOneWidget);
-    expect(find.text('سالم'), findsOneWidget);
-  });
+      expect(svc.getCandidatesCallCount, 1);
+      expect(svc.lastQuery, isNull);
+      expect(find.text('أحمد'), findsOneWidget);
+      expect(find.text('سالم'), findsOneWidget);
+    },
+  );
 
-  testWidgets('search field calls candidate RPC and filters shown candidates',
-      (tester) async {
-    final svc = _FakeTeamService(candidates: [
-      _candidate(profileId: 'p1', displayName: 'أحمد'),
-      _candidate(profileId: 'p2', displayName: 'سالم'),
-    ]);
+  testWidgets('search field calls candidate RPC and filters shown candidates', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService(
+      candidates: [
+        _candidate(profileId: 'p1', displayName: 'أحمد'),
+        _candidate(profileId: 'p2', displayName: 'سالم'),
+      ],
+    );
     await tester.pumpWidget(_buildTest(svc));
     await tester.pumpAndSettle();
 
@@ -157,9 +164,9 @@ void main() {
   });
 
   testWidgets('available row shows enabled إضافة button', (tester) async {
-    final svc = _FakeTeamService(candidates: [
-      _candidate(profileId: 'p1', displayName: 'أحمد'),
-    ]);
+    final svc = _FakeTeamService(
+      candidates: [_candidate(profileId: 'p1', displayName: 'أحمد')],
+    );
     await tester.pumpWidget(_buildTest(svc));
     await tester.pumpAndSettle();
 
@@ -169,9 +176,9 @@ void main() {
   });
 
   testWidgets('tapping available row calls addTeamMember', (tester) async {
-    final svc = _FakeTeamService(candidates: [
-      _candidate(profileId: 'p1', displayName: 'أحمد'),
-    ]);
+    final svc = _FakeTeamService(
+      candidates: [_candidate(profileId: 'p1', displayName: 'أحمد')],
+    );
     await tester.pumpWidget(_buildTest(svc));
     await tester.pumpAndSettle();
 
@@ -181,11 +188,12 @@ void main() {
     expect(svc.lastAddedProfileId, 'p1');
   });
 
-  testWidgets('after successful add, candidates refresh and row becomes مضاف',
-      (tester) async {
-    final svc = _FakeTeamService(candidates: [
-      _candidate(profileId: 'p1', displayName: 'أحمد'),
-    ]);
+  testWidgets('after successful add, candidates refresh and row becomes مضاف', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService(
+      candidates: [_candidate(profileId: 'p1', displayName: 'أحمد')],
+    );
     await tester.pumpWidget(_buildTest(svc));
     await tester.pumpAndSettle();
 
@@ -197,17 +205,20 @@ void main() {
     expect(svc.getCandidatesCallCount, 2);
   });
 
-  testWidgets('already-added row shows مضاف and has no add control',
-      (tester) async {
-    final svc = _FakeTeamService(candidates: [
-      _candidate(
-        profileId: 'p1',
-        displayName: 'أحمد',
-        alreadyInCurrentTeam: true,
-        canAdd: false,
-        status: 'already_added',
-      ),
-    ]);
+  testWidgets('already-added row shows مضاف and has no add control', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService(
+      candidates: [
+        _candidate(
+          profileId: 'p1',
+          displayName: 'أحمد',
+          alreadyInCurrentTeam: true,
+          canAdd: false,
+          status: 'already_added',
+        ),
+      ],
+    );
     await tester.pumpWidget(_buildTest(svc));
     await tester.pumpAndSettle();
 
@@ -216,18 +227,21 @@ void main() {
     expect(svc.lastAddedProfileId, isNull);
   });
 
-  testWidgets('conflict row shows warning and has no add control',
-      (tester) async {
-    final svc = _FakeTeamService(candidates: [
-      _candidate(
-        profileId: 'p1',
-        displayName: 'أحمد',
-        canAdd: false,
-        status: 'conflict_same_category',
-        conflictingTeamId: 'team-2',
-        conflictingTeamType: 'breakfast',
-      ),
-    ]);
+  testWidgets('conflict row shows warning and has no add control', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService(
+      candidates: [
+        _candidate(
+          profileId: 'p1',
+          displayName: 'أحمد',
+          canAdd: false,
+          status: 'conflict_same_category',
+          conflictingTeamId: 'team-2',
+          conflictingTeamType: 'breakfast',
+        ),
+      ],
+    );
     await tester.pumpWidget(_buildTest(svc));
     await tester.pumpAndSettle();
 
@@ -236,19 +250,22 @@ void main() {
     expect(svc.lastAddedProfileId, isNull);
   });
 
-  testWidgets('conflict row shows conflicting team name when present',
-      (tester) async {
-    final svc = _FakeTeamService(candidates: [
-      _candidate(
-        profileId: 'p1',
-        displayName: 'أحمد',
-        canAdd: false,
-        status: 'conflict_same_category',
-        conflictingTeamId: 'team-2',
-        conflictingTeamName: 'فريق الفطور',
-        conflictingTeamType: 'breakfast',
-      ),
-    ]);
+  testWidgets('conflict row shows conflicting team name when present', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService(
+      candidates: [
+        _candidate(
+          profileId: 'p1',
+          displayName: 'أحمد',
+          canAdd: false,
+          status: 'conflict_same_category',
+          conflictingTeamId: 'team-2',
+          conflictingTeamName: 'فريق الفطور',
+          conflictingTeamType: 'breakfast',
+        ),
+      ],
+    );
     await tester.pumpWidget(_buildTest(svc));
     await tester.pumpAndSettle();
 
@@ -256,32 +273,60 @@ void main() {
   });
 
   testWidgets('phone_masked is isolated with ltrFragment', (tester) async {
-    final svc = _FakeTeamService(candidates: [
-      _candidate(profileId: 'p1', displayName: 'أحمد', phoneMasked: '20****56'),
-    ]);
+    final svc = _FakeTeamService(
+      candidates: [
+        _candidate(
+          profileId: 'p1',
+          displayName: 'أحمد',
+          phoneMasked: '20****56',
+        ),
+      ],
+    );
     await tester.pumpWidget(_buildTest(svc));
     await tester.pumpAndSettle();
 
     expect(find.text(ltrFragment('20****56')), findsOneWidget);
   });
 
-  testWidgets(
-      'shows a loading indicator on first load then لا توجد حسابات متاحة for an empty default list',
-      (tester) async {
-    final svc = _FakeTeamService(candidates: const []);
-    await tester.pumpWidget(_buildTest(svc));
-    await tester.pump();
-    expect(find.byType(CircularProgressIndicator), findsWidgets);
+  testWidgets('does not overflow at 320px width', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(320, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
+    final svc = _FakeTeamService(
+      candidates: [
+        _candidate(
+          profileId: 'p1',
+          displayName: 'طالب باسم طويل للفحص',
+          phoneMasked: '20****56',
+        ),
+      ],
+    );
+    await tester.pumpWidget(_buildTest(svc));
     await tester.pumpAndSettle();
-    expect(find.text('لا توجد حسابات متاحة'), findsOneWidget);
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('طالب باسم طويل للفحص'), findsOneWidget);
   });
 
-  testWidgets('shows لا توجد نتائج when a search yields nothing',
-      (tester) async {
-    final svc = _FakeTeamService(candidates: [
-      _candidate(profileId: 'p1', displayName: 'أحمد'),
-    ]);
+  testWidgets(
+    'shows a loading indicator on first load then لا توجد حسابات متاحة for an empty default list',
+    (tester) async {
+      final svc = _FakeTeamService(candidates: const []);
+      await tester.pumpWidget(_buildTest(svc));
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+
+      await tester.pumpAndSettle();
+      expect(find.text('لا توجد حسابات متاحة'), findsOneWidget);
+    },
+  );
+
+  testWidgets('shows لا توجد نتائج when a search yields nothing', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService(
+      candidates: [_candidate(profileId: 'p1', displayName: 'أحمد')],
+    );
     await tester.pumpWidget(_buildTest(svc));
     await tester.pumpAndSettle();
 

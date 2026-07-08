@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zad_al_mahdara/core/utils/ltr_fragment.dart';
 import 'package:zad_al_mahdara/features/admin/data/admin_models.dart';
 import 'package:zad_al_mahdara/features/admin/data/admin_service.dart';
 import 'package:zad_al_mahdara/features/admin/presentation/admin_screen.dart';
@@ -73,6 +74,28 @@ void main() {
     await _pump(tester, _FakeAdminService());
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('admin team and meta numeric fragments are isolated', (
+    tester,
+  ) async {
+    await _pump(tester, _FakeAdminService());
+
+    expect(find.text('${ltrFragment('3')} عضو'), findsOneWidget);
+    expect(
+      find.text(
+        'نشطون: ${ltrFragment('2')} • متوقفون: ${ltrFragment('1')}'
+        ' • ${ltrFragment('2026-07-01')}',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'أضيف: ${ltrFragment('2026-07-01')}'
+        ' • آخر دخول: ${ltrFragment('2026-07-02')}',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('admin reset requests hide sensitive fields and render LTR', (

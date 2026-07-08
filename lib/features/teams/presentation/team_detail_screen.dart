@@ -224,7 +224,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(width: double.infinity,
+              const SizedBox(
+                width: double.infinity,
                 child: ZadSectionHeader('قائمة المشتريات'),
               ),
               const Center(
@@ -245,12 +246,16 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(width: double.infinity,
+              const SizedBox(
+                width: double.infinity,
                 child: ZadSectionHeader('قائمة المشتريات'),
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: ZadTokens.s2),
-                child: ZadInfoBanner(_shoppingError!, kind: ZadBannerKind.warning),
+                child: ZadInfoBanner(
+                  _shoppingError!,
+                  kind: ZadBannerKind.warning,
+                ),
               ),
             ],
           ),
@@ -264,13 +269,16 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(width: double.infinity,
+              const SizedBox(
+                width: double.infinity,
                 child: ZadSectionHeader('قائمة المشتريات'),
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: ZadTokens.s2),
-                child: Text('لم تتوفر قائمة المشتريات حالياً',
-                  style: TextStyle(color: ZadTokens.textMuted)),
+                child: Text(
+                  'لم تتوفر قائمة المشتريات حالياً',
+                  style: TextStyle(color: ZadTokens.textMuted),
+                ),
               ),
             ],
           ),
@@ -312,90 +320,135 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                 padding: const EdgeInsets.only(bottom: ZadTokens.s3),
                 child: Text(
                   'المسؤول اليوم: ${o.responsibleMember!.displayName}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             if (o.items.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: ZadTokens.s4),
                 child: Center(
-                  child: Text('لم تتم إضافة عناصر بعد',
-                    style: TextStyle(color: ZadTokens.textMuted)),
+                  child: Text(
+                    'لم تتم إضافة عناصر بعد',
+                    style: TextStyle(color: ZadTokens.textMuted),
+                  ),
                 ),
               )
             else
-              ...o.items.map((item) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(children: [
-                      if (o.canMark)
-                        Padding(
-                          padding: const EdgeInsetsDirectional.only(end: ZadTokens.s2 - 2),
-                          child: SizedBox(
-                            width: 24, height: 24,
-                            child: Checkbox(
-                              value: item.bought,
-                              onChanged: _markingItems.contains(item.id)
-                                  ? null : (v) => _markItem(item.id, v ?? false),
+              ...o.items.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          if (o.canMark)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(
+                                end: ZadTokens.s2 - 2,
+                              ),
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: Checkbox(
+                                  value: item.bought,
+                                  onChanged: _markingItems.contains(item.id)
+                                      ? null
+                                      : (v) => _markItem(item.id, v ?? false),
+                                ),
+                              ),
+                            ),
+                          Expanded(
+                            child: Text(
+                              item.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                fontSize: 14,
+                                decoration: item.bought
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                color: item.bought ? ZadTokens.textMuted : null,
+                              ),
                             ),
                           ),
-                        ),
-                      Expanded(
-                        child: Text(item.name,
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14,
-                            decoration: item.bought ? TextDecoration.lineThrough : null,
-                            color: item.bought ? ZadTokens.textMuted : null,
-                          ),
-                        ),
+                          if (o.canEditList) ...[
+                            IconButton(
+                              tooltip: 'تعديل',
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              onPressed: _removingItems.contains(item.id)
+                                  ? null
+                                  : () =>
+                                        _openShoppingItemSheet(existing: item),
+                            ),
+                            IconButton(
+                              tooltip: 'إزالة',
+                              visualDensity: VisualDensity.compact,
+                              icon: _removingItems.contains(item.id)
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.delete_outline,
+                                      size: 18,
+                                      color: ZadTokens.danger,
+                                    ),
+                              onPressed: _removingItems.contains(item.id)
+                                  ? null
+                                  : () => _removeShoppingItem(item),
+                            ),
+                          ],
+                        ],
                       ),
-                      if (o.canEditList) ...[
-                        IconButton(
-                          tooltip: 'تعديل',
-                          visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          onPressed: _removingItems.contains(item.id)
-                              ? null
-                              : () => _openShoppingItemSheet(existing: item),
-                        ),
-                        IconButton(
-                          tooltip: 'إزالة',
-                          visualDensity: VisualDensity.compact,
-                          icon: _removingItems.contains(item.id)
-                              ? const SizedBox(
-                                  width: 16, height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.delete_outline, size: 18,
-                                  color: ZadTokens.danger),
-                          onPressed: _removingItems.contains(item.id)
-                              ? null
-                              : () => _removeShoppingItem(item),
-                        ),
-                      ],
-                    ]),
-                    const SizedBox(height: 2),
-                    Wrap(spacing: 4, children: [
-                      if (item.isRequired) const _Badge('أساسي', gold: true),
-                      if (!item.isRequired) const _Badge('اختياري'),
-                      if (item.bought) const _Badge('تم الشراء'),
-                      if (item.quantityValue != null && item.quantityUnit != null)
-                        Text(
-                          'الكمية: ${ltrFragment('${_formatShoppingQuantityValue(item.quantityValue!)} '
+                      const SizedBox(height: 2),
+                      Wrap(
+                        spacing: 4,
+                        children: [
+                          if (item.isRequired)
+                            const _Badge('أساسي', gold: true),
+                          if (!item.isRequired) const _Badge('اختياري'),
+                          if (item.bought) const _Badge('تم الشراء'),
+                          if (item.quantityValue != null &&
+                              item.quantityUnit != null)
+                            Text(
+                              'الكمية: ${ltrFragment('${_formatShoppingQuantityValue(item.quantityValue!)} '
                               '${_quantityUnitLabel(item.quantityUnit!)}')}',
-                          style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted))
-                      else if (item.quantityNote != null)
-                        Text(item.quantityNote!,
-                          style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
-                      if (item.price != null)
-                        Text('السعر: ${ltrFragment(_formatShoppingPrice(item.price!))}',
-                          style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
-                    ]),
-                  ],
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: ZadTokens.textMuted,
+                              ),
+                            )
+                          else if (item.quantityNote != null)
+                            Text(
+                              item.quantityNote!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: ZadTokens.textMuted,
+                              ),
+                            ),
+                          if (item.price != null)
+                            Text(
+                              'السعر: ${ltrFragment(_formatShoppingPrice(item.price!))}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: ZadTokens.textMuted,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              )),
+              ),
           ],
         ),
       ),
@@ -422,9 +475,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     } catch (e) {
       if (mounted) {
         setState(() => _markingItems.remove(itemId));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(userErrorText(e))),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
       }
     }
   }
@@ -439,32 +492,39 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: _ShoppingItemSheet(
           existing: existing,
-          onSubmit: (name, quantityNote, isRequired, price, quantityValue,
-              quantityUnit) async {
-            final overview = existing == null
-                ? await _shoppingSvc.addItem(
-                    sessionToken: token,
-                    teamId: widget.teamId,
-                    name: name,
-                    quantityNote: quantityNote,
-                    isRequired: isRequired,
-                    price: price,
-                    quantityValue: quantityValue,
-                    quantityUnit: quantityUnit,
-                  )
-                : await _shoppingSvc.updateItem(
-                    sessionToken: token,
-                    teamId: widget.teamId,
-                    itemId: existing.id,
-                    name: name,
-                    quantityNote: quantityNote,
-                    isRequired: isRequired,
-                    price: price,
-                    quantityValue: quantityValue,
-                    quantityUnit: quantityUnit,
-                  );
-            if (mounted) setState(() => _shoppingOverview = overview);
-          },
+          onSubmit:
+              (
+                name,
+                quantityNote,
+                isRequired,
+                price,
+                quantityValue,
+                quantityUnit,
+              ) async {
+                final overview = existing == null
+                    ? await _shoppingSvc.addItem(
+                        sessionToken: token,
+                        teamId: widget.teamId,
+                        name: name,
+                        quantityNote: quantityNote,
+                        isRequired: isRequired,
+                        price: price,
+                        quantityValue: quantityValue,
+                        quantityUnit: quantityUnit,
+                      )
+                    : await _shoppingSvc.updateItem(
+                        sessionToken: token,
+                        teamId: widget.teamId,
+                        itemId: existing.id,
+                        name: name,
+                        quantityNote: quantityNote,
+                        isRequired: isRequired,
+                        price: price,
+                        quantityValue: quantityValue,
+                        quantityUnit: quantityUnit,
+                      );
+                if (mounted) setState(() => _shoppingOverview = overview);
+              },
         ),
       ),
     );
@@ -496,9 +556,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     } catch (e) {
       if (mounted) {
         setState(() => _removingItems.remove(item.id));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(userErrorText(e))),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
       }
     }
   }
@@ -734,9 +794,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                                                   gold: true,
                                                 ),
                                                 _HeroBadge(
-                                                  team.isPublic
-                                                      ? 'عام'
-                                                      : 'خاص',
+                                                  team.isPublic ? 'عام' : 'خاص',
                                                 ),
                                               ],
                                             ),
@@ -750,8 +808,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                                                   .titleLarge
                                                   ?.copyWith(
                                                     color: Colors.white,
-                                                    fontWeight:
-                                                        FontWeight.bold,
+                                                    fontWeight: FontWeight.bold,
                                                   ),
                                             ),
                                           ],
@@ -798,9 +855,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                                     children: [
                                       _HeroStat(
                                         Icons.groups_outlined,
-                                        '${team.memberCount} عضو '
-                                        '(نشط ${team.activeMemberCount} · '
-                                        'غير نشط ${team.inactiveMemberCount})',
+                                        '${ltrFragment('${team.memberCount}')} عضو '
+                                        '(نشط ${ltrFragment('${team.activeMemberCount}')} · '
+                                        'غير نشط ${ltrFragment('${team.inactiveMemberCount}')})',
                                       ),
                                       _HeroStat(
                                         Icons.verified_user_outlined,
@@ -891,8 +948,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                         ),
                         child: Column(
                           children: [
-                            for (final entry
-                                in d.members.asMap().entries) ...[
+                            for (final entry in d.members.asMap().entries) ...[
                               if (entry.key > 0)
                                 const Divider(
                                   height: 1,
@@ -1268,7 +1324,7 @@ class _MemberTile extends StatelessWidget {
     final showActions = canManage && !isLeader;
     final caption = [
       if (!member.hasAccount) 'بدون حساب',
-      if (member.phoneMasked != null) member.phoneMasked!,
+      if (member.phoneMasked != null) ltrFragment(member.phoneMasked!),
     ].join(' · ');
 
     // Info part fades for inactive members (Stitch); action buttons stay
@@ -1483,7 +1539,8 @@ class _ShoppingItemSheet extends StatefulWidget {
     double? price,
     double? quantityValue,
     String? quantityUnit,
-  ) onSubmit;
+  )
+  onSubmit;
 
   const _ShoppingItemSheet({this.existing, required this.onSubmit});
 
@@ -1493,12 +1550,15 @@ class _ShoppingItemSheet extends StatefulWidget {
 
 class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
   late final _nameCtrl = TextEditingController(text: widget.existing?.name);
-  late final _noteCtrl =
-      TextEditingController(text: widget.existing?.quantityNote);
-  late final _priceCtrl =
-      TextEditingController(text: _initialPriceText(widget.existing?.price));
+  late final _noteCtrl = TextEditingController(
+    text: widget.existing?.quantityNote,
+  );
+  late final _priceCtrl = TextEditingController(
+    text: _initialPriceText(widget.existing?.price),
+  );
   late final _quantityValueCtrl = TextEditingController(
-      text: _initialPriceText(widget.existing?.quantityValue));
+    text: _initialPriceText(widget.existing?.quantityValue),
+  );
   late String? _quantityUnit = widget.existing?.quantityUnit;
   late bool _isRequired = widget.existing?.isRequired ?? true;
   bool _saving = false;
@@ -1612,8 +1672,11 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
                   selected: _quantityUnit == unit.key,
                   onSelected: _saving
                       ? null
-                      : (_) => setState(() => _quantityUnit =
-                          _quantityUnit == unit.key ? null : unit.key),
+                      : (_) => setState(
+                          () => _quantityUnit = _quantityUnit == unit.key
+                              ? null
+                              : unit.key,
+                        ),
                 ),
             ],
           ),
@@ -1662,8 +1725,9 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
             children: [
               Expanded(
                 child: TextButton(
-                  onPressed:
-                      _saving ? null : () => Navigator.pop(context, false),
+                  onPressed: _saving
+                      ? null
+                      : () => Navigator.pop(context, false),
                   child: const Text('إلغاء'),
                 ),
               ),
