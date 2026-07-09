@@ -214,248 +214,287 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
 
   List<Widget> _shoppingCard() {
     final o = _shoppingOverview;
-    // o == null guards below: once a list has loaded once, a background
-    // refresh (_shoppingLoading/_shoppingError changing) must not replace
-    // the visible items with a spinner or error card.
-    if (_shoppingLoading && o == null) {
-      return [
-        ZadCard(
+    Widget shell(List<Widget> children) => ZadCard(
           margin: const EdgeInsets.only(bottom: ZadTokens.s4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(
                 width: double.infinity,
-                child: ZadSectionHeader('قائمة المشتريات'),
+                child: ZadSectionHeader('تسوق اليوم'),
               ),
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(ZadTokens.s4),
-                  child: CircularProgressIndicator(),
-                ),
-              ),
+              ...children,
             ],
           ),
-        ),
+        );
+
+    if (_shoppingLoading && o == null) {
+      return [
+        shell(const [
+          Center(
+            child: Padding(
+              padding: EdgeInsets.all(ZadTokens.s4),
+              child: CircularProgressIndicator(),
+            ),
+          ),
+        ]),
       ];
     }
     if (_shoppingError != null && o == null) {
       return [
-        ZadCard(
-          margin: const EdgeInsets.only(bottom: ZadTokens.s4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(
-                width: double.infinity,
-                child: ZadSectionHeader('قائمة المشتريات'),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: ZadTokens.s2),
-                child: ZadInfoBanner(
-                  _shoppingError!,
-                  kind: ZadBannerKind.warning,
-                ),
-              ),
-            ],
+        shell([
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: ZadTokens.s2),
+            child: ZadInfoBanner(_shoppingError!, kind: ZadBannerKind.warning),
           ),
-        ),
+        ]),
       ];
     }
     if (o == null) {
       return [
-        ZadCard(
-          margin: const EdgeInsets.only(bottom: ZadTokens.s4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(
-                width: double.infinity,
-                child: ZadSectionHeader('قائمة المشتريات'),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: ZadTokens.s2),
-                child: Text(
-                  'لم تتوفر قائمة المشتريات حالياً',
-                  style: TextStyle(color: ZadTokens.textMuted),
-                ),
-              ),
-            ],
+        shell(const [
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: ZadTokens.s2),
+            child: Text(
+              'لم تتوفر قائمة المشتريات حالياً',
+              style: TextStyle(color: ZadTokens.textMuted),
+            ),
           ),
-        ),
+        ]),
       ];
     }
+
+    final submitHint = _shoppingSubmitDisabledReason(o);
+    final canMark = o.canEditMarks;
     return [
-      ZadCard(
-        margin: const EdgeInsets.only(bottom: ZadTokens.s4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const ZadSectionHeader('قائمة المشتريات'),
-            if (o.canEditList)
-              Padding(
-                padding: const EdgeInsets.only(bottom: ZadTokens.s2),
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'تعديل القائمة',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          color: ZadTokens.goldDark,
-                        ),
-                      ),
-                    ),
-                    TextButton.icon(
-                      onPressed: () => _openShoppingItemSheet(),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('إضافة عنصر'),
-                    ),
-                  ],
-                ),
-              ),
-            if (o.responsibleMember != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: ZadTokens.s3),
-                child: Text(
-                  'المسؤول اليوم: ${o.responsibleMember!.displayName}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            if (o.items.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: ZadTokens.s4),
-                child: Center(
+      shell([
+        if (canMark)
+          const Padding(
+            padding: EdgeInsets.only(bottom: ZadTokens.s2),
+            child: ZadInfoBanner('أنت مسؤول تسوق اليوم'),
+          ),
+        if (o.report.completionBlockingReason != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: ZadTokens.s2),
+            child: ZadInfoBanner(
+              o.report.completionBlockingReason!,
+              kind: ZadBannerKind.warning,
+            ),
+          ),
+        _shoppingReportStatus(o),
+        if (o.canEditList)
+          Padding(
+            padding: const EdgeInsets.only(bottom: ZadTokens.s2),
+            child: Row(
+              children: [
+                const Expanded(
                   child: Text(
-                    'لم تتم إضافة عناصر بعد',
-                    style: TextStyle(color: ZadTokens.textMuted),
+                    'تعديل القائمة',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: ZadTokens.goldDark,
+                    ),
                   ),
                 ),
-              )
-            else
-              ...o.items.map(
-                (item) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          if (o.canMark)
-                            Padding(
-                              padding: const EdgeInsetsDirectional.only(
-                                end: ZadTokens.s2 - 2,
-                              ),
-                              child: SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: Checkbox(
-                                  value: item.bought,
-                                  onChanged: _markingItems.contains(item.id)
-                                      ? null
-                                      : (v) => _markItem(item.id, v ?? false),
-                                ),
-                              ),
-                            ),
-                          Expanded(
-                            child: Text(
-                              item.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                                decoration: item.bought
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                                color: item.bought ? ZadTokens.textMuted : null,
-                              ),
-                            ),
-                          ),
-                          if (o.canEditList) ...[
-                            IconButton(
-                              tooltip: 'تعديل',
-                              visualDensity: VisualDensity.compact,
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              onPressed: _removingItems.contains(item.id)
-                                  ? null
-                                  : () =>
-                                        _openShoppingItemSheet(existing: item),
-                            ),
-                            IconButton(
-                              tooltip: 'إزالة',
-                              visualDensity: VisualDensity.compact,
-                              icon: _removingItems.contains(item.id)
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.delete_outline,
-                                      size: 18,
-                                      color: ZadTokens.danger,
-                                    ),
-                              onPressed: _removingItems.contains(item.id)
-                                  ? null
-                                  : () => _removeShoppingItem(item),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Wrap(
-                        spacing: 4,
-                        children: [
-                          if (item.isRequired)
-                            const _Badge('أساسي', gold: true),
-                          if (!item.isRequired) const _Badge('اختياري'),
-                          if (item.bought) const _Badge('تم الشراء'),
-                          if (item.quantityValue != null &&
-                              item.quantityUnit != null)
-                            Text(
-                              'الكمية: ${ltrFragment('${_formatShoppingQuantityValue(item.quantityValue!)} '
-                              '${_quantityUnitLabel(item.quantityUnit!)}')}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: ZadTokens.textMuted,
-                              ),
-                            )
-                          else if (item.quantityNote != null)
-                            Text(
-                              item.quantityNote!,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: ZadTokens.textMuted,
-                              ),
-                            ),
-                          if (item.price != null)
-                            Text(
-                              'السعر: ${ltrFragment(_formatShoppingPrice(item.price!))}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: ZadTokens.textMuted,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
+                TextButton.icon(
+                  onPressed: () => _openShoppingItemSheet(),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('إضافة عنصر'),
                 ),
+              ],
+            ),
+          ),
+        if (o.responsibleMember != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: ZadTokens.s3),
+            child: Text(
+              'المسؤول اليوم: ${o.responsibleMember!.displayName}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+        if (o.items.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: ZadTokens.s4),
+            child: Center(
+              child: Text(
+                'لم تتم إضافة عناصر بعد',
+                style: TextStyle(color: ZadTokens.textMuted),
               ),
-          ],
-        ),
-      ),
+            ),
+          )
+        else
+          ...o.items.map((item) => _shoppingItemRow(item, canMark)),
+        if (o.canSubmit) ...[
+          const SizedBox(height: ZadTokens.s3),
+          FilledButton(
+            onPressed: submitHint == null ? _submitShoppingReport : null,
+            child: const Text('إرسال القائمة للقائد'),
+          ),
+          if (submitHint != null)
+            Padding(
+              padding: const EdgeInsets.only(top: ZadTokens.s1),
+              child: Text(
+                submitHint,
+                style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+              ),
+            ),
+        ],
+        if (o.canReview && o.reportIsPending) ...[
+          const SizedBox(height: ZadTokens.s3),
+          Wrap(
+            spacing: ZadTokens.s2,
+            runSpacing: ZadTokens.s1,
+            children: [
+              FilledButton(onPressed: () => _reviewShoppingReport('accepted'), child: const Text('قبول')),
+              OutlinedButton(onPressed: () => _reviewShoppingReport('rejected'), child: const Text('رفض')),
+            ],
+          ),
+        ],
+      ]),
     ];
   }
 
-  Future<void> _markItem(String itemId, bool bought) async {
+  Widget _shoppingReportStatus(TeamShoppingOverview o) {
+    final label = o.report.submittedAt == null
+        ? 'لم يتم الإرسال بعد'
+        : o.reportAccepted
+            ? 'تم القبول'
+            : o.reportRejected
+                ? 'تم الرفض'
+                : 'في انتظار المراجعة';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: ZadTokens.s2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('حالة التقرير:', style: TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
+          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          if (o.report.leaderNote != null && o.report.leaderNote!.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('ملاحظة القائد: ${o.report.leaderNote}', style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _shoppingItemRow(TeamShoppingItem item, bool canMark) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFBF5),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _warmBorder),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(ZadTokens.s2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    if (canMark)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: ZadTokens.s2 - 2),
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: Checkbox(
+                            value: item.isBought,
+                            onChanged: _markingItems.contains(item.id) ? null : (v) => _markItem(item.id, v ?? false),
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: Text(
+                        item.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          decoration: item.isBought ? TextDecoration.lineThrough : null,
+                          color: item.isBought ? ZadTokens.textMuted : null,
+                        ),
+                      ),
+                    ),
+                    if (_markingItems.contains(item.id))
+                      const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    if (_shoppingOverview?.canEditList ?? false) ...[
+                      IconButton(
+                        tooltip: 'تعديل',
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        onPressed: _removingItems.contains(item.id) ? null : () => _openShoppingItemSheet(existing: item),
+                      ),
+                      IconButton(
+                        tooltip: 'إزالة',
+                        visualDensity: VisualDensity.compact,
+                        icon: _removingItems.contains(item.id)
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.delete_outline, size: 18, color: ZadTokens.danger),
+                        onPressed: _removingItems.contains(item.id) ? null : () => _removeShoppingItem(item),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (item.isRequired) const _Badge('أساسي', gold: true),
+                    if (!item.isRequired) const _Badge('اختياري'),
+                    _Badge(_shoppingItemStatusLabel(item)),
+                    if (item.quantityValue != null && item.quantityUnit != null)
+                      Text('الكمية: ${ltrFragment('${_formatShoppingQuantityValue(item.quantityValue!)} ${_quantityUnitLabel(item.quantityUnit!)}')}', style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted))
+                    else if (item.quantityNote != null)
+                      Text(item.quantityNote!, style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
+                    if (item.price != null)
+                      Text('السعر: ${ltrFragment(_formatShoppingPrice(item.price!))}', style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
+                  ],
+                ),
+                if (item.isNotBought && item.reason != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('السبب: ${item.reason}', style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
+                  ),
+                if (canMark) ...[
+                  const SizedBox(height: ZadTokens.s1),
+                  Wrap(
+                    spacing: ZadTokens.s2,
+                    runSpacing: ZadTokens.s1,
+                    children: [
+                      OutlinedButton(onPressed: _markingItems.contains(item.id) ? null : () => _markItem(item.id, true), child: const Text('اشتريت')),
+                      OutlinedButton(onPressed: _markingItems.contains(item.id) ? null : () => _askNotBoughtReason(item), child: const Text('لم أشترِ')),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+
+  String _shoppingItemStatusLabel(TeamShoppingItem item) {
+    if (item.isBought) return 'تم الشراء';
+    if (item.isNotBought) return 'لم يتم الشراء';
+    return 'لم يحدد بعد';
+  }
+
+  String? _shoppingSubmitDisabledReason(TeamShoppingOverview o) {
+    for (final item in o.items) {
+      if (item.isRequired && !item.isBought) return 'يجب شراء كل العناصر الأساسية قبل الإرسال';
+      if (!item.isRequired && item.isUntouched) return 'يجب تحديد حالة كل العناصر الاختيارية';
+      if (item.isNotBought && (item.reason == null || item.reason!.trim().isEmpty)) return 'اكتب سبب كل عنصر لم يتم شراؤه';
+    }
+    return null;
+  }
+
+  Future<void> _markItem(String itemId, bool bought, {String? reason}) async {
     final token = widget.authService.currentToken;
     if (token == null) return;
     setState(() => _markingItems.add(itemId));
@@ -465,6 +504,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
         teamId: widget.teamId,
         itemId: itemId,
         bought: bought,
+        reason: reason,
       );
       if (mounted) {
         setState(() {
@@ -475,10 +515,50 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     } catch (e) {
       if (mounted) {
         setState(() => _markingItems.remove(itemId));
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(userErrorText(e))));
       }
+    }
+  }
+
+  Future<void> _askNotBoughtReason(TeamShoppingItem item) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => _ShoppingReasonDialog(initialReason: item.reason),
+    );
+    if (reason == null) return;
+    await _markItem(item.id, false, reason: reason);
+  }
+
+  Future<void> _submitShoppingReport() async {
+    final token = widget.authService.currentToken;
+    if (token == null) return;
+    try {
+      final overview = await _shoppingSvc.submitShoppingReport(sessionToken: token, teamId: widget.teamId);
+      if (mounted) {
+        setState(() => _shoppingOverview = overview);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال القائمة للقائد')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+    }
+  }
+
+  Future<void> _reviewShoppingReport(String status) async {
+    String? note;
+    if (status == 'rejected') {
+      note = await showDialog<String>(context: context, builder: (ctx) => const _ShoppingReasonDialog(title: 'سبب الرفض', label: 'سبب الرفض', maxLength: 300));
+      if (note == null) return;
+    }
+    final token = widget.authService.currentToken;
+    if (token == null) return;
+    try {
+      final overview = await _shoppingSvc.reviewShoppingReport(sessionToken: token, teamId: widget.teamId, status: status, date: _shoppingOverview?.turnDate, note: note);
+      if (mounted) {
+        setState(() => _shoppingOverview = overview);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(status == 'accepted' ? 'تم قبول التقرير' : 'تم رفض التقرير')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(userErrorText(e))));
     }
   }
 
@@ -1527,6 +1607,64 @@ class _HeroBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ShoppingReasonDialog extends StatefulWidget {
+  final String title;
+  final String label;
+  final String? initialReason;
+  final int maxLength;
+
+  const _ShoppingReasonDialog({
+    this.title = 'سبب عدم الشراء',
+    this.label = 'السبب',
+    this.initialReason,
+    this.maxLength = 200,
+  });
+
+  @override
+  State<_ShoppingReasonDialog> createState() => _ShoppingReasonDialogState();
+}
+
+class _ShoppingReasonDialogState extends State<_ShoppingReasonDialog> {
+  late final TextEditingController _ctrl = TextEditingController(text: widget.initialReason);
+  String? _error;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _ctrl.text.trim();
+    if (value.isEmpty) {
+      setState(() => _error = 'السبب مطلوب');
+      return;
+    }
+    if (value.length > widget.maxLength) {
+      setState(() => _error = 'النص طويل جداً');
+      return;
+    }
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.title),
+        content: TextField(
+          controller: _ctrl,
+          autofocus: true,
+          maxLength: widget.maxLength,
+          minLines: 2,
+          maxLines: 4,
+          decoration: InputDecoration(labelText: widget.label, errorText: _error),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('إلغاء')),
+          FilledButton(onPressed: _submit, child: const Text('حفظ')),
+        ],
+      );
 }
 
 /// Leader-only add/edit sheet for a single shopping list item.

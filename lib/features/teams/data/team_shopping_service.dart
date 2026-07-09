@@ -94,6 +94,7 @@ class TeamShoppingService {
     required String itemId,
     required bool bought,
     DateTime? date,
+    String? reason,
   }) async {
     final params = <String, dynamic>{
       'p_session_token': sessionToken,
@@ -104,7 +105,45 @@ class TeamShoppingService {
     if (date != null) {
       params['p_date'] = _date(date);
     }
+    final cleanReason = reason?.trim();
+    if (cleanReason != null && cleanReason.isNotEmpty) {
+      params['p_reason'] = cleanReason;
+    }
     final res = await _c.rpc('mark_shopping_item_status', params: params);
+    return _overview(res);
+  }
+
+  Future<TeamShoppingOverview> submitShoppingReport({
+    required String sessionToken,
+    required String teamId,
+    DateTime? date,
+  }) async {
+    final params = <String, dynamic>{
+      'p_session_token': sessionToken,
+      'p_team_id': teamId,
+    };
+    if (date != null) {
+      params['p_date'] = _date(date);
+    }
+    final res = await _c.rpc('submit_team_shopping_report', params: params);
+    return _overview(res);
+  }
+
+  Future<TeamShoppingOverview> reviewShoppingReport({
+    required String sessionToken,
+    required String teamId,
+    required String status,
+    DateTime? date,
+    String? note,
+  }) async {
+    final params = <String, dynamic>{
+      'p_session_token': sessionToken,
+      'p_team_id': teamId,
+      'p_date': _date(date ?? DateTime.now()),
+      'p_status': status,
+      'p_note': note,
+    };
+    final res = await _c.rpc('leader_review_shopping_report', params: params);
     return _overview(res);
   }
 }

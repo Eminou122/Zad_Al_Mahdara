@@ -110,6 +110,7 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     required String itemId,
     required bool bought,
     DateTime? date,
+    String? reason,
   }) async {
     if (error != null) throw error!;
     lastRpc = 'mark_shopping_item_status';
@@ -121,6 +122,47 @@ class _FakeTeamShoppingService extends TeamShoppingService {
       if (date != null)
         'p_date':
             '${date.year.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+      if (reason != null && reason.trim().isNotEmpty) 'p_reason': reason.trim(),
+    };
+    return returnValue ?? _sampleOverview();
+  }
+
+  @override
+  Future<TeamShoppingOverview> submitShoppingReport({
+    required String sessionToken,
+    required String teamId,
+    DateTime? date,
+  }) async {
+    if (error != null) throw error!;
+    lastRpc = 'submit_team_shopping_report';
+    lastParams = {
+      'p_session_token': sessionToken,
+      'p_team_id': teamId,
+      if (date != null)
+        'p_date':
+            '${date.year.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+    };
+    return returnValue ?? _sampleOverview();
+  }
+
+  @override
+  Future<TeamShoppingOverview> reviewShoppingReport({
+    required String sessionToken,
+    required String teamId,
+    required String status,
+    DateTime? date,
+    String? note,
+  }) async {
+    if (error != null) throw error!;
+    final d = date ?? DateTime.now();
+    lastRpc = 'leader_review_shopping_report';
+    lastParams = {
+      'p_session_token': sessionToken,
+      'p_team_id': teamId,
+      'p_date':
+          '${d.year.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+      'p_status': status,
+      'p_note': note,
     };
     return returnValue ?? _sampleOverview();
   }

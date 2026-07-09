@@ -68,6 +68,9 @@ TeamShoppingOverview _sampleShoppingOverview({
   double? firstItemPrice,
   double? firstItemQuantityValue,
   String? firstItemQuantityUnit,
+  TeamShoppingReport? report,
+  bool hasReportObject = false,
+  List<TeamShoppingItem>? items,
 }) => TeamShoppingOverview(
   turnDate: DateTime(2026, 7, 5),
   responsibleMember: includeResponsible
@@ -75,7 +78,14 @@ TeamShoppingOverview _sampleShoppingOverview({
       : null,
   canMark: canMark,
   canEditList: canEditList,
-  items: List.generate(itemCount, (i) {
+  report: report ??
+      TeamShoppingReport(
+        canSubmit: canMark,
+        canReview: false,
+        canEditMarks: canMark,
+      ),
+  hasReportObject: hasReportObject,
+  items: items ?? List.generate(itemCount, (i) {
     final bought = i == 1;
     return TeamShoppingItem(
       id: 'item-$i',
@@ -86,6 +96,7 @@ TeamShoppingOverview _sampleShoppingOverview({
       isRequired: i == 0,
       position: i + 1,
       bought: bought,
+      status: bought ? 'bought' : 'untouched',
       markedByName: bought ? 'أحمد' : null,
       markedAt: bought ? DateTime(2026, 7, 5, 8, 30) : null,
       price: i == 0 ? firstItemPrice : null,
@@ -201,6 +212,10 @@ class _FakeTeamShoppingService extends TeamShoppingService {
 
   String? lastMarkedItemId;
   bool? lastMarkedBought;
+  String? lastMarkedReason;
+  bool submitCalled = false;
+  String? lastReviewStatus;
+  String? lastReviewNote;
 
   String? lastAddedName;
   String? lastAddedQuantityNote;
@@ -240,13 +255,63 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     required String itemId,
     required bool bought,
     DateTime? date,
+    String? reason,
   }) async {
     if (error != null) throw error!;
     lastMarkedItemId = itemId;
     lastMarkedBought = bought;
+    lastMarkedReason = reason;
     overview = _sampleShoppingOverview(
       canMark: overview?.canMark ?? true,
       itemCount: overview?.items.length ?? 2,
+    );
+    return overview!;
+  }
+
+  @override
+  Future<TeamShoppingOverview> submitShoppingReport({
+    required String sessionToken,
+    required String teamId,
+    DateTime? date,
+  }) async {
+    submitCalled = true;
+    overview = _sampleShoppingOverview(
+      canMark: false,
+      report: TeamShoppingReport(
+        submittedAt: DateTime(2026, 7, 5, 9),
+        leaderStatus: 'pending',
+        canSubmit: false,
+        canReview: false,
+        canEditMarks: false,
+      ),
+      hasReportObject: true,
+      items: overview?.items,
+    );
+    return overview!;
+  }
+
+  @override
+  Future<TeamShoppingOverview> reviewShoppingReport({
+    required String sessionToken,
+    required String teamId,
+    required String status,
+    DateTime? date,
+    String? note,
+  }) async {
+    lastReviewStatus = status;
+    lastReviewNote = note;
+    overview = _sampleShoppingOverview(
+      canMark: false,
+      report: TeamShoppingReport(
+        submittedAt: DateTime(2026, 7, 5, 9),
+        leaderStatus: status,
+        leaderNote: note,
+        canSubmit: false,
+        canReview: false,
+        canEditMarks: false,
+      ),
+      hasReportObject: true,
+      items: overview?.items,
     );
     return overview!;
   }
@@ -392,6 +457,13 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder.first);
+  await tester.pumpAndSettle();
+  await tester.tap(finder.first);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('hero member counts isolate numeric fragments', (tester) async {
     await _pump(tester);
@@ -420,14 +492,14 @@ void main() {
     expect(find.text('بدون حساب'), findsNothing);
   });
 
-  testWidgets('shopping section renders title قائمة المشتريات', (tester) async {
+  testWidgets('shopping card title shows تسوق اليوم', (tester) async {
     await _pump(tester);
-    expect(find.text('قائمة المشتريات'), findsOneWidget);
+    expect(find.text('تسوق اليوم'), findsOneWidget);
   });
 
-  testWidgets('responsible member line renders', (tester) async {
+  testWidgets('responsible member sees أنت مسؤول تسوق اليوم', (tester) async {
     await _pump(tester);
-    expect(find.textContaining('محمد'), findsWidgets);
+    expect(find.text('أنت مسؤول تسوق اليوم'), findsOneWidget);
     expect(find.textContaining('المسؤول اليوم:'), findsOneWidget);
   });
 
@@ -467,7 +539,7 @@ void main() {
   testWidgets('canMark=false hides checkbox', (tester) async {
     await _pump(tester, overview: _sampleShoppingOverview(canMark: false));
     expect(find.byType(Checkbox), findsNothing);
-    expect(find.text('قائمة المشتريات'), findsOneWidget);
+    expect(find.text('تسوق اليوم'), findsOneWidget);
   });
 
   testWidgets('canMark=true shows checkbox and toggles bought', (tester) async {
@@ -486,11 +558,157 @@ void main() {
 
     expect(find.byType(Checkbox), findsNWidgets(2));
 
-    await tester.tap(find.byType(Checkbox).first);
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byType(Checkbox));
 
     expect(shoppingService.lastMarkedItemId, 'item-0');
     expect(shoppingService.lastMarkedBought, true);
+  });
+
+  testWidgets('available actions show اشتريت and لم أشترِ when can_edit_marks true', (tester) async {
+    await _pump(tester, overview: _sampleShoppingOverview(canMark: true));
+    expect(find.text('اشتريت'), findsWidgets);
+    expect(find.text('لم أشترِ'), findsWidgets);
+  });
+
+  testWidgets('tapping اشتريت calls mark with bought=true', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(overview: _sampleShoppingOverview(canMark: true));
+    await tester.pumpWidget(_buildTest(_FakeAuthService(), teamService: _FakeTeamService(detail: _sampleTeamDetail()), turnService: _FakeTurnService(state: _sampleTurnState()), shoppingService: shoppingService));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('اشتريت'));
+    expect(shoppingService.lastMarkedBought, true);
+  });
+
+  testWidgets('tapping لم أشترِ requires reason', (tester) async {
+    await _pump(tester, overview: _sampleShoppingOverview(canMark: true));
+    await _tapVisible(tester, find.text('لم أشترِ'));
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+    expect(find.text('السبب مطلوب'), findsOneWidget);
+  });
+
+  testWidgets('not_bought with reason calls mark with bought=false and reason', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(overview: _sampleShoppingOverview(canMark: true));
+    await tester.pumpWidget(_buildTest(_FakeAuthService(), teamService: _FakeTeamService(detail: _sampleTeamDetail()), turnService: _FakeTurnService(state: _sampleTurnState()), shoppingService: shoppingService));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('لم أشترِ'));
+    await tester.enterText(find.widgetWithText(TextField, 'السبب'), 'غير موجود');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+    expect(shoppingService.lastMarkedBought, false);
+    expect(shoppingService.lastMarkedReason, 'غير موجود');
+  });
+
+  testWidgets('submit button disabled when required item not bought', (tester) async {
+    final overview = _sampleShoppingOverview(hasReportObject: true, report: const TeamShoppingReport(canSubmit: true, canReview: false, canEditMarks: true));
+    await _pump(tester, overview: overview);
+    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'));
+    expect(button.onPressed, isNull);
+    expect(find.text('يجب شراء كل العناصر الأساسية قبل الإرسال'), findsOneWidget);
+  });
+
+  testWidgets('submit button disabled when optional item untouched', (tester) async {
+    final overview = _sampleShoppingOverview(
+      hasReportObject: true,
+      report: const TeamShoppingReport(canSubmit: true, canReview: false, canEditMarks: true),
+      items: const [
+        TeamShoppingItem(id: 'r', name: 'خبز', isRequired: true, position: 1, bought: true, status: 'bought'),
+        TeamShoppingItem(id: 'o', name: 'شاي', isRequired: false, position: 2, bought: false, status: 'untouched'),
+      ],
+    );
+    await _pump(tester, overview: overview);
+    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'));
+    expect(button.onPressed, isNull);
+    expect(find.text('يجب تحديد حالة كل العناصر الاختيارية'), findsOneWidget);
+  });
+
+  testWidgets('submit button enabled when required bought and optional resolved', (tester) async {
+    final overview = _sampleShoppingOverview(
+      hasReportObject: true,
+      report: const TeamShoppingReport(canSubmit: true, canReview: false, canEditMarks: true),
+      items: const [
+        TeamShoppingItem(id: 'r', name: 'خبز', isRequired: true, position: 1, bought: true, status: 'bought'),
+        TeamShoppingItem(id: 'o', name: 'شاي', isRequired: false, position: 2, bought: false, status: 'not_bought', reason: 'غير موجود'),
+      ],
+    );
+    await _pump(tester, overview: overview);
+    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'));
+    expect(button.onPressed, isNotNull);
+  });
+
+  testWidgets('submit calls submitShoppingReport', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: const TeamShoppingReport(canSubmit: true, canReview: false, canEditMarks: true),
+        items: const [TeamShoppingItem(id: 'r', name: 'خبز', isRequired: true, position: 1, bought: true, status: 'bought')],
+      ),
+    );
+    await tester.pumpWidget(_buildTest(_FakeAuthService(), teamService: _FakeTeamService(detail: _sampleTeamDetail()), turnService: _FakeTurnService(state: _sampleTurnState()), shoppingService: shoppingService));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('إرسال القائمة للقائد'));
+    expect(shoppingService.submitCalled, true);
+    expect(find.text('تم إرسال القائمة للقائد'), findsOneWidget);
+  });
+
+  testWidgets('pending report disables marking/submitting', (tester) async {
+    await _pump(tester, overview: _sampleShoppingOverview(
+      canMark: true,
+      hasReportObject: true,
+      report: TeamShoppingReport(submittedAt: DateTime(2026, 7, 5), leaderStatus: 'pending', canSubmit: false, canReview: false, canEditMarks: false),
+    ));
+    expect(find.text('في انتظار المراجعة'), findsOneWidget);
+    expect(find.text('اشتريت'), findsNothing);
+    expect(find.text('إرسال القائمة للقائد'), findsNothing);
+  });
+
+  testWidgets('rejected report shows leader note and allows editing/resubmission', (tester) async {
+    await _pump(tester, overview: _sampleShoppingOverview(
+      hasReportObject: true,
+      report: TeamShoppingReport(submittedAt: DateTime(2026, 7, 5), leaderStatus: 'rejected', leaderNote: 'راجع السوق', canSubmit: true, canReview: false, canEditMarks: true),
+    ));
+    expect(find.textContaining('راجع السوق'), findsOneWidget);
+    expect(find.text('اشتريت'), findsWidgets);
+    expect(find.text('إرسال القائمة للقائد'), findsOneWidget);
+  });
+
+  testWidgets('leader sees pending report and قبول/رفض buttons', (tester) async {
+    await _pump(tester, overview: _sampleShoppingOverview(
+      hasReportObject: true,
+      report: TeamShoppingReport(submittedAt: DateTime(2026, 7, 5), leaderStatus: 'pending', canSubmit: false, canReview: true, canEditMarks: false),
+    ));
+    expect(find.text('في انتظار المراجعة'), findsOneWidget);
+    expect(find.text('قبول'), findsOneWidget);
+    expect(find.text('رفض'), findsOneWidget);
+  });
+
+  testWidgets('reject requires note', (tester) async {
+    await _pump(tester, overview: _sampleShoppingOverview(
+      hasReportObject: true,
+      report: TeamShoppingReport(submittedAt: DateTime(2026, 7, 5), leaderStatus: 'pending', canSubmit: false, canReview: true, canEditMarks: false),
+    ));
+    await _tapVisible(tester, find.text('رفض'));
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+    expect(find.text('السبب مطلوب'), findsOneWidget);
+  });
+
+  testWidgets('accept calls reviewShoppingReport(status=accepted)', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(overview: _sampleShoppingOverview(
+      hasReportObject: true,
+      report: TeamShoppingReport(submittedAt: DateTime(2026, 7, 5), leaderStatus: 'pending', canSubmit: false, canReview: true, canEditMarks: false),
+    ));
+    await tester.pumpWidget(_buildTest(_FakeAuthService(), teamService: _FakeTeamService(detail: _sampleTeamDetail()), turnService: _FakeTurnService(state: _sampleTurnState()), shoppingService: shoppingService));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.text('قبول'));
+    expect(shoppingService.lastReviewStatus, 'accepted');
+  });
+
+  testWidgets('non-responsible member sees read-only view', (tester) async {
+    await _pump(tester, overview: _sampleShoppingOverview(canMark: false, includeResponsible: false));
+    expect(find.text('اشتريت'), findsNothing);
+    expect(find.text('لم أشترِ'), findsNothing);
+    expect(find.text('إرسال القائمة للقائد'), findsNothing);
+    expect(find.text('خبز'), findsOneWidget);
   });
 
   testWidgets(
@@ -513,7 +731,7 @@ void main() {
 
     await _pump(tester);
 
-    expect(find.text('قائمة المشتريات'), findsOneWidget);
+    expect(find.text('تسوق اليوم'), findsOneWidget);
     expect(find.text('خبز'), findsOneWidget);
     expect(find.text('حليب'), findsOneWidget);
   });
@@ -595,10 +813,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.widgetWithIcon(IconButton, Icons.edit_outlined).first,
-    );
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.edit_outlined));
 
     await tester.enterText(
       find.widgetWithText(TextField, 'اسم العنصر'),
@@ -627,10 +842,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.widgetWithIcon(IconButton, Icons.delete_outline).first,
-    );
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.delete_outline));
 
     expect(find.text('إزالة العنصر'), findsOneWidget);
     await tester.tap(find.text('إزالة'));
@@ -692,8 +904,7 @@ void main() {
       expect(find.byIcon(Icons.delete_outline), findsNothing);
       expect(find.byType(Checkbox), findsWidgets);
 
-      await tester.tap(find.byType(Checkbox).first);
-      await tester.pumpAndSettle();
+      await _tapVisible(tester, find.text('اشتريت'));
 
       expect(shoppingService.lastMarkedItemId, 'item-0');
       expect(shoppingService.lastMarkedBought, true);
@@ -720,8 +931,7 @@ void main() {
       expect(find.text('إضافة عنصر'), findsOneWidget);
       expect(find.byType(Checkbox), findsWidgets);
 
-      await tester.tap(find.byType(Checkbox).first);
-      await tester.pumpAndSettle();
+      await _tapVisible(tester, find.text('اشتريت'));
 
       expect(shoppingService.lastMarkedItemId, 'item-0');
       expect(shoppingService.lastMarkedBought, true);
@@ -751,7 +961,7 @@ void main() {
 
     expect(find.text('فريق الغداء'), findsAtLeast(1));
     expect(find.byType(ZadSectionHeader), findsWidgets);
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
     await tester.pumpAndSettle();
     expect(find.text('أعضاء الفريق'), findsOneWidget);
     expect(find.text('محمد'), findsWidgets);
@@ -761,7 +971,7 @@ void main() {
     tester,
   ) async {
     await _pump(tester);
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
     await tester.pumpAndSettle();
 
     // _sampleTeamDetail() has exactly one member.
@@ -863,10 +1073,7 @@ void main() {
         firstItemPrice: 150.0,
       ),
     );
-    await tester.tap(
-      find.widgetWithIcon(IconButton, Icons.edit_outlined).first,
-    );
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.edit_outlined));
 
     expect(find.widgetWithText(TextField, '150'), findsOneWidget);
   });
@@ -888,10 +1095,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.widgetWithIcon(IconButton, Icons.edit_outlined).first,
-    );
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.edit_outlined));
 
     await tester.enterText(find.widgetWithText(TextField, '150'), '');
     await tester.tap(find.text('حفظ'));
@@ -1031,10 +1235,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.widgetWithIcon(IconButton, Icons.edit_outlined).first,
-    );
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.edit_outlined));
 
     await tester.enterText(find.widgetWithText(TextField, '2'), '');
     await tester.pump();
@@ -1121,8 +1322,7 @@ void main() {
     final teamDetailCalls = teamService.getTeamDetailCallCount;
     final shoppingListCalls = shoppingService.getShoppingListCallCount;
 
-    await tester.tap(find.byType(Checkbox).first);
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byType(Checkbox));
 
     expect(shoppingService.lastMarkedItemId, 'item-0');
     expect(shoppingService.lastMarkedBought, true);
@@ -1154,8 +1354,7 @@ void main() {
     final teamDetailCalls = teamService.getTeamDetailCallCount;
     final shoppingListCalls = shoppingService.getShoppingListCallCount;
 
-    await tester.tap(find.byType(Checkbox).last);
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byType(Checkbox).last);
 
     expect(shoppingService.lastMarkedItemId, 'item-1');
     expect(shoppingService.lastMarkedBought, false);
@@ -1223,10 +1422,7 @@ void main() {
     final teamDetailCalls = teamService.getTeamDetailCallCount;
     final shoppingListCalls = shoppingService.getShoppingListCallCount;
 
-    await tester.tap(
-      find.widgetWithIcon(IconButton, Icons.edit_outlined).first,
-    );
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.edit_outlined));
 
     await tester.enterText(
       find.widgetWithText(TextField, 'اسم العنصر'),
@@ -1241,7 +1437,7 @@ void main() {
     expect(shoppingService.lastUpdatedName, 'خبز محدث');
     expect(shoppingService.lastUpdatedQuantityValue, 3.0);
     expect(shoppingService.lastUpdatedQuantityUnit, 'packet');
-    expect(find.text('قائمة المشتريات'), findsOneWidget);
+    expect(find.text('تسوق اليوم'), findsOneWidget);
 
     expect(teamService.getTeamDetailCallCount, teamDetailCalls);
     expect(shoppingService.getShoppingListCallCount, shoppingListCalls);
@@ -1268,10 +1464,7 @@ void main() {
     final teamDetailCalls = teamService.getTeamDetailCallCount;
     final shoppingListCalls = shoppingService.getShoppingListCallCount;
 
-    await tester.tap(
-      find.widgetWithIcon(IconButton, Icons.delete_outline).first,
-    );
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.delete_outline));
 
     expect(find.text('إزالة العنصر'), findsOneWidget);
     await tester.tap(find.text('إزالة'));
@@ -1304,17 +1497,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
     await tester.pumpAndSettle();
 
     final teamDetailCalls = teamService.getTeamDetailCallCount;
     final shoppingListCalls = shoppingService.getShoppingListCallCount;
     final turnStateCalls = turnService.getTurnStateCallCount;
 
-    await tester.tap(
-      find.widgetWithIcon(IconButton, Icons.person_off_outlined).first,
-    );
-    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.person_off_outlined));
 
     expect(find.text('تعطيل العضو'), findsOneWidget);
     await tester.tap(find.text('تعطيل'));
@@ -1486,12 +1676,19 @@ void main() {
 }
 
 extension on TeamShoppingOverview {
-  TeamShoppingOverview copyWith({List<TeamShoppingItem>? items}) =>
+  TeamShoppingOverview copyWith({
+    List<TeamShoppingItem>? items,
+    TeamShoppingReport? report,
+    bool? hasReportObject,
+    bool? canMark,
+  }) =>
       TeamShoppingOverview(
         turnDate: turnDate,
         responsibleMember: responsibleMember,
-        canMark: canMark,
+        canMark: canMark ?? this.canMark,
         canEditList: canEditList,
+        report: report ?? this.report,
+        hasReportObject: hasReportObject ?? this.hasReportObject,
         items: items ?? this.items,
       );
 }
