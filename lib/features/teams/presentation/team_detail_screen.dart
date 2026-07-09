@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/routing/route_observer.dart';
 import '../../../core/theme/zad_tokens.dart';
@@ -215,18 +216,18 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   List<Widget> _shoppingCard() {
     final o = _shoppingOverview;
     Widget shell(List<Widget> children) => ZadCard(
-          margin: const EdgeInsets.only(bottom: ZadTokens.s4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(
-                width: double.infinity,
-                child: ZadSectionHeader('تسوق اليوم'),
-              ),
-              ...children,
-            ],
+      margin: const EdgeInsets.only(bottom: ZadTokens.s4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(
+            width: double.infinity,
+            child: ZadSectionHeader('تسوق اليوم'),
           ),
-        );
+          ...children,
+        ],
+      ),
+    );
 
     if (_shoppingLoading && o == null) {
       return [
@@ -336,7 +337,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
               padding: const EdgeInsets.only(top: ZadTokens.s1),
               child: Text(
                 submitHint,
-                style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: ZadTokens.textMuted,
+                ),
               ),
             ),
         ],
@@ -346,8 +350,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
             spacing: ZadTokens.s2,
             runSpacing: ZadTokens.s1,
             children: [
-              FilledButton(onPressed: () => _reviewShoppingReport('accepted'), child: const Text('قبول')),
-              OutlinedButton(onPressed: () => _reviewShoppingReport('rejected'), child: const Text('رفض')),
+              FilledButton(
+                onPressed: () => _reviewShoppingReport('accepted'),
+                child: const Text('قبول'),
+              ),
+              OutlinedButton(
+                onPressed: () => _reviewShoppingReport('rejected'),
+                child: const Text('رفض'),
+              ),
             ],
           ),
         ],
@@ -359,21 +369,34 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     final label = o.report.submittedAt == null
         ? 'لم يتم الإرسال بعد'
         : o.reportAccepted
-            ? 'تم القبول'
-            : o.reportRejected
-                ? 'تم الرفض'
-                : 'في انتظار المراجعة';
+        ? 'تم القبول'
+        : o.reportRejected
+        ? 'تم الرفض'
+        : 'في انتظار المراجعة';
     return Padding(
       padding: const EdgeInsets.only(bottom: ZadTokens.s2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('حالة التقرير:', style: TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
-          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-          if (o.report.leaderNote != null && o.report.leaderNote!.trim().isNotEmpty)
+          const Text(
+            'حالة التقرير:',
+            style: TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+          ),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          if (o.report.leaderNote != null &&
+              o.report.leaderNote!.trim().isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text('ملاحظة القائد: ${o.report.leaderNote}', style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
+              child: Text(
+                'ملاحظة القائد: ${o.report.leaderNote}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: ZadTokens.textMuted,
+                ),
+              ),
             ),
         ],
       ),
@@ -381,103 +404,159 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   }
 
   Widget _shoppingItemRow(TeamShoppingItem item, bool canMark) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFFBF5),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _warmBorder),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(ZadTokens.s2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    padding: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBF5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _warmBorder),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(ZadTokens.s2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    if (canMark)
-                      Padding(
-                        padding: const EdgeInsetsDirectional.only(end: ZadTokens.s2 - 2),
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: Checkbox(
-                            value: item.isBought,
-                            onChanged: _markingItems.contains(item.id) ? null : (v) => _markItem(item.id, v ?? false),
-                          ),
-                        ),
-                      ),
-                    Expanded(
-                      child: Text(
-                        item.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                          decoration: item.isBought ? TextDecoration.lineThrough : null,
-                          color: item.isBought ? ZadTokens.textMuted : null,
-                        ),
+                if (canMark)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(
+                      end: ZadTokens.s2 - 2,
+                    ),
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Checkbox(
+                        value: item.isBought,
+                        onChanged: _markingItems.contains(item.id)
+                            ? null
+                            : (v) => _markItem(item.id, v ?? false),
                       ),
                     ),
-                    if (_markingItems.contains(item.id))
-                      const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                    if (_shoppingOverview?.canEditList ?? false) ...[
-                      IconButton(
-                        tooltip: 'تعديل',
-                        visualDensity: VisualDensity.compact,
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        onPressed: _removingItems.contains(item.id) ? null : () => _openShoppingItemSheet(existing: item),
-                      ),
-                      IconButton(
-                        tooltip: 'إزالة',
-                        visualDensity: VisualDensity.compact,
-                        icon: _removingItems.contains(item.id)
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.delete_outline, size: 18, color: ZadTokens.danger),
-                        onPressed: _removingItems.contains(item.id) ? null : () => _removeShoppingItem(item),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (item.isRequired) const _Badge('أساسي', gold: true),
-                    if (!item.isRequired) const _Badge('اختياري'),
-                    _Badge(_shoppingItemStatusLabel(item)),
-                    if (item.quantityValue != null && item.quantityUnit != null)
-                      Text('الكمية: ${ltrFragment('${_formatShoppingQuantityValue(item.quantityValue!)} ${_quantityUnitLabel(item.quantityUnit!)}')}', style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted))
-                    else if (item.quantityNote != null)
-                      Text(item.quantityNote!, style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
-                    if (item.price != null)
-                      Text('السعر: ${ltrFragment(_formatShoppingPrice(item.price!))}', style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
-                  ],
-                ),
-                if (item.isNotBought && item.reason != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text('السبب: ${item.reason}', style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted)),
                   ),
-                if (canMark) ...[
-                  const SizedBox(height: ZadTokens.s1),
-                  Wrap(
-                    spacing: ZadTokens.s2,
-                    runSpacing: ZadTokens.s1,
-                    children: [
-                      OutlinedButton(onPressed: _markingItems.contains(item.id) ? null : () => _markItem(item.id, true), child: const Text('اشتريت')),
-                      OutlinedButton(onPressed: _markingItems.contains(item.id) ? null : () => _askNotBoughtReason(item), child: const Text('لم أشترِ')),
-                    ],
+                Expanded(
+                  child: Text(
+                    item.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      decoration: item.isBought
+                          ? TextDecoration.lineThrough
+                          : null,
+                      color: item.isBought ? ZadTokens.textMuted : null,
+                    ),
+                  ),
+                ),
+                if (_markingItems.contains(item.id))
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                if (_shoppingOverview?.canEditList ?? false) ...[
+                  IconButton(
+                    tooltip: 'تعديل',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    onPressed: _removingItems.contains(item.id)
+                        ? null
+                        : () => _openShoppingItemSheet(existing: item),
+                  ),
+                  IconButton(
+                    tooltip: 'إزالة',
+                    visualDensity: VisualDensity.compact,
+                    icon: _removingItems.contains(item.id)
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(
+                            Icons.delete_outline,
+                            size: 18,
+                            color: ZadTokens.danger,
+                          ),
+                    onPressed: _removingItems.contains(item.id)
+                        ? null
+                        : () => _removeShoppingItem(item),
                   ),
                 ],
               ],
             ),
-          ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (item.isRequired) const _Badge('أساسي', gold: true),
+                if (!item.isRequired) const _Badge('اختياري'),
+                _Badge(_shoppingItemStatusLabel(item)),
+                if (item.quantityValue != null && item.quantityUnit != null)
+                  Text(
+                    'الكمية: ${ltrFragment('${_formatShoppingQuantityValue(item.quantityValue!)} ${_quantityUnitLabel(item.quantityUnit!)}')}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: ZadTokens.textMuted,
+                    ),
+                  )
+                else if (item.quantityNote != null)
+                  Text(
+                    item.quantityNote!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: ZadTokens.textMuted,
+                    ),
+                  ),
+                if (item.price != null)
+                  Text(
+                    'السعر: ${ltrFragment(_formatShoppingPrice(item.price!))}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: ZadTokens.textMuted,
+                    ),
+                  ),
+              ],
+            ),
+            if (item.isNotBought && item.reason != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'السبب: ${item.reason}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: ZadTokens.textMuted,
+                  ),
+                ),
+              ),
+            if (canMark) ...[
+              const SizedBox(height: ZadTokens.s1),
+              Wrap(
+                spacing: ZadTokens.s2,
+                runSpacing: ZadTokens.s1,
+                children: [
+                  OutlinedButton(
+                    onPressed: _markingItems.contains(item.id)
+                        ? null
+                        : () => _markItem(item.id, true),
+                    child: const Text('اشتريت'),
+                  ),
+                  OutlinedButton(
+                    onPressed: _markingItems.contains(item.id)
+                        ? null
+                        : () => _askNotBoughtReason(item),
+                    child: const Text('لم أشترِ'),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
-      );
+      ),
+    ),
+  );
 
   String _shoppingItemStatusLabel(TeamShoppingItem item) {
     if (item.isBought) return 'تم الشراء';
@@ -487,9 +566,16 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
 
   String? _shoppingSubmitDisabledReason(TeamShoppingOverview o) {
     for (final item in o.items) {
-      if (item.isRequired && !item.isBought) return 'يجب شراء كل العناصر الأساسية قبل الإرسال';
-      if (!item.isRequired && item.isUntouched) return 'يجب تحديد حالة كل العناصر الاختيارية';
-      if (item.isNotBought && (item.reason == null || item.reason!.trim().isEmpty)) return 'اكتب سبب كل عنصر لم يتم شراؤه';
+      if (item.isRequired && !item.isBought) {
+        return 'يجب شراء كل العناصر الأساسية قبل الإرسال';
+      }
+      if (!item.isRequired && item.isUntouched) {
+        return 'يجب تحديد حالة كل العناصر الاختيارية';
+      }
+      if (item.isNotBought &&
+          (item.reason == null || item.reason!.trim().isEmpty)) {
+        return 'اكتب سبب كل عنصر لم يتم شراؤه';
+      }
     }
     return null;
   }
@@ -515,7 +601,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     } catch (e) {
       if (mounted) {
         setState(() => _markingItems.remove(itemId));
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
       }
     }
   }
@@ -533,32 +621,64 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     final token = widget.authService.currentToken;
     if (token == null) return;
     try {
-      final overview = await _shoppingSvc.submitShoppingReport(sessionToken: token, teamId: widget.teamId);
+      final overview = await _shoppingSvc.submitShoppingReport(
+        sessionToken: token,
+        teamId: widget.teamId,
+      );
       if (mounted) {
         setState(() => _shoppingOverview = overview);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال القائمة للقائد')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم إرسال القائمة للقائد')),
+        );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
     }
   }
 
   Future<void> _reviewShoppingReport(String status) async {
     String? note;
     if (status == 'rejected') {
-      note = await showDialog<String>(context: context, builder: (ctx) => const _ShoppingReasonDialog(title: 'سبب الرفض', label: 'سبب الرفض', maxLength: 300));
+      note = await showDialog<String>(
+        context: context,
+        builder: (ctx) => const _ShoppingReasonDialog(
+          title: 'سبب الرفض',
+          label: 'سبب الرفض',
+          maxLength: 300,
+        ),
+      );
       if (note == null) return;
     }
     final token = widget.authService.currentToken;
     if (token == null) return;
     try {
-      final overview = await _shoppingSvc.reviewShoppingReport(sessionToken: token, teamId: widget.teamId, status: status, date: _shoppingOverview?.turnDate, note: note);
+      final overview = await _shoppingSvc.reviewShoppingReport(
+        sessionToken: token,
+        teamId: widget.teamId,
+        status: status,
+        date: _shoppingOverview?.turnDate,
+        note: note,
+      );
       if (mounted) {
         setState(() => _shoppingOverview = overview);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(status == 'accepted' ? 'تم قبول التقرير' : 'تم رفض التقرير')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              status == 'accepted' ? 'تم قبول التقرير' : 'تم رفض التقرير',
+            ),
+          ),
+        );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
     }
   }
 
@@ -755,6 +875,33 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
           _turnState = ts;
           _turnLoading = false;
         });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _turnLoading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
+    }
+  }
+
+  Future<void> _skipMissedTurn(String turnId, String? reason) async {
+    setState(() => _turnLoading = true);
+    try {
+      final ts = await _turnSvc.skipMissedTurn(
+        widget.teamId,
+        turnId,
+        reason: reason,
+      );
+      if (mounted) {
+        setState(() {
+          _turnState = ts;
+          _turnLoading = false;
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تم تخطّي الدور السابق')));
       }
     } catch (e) {
       if (mounted) {
@@ -985,6 +1132,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                       isMember: d.isMember,
                       onStart: _startTurn,
                       onComplete: _completeTurn,
+                      onSkipMissedTurn: _skipMissedTurn,
                     ),
                   ),
                   if (d.isMember && d.members.isNotEmpty) ...[
@@ -1075,6 +1223,7 @@ class _TurnCard extends StatelessWidget {
   final bool isMember;
   final VoidCallback onStart;
   final void Function(String) onComplete;
+  final void Function(String, String?) onSkipMissedTurn;
 
   const _TurnCard({
     required this.state,
@@ -1082,6 +1231,7 @@ class _TurnCard extends StatelessWidget {
     required this.isMember,
     required this.onStart,
     required this.onComplete,
+    required this.onSkipMissedTurn,
   });
 
   @override
@@ -1136,24 +1286,40 @@ class _TurnCard extends StatelessWidget {
               style: TextStyle(color: ZadTokens.textMuted),
             )
           else
-            _body(),
+            _body(context),
         ],
       ),
     );
   }
 
-  Widget _body() {
+  Widget _body(BuildContext context) {
     final s = state!;
     final today = s.todayTurn;
+    final isBlocked = s.blockingPreviousTurn;
+    final canSkipBlockedTurn =
+        isBlocked &&
+        s.canSkipPreviousTurn &&
+        s.previousTurnId != null &&
+        s.canManageTurns;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (isBlocked) ...[
+          _PreviousTurnBlockPanel(
+            state: s,
+            canSkip: canSkipBlockedTurn,
+            onSkip: canSkipBlockedTurn
+                ? () => _askSkipReason(context, s.previousTurnId!)
+                : null,
+          ),
+          const SizedBox(height: ZadTokens.s2),
+        ],
         if (today == null) ...[
           const Text(
             'لا يوجد دور لهذا اليوم.',
             style: TextStyle(color: ZadTokens.textMuted),
           ),
-          if (s.canManageTurns) ...[
+          if (s.canManageTurns && !isBlocked) ...[
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -1335,14 +1501,34 @@ class _TurnCard extends StatelessWidget {
                           style: const TextStyle(fontSize: 13),
                         ),
                       ),
-                      Text(
-                        h.status == 'completed' ? '✓' : '…',
-                        style: TextStyle(
-                          color: h.status == 'completed'
-                              ? ZadTokens.primary
-                              : ZadTokens.warning,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              _turnStatusLabel(h.status),
+                              style: TextStyle(
+                                color: h.status == 'completed'
+                                    ? ZadTokens.primary
+                                    : h.status == 'skipped'
+                                    ? ZadTokens.textMuted
+                                    : ZadTokens.warning,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (h.status == 'skipped' &&
+                                h.skipReason != null &&
+                                h.skipReason!.trim().isNotEmpty)
+                              Text(
+                                'سبب التخطي: ${h.skipReason!}',
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(
+                                  color: ZadTokens.textMuted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ],
@@ -1351,6 +1537,86 @@ class _TurnCard extends StatelessWidget {
               ),
         ],
       ],
+    );
+  }
+
+  Future<void> _askSkipReason(BuildContext context, String turnId) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => const _ShoppingReasonDialog(
+        title: 'تخطّي الدور السابق',
+        label: 'سبب التخطي',
+        maxLength: 300,
+        requireReason: false,
+      ),
+    );
+    if (reason == null) return;
+    onSkipMissedTurn(turnId, reason);
+  }
+}
+
+String _turnStatusLabel(String status) {
+  if (status == 'completed') return '✓';
+  // Alternative accepted wording for skipped turns: دور متخطّى.
+  if (status == 'skipped') return 'تم التخطي';
+  return '…';
+}
+
+class _PreviousTurnBlockPanel extends StatelessWidget {
+  final TeamTurnState state;
+  final bool canSkip;
+  final VoidCallback? onSkip;
+
+  const _PreviousTurnBlockPanel({
+    required this.state,
+    required this.canSkip,
+    this.onSkip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final memberName = state.previousTurnMemberName;
+    final date = state.previousTurnDate;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(ZadTokens.s3),
+      decoration: BoxDecoration(
+        color: ZadTokens.goldSoft,
+        borderRadius: BorderRadius.circular(ZadTokens.radiusSm),
+        border: Border.all(color: ZadTokens.gold.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'أكمل الدور السابق أولاً',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          if (canSkip) ...[
+            const SizedBox(height: 4),
+            const Text(
+              'يوجد دور سابق لم يبدأ بعد',
+              style: TextStyle(color: ZadTokens.textMuted, fontSize: 13),
+            ),
+            if (memberName != null && memberName.isNotEmpty)
+              Text('العضو: $memberName', style: const TextStyle(fontSize: 13)),
+            if (date != null && date.isNotEmpty)
+              Text(
+                'التاريخ: ${ltrFragment(date)}',
+                style: const TextStyle(fontSize: 13),
+              ),
+            const SizedBox(height: ZadTokens.s2),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onSkip,
+                icon: const Icon(Icons.skip_next_outlined),
+                label: const Text('تخطّي الدور السابق'),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -1614,12 +1880,14 @@ class _ShoppingReasonDialog extends StatefulWidget {
   final String label;
   final String? initialReason;
   final int maxLength;
+  final bool requireReason;
 
   const _ShoppingReasonDialog({
     this.title = 'سبب عدم الشراء',
     this.label = 'السبب',
     this.initialReason,
     this.maxLength = 200,
+    this.requireReason = true,
   });
 
   @override
@@ -1627,7 +1895,9 @@ class _ShoppingReasonDialog extends StatefulWidget {
 }
 
 class _ShoppingReasonDialogState extends State<_ShoppingReasonDialog> {
-  late final TextEditingController _ctrl = TextEditingController(text: widget.initialReason);
+  late final TextEditingController _ctrl = TextEditingController(
+    text: widget.initialReason,
+  );
   String? _error;
 
   @override
@@ -1638,7 +1908,7 @@ class _ShoppingReasonDialogState extends State<_ShoppingReasonDialog> {
 
   void _submit() {
     final value = _ctrl.text.trim();
-    if (value.isEmpty) {
+    if (widget.requireReason && value.isEmpty) {
       setState(() => _error = 'السبب مطلوب');
       return;
     }
@@ -1651,20 +1921,24 @@ class _ShoppingReasonDialogState extends State<_ShoppingReasonDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: Text(widget.title),
-        content: TextField(
-          controller: _ctrl,
-          autofocus: true,
-          maxLength: widget.maxLength,
-          minLines: 2,
-          maxLines: 4,
-          decoration: InputDecoration(labelText: widget.label, errorText: _error),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('إلغاء')),
-          FilledButton(onPressed: _submit, child: const Text('حفظ')),
-        ],
-      );
+    title: Text(widget.title),
+    content: TextField(
+      controller: _ctrl,
+      autofocus: true,
+      maxLength: widget.maxLength,
+      maxLengthEnforcement: MaxLengthEnforcement.none,
+      minLines: 2,
+      maxLines: 4,
+      decoration: InputDecoration(labelText: widget.label, errorText: _error),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('إلغاء'),
+      ),
+      FilledButton(onPressed: _submit, child: const Text('حفظ')),
+    ],
+  );
 }
 
 /// Leader-only add/edit sheet for a single shopping list item.

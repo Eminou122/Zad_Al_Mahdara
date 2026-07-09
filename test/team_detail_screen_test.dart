@@ -60,6 +60,24 @@ TeamTurnState _sampleTurnState() => TeamTurnState(
   history: const [],
 );
 
+TeamTurnState _blockedTurnState({bool canSkip = true}) => TeamTurnState(
+  canManageTurns: true,
+  todayTurn: null,
+  nextMember: const TurnMemberRef(
+    memberId: 'mem-1',
+    position: 1,
+    displayName: 'محمد',
+  ),
+  lastCompletedTurn: null,
+  history: const [],
+  blockingPreviousTurn: true,
+  canSkipPreviousTurn: canSkip,
+  previousTurnId: 'prev-turn',
+  previousTurnMemberName: 'سالم',
+  previousTurnDate: '2026-07-04',
+  previousTurnStatus: canSkip ? 'pending' : 'started',
+);
+
 TeamShoppingOverview _sampleShoppingOverview({
   bool canMark = true,
   bool canEditList = false,
@@ -78,30 +96,33 @@ TeamShoppingOverview _sampleShoppingOverview({
       : null,
   canMark: canMark,
   canEditList: canEditList,
-  report: report ??
+  report:
+      report ??
       TeamShoppingReport(
         canSubmit: canMark,
         canReview: false,
         canEditMarks: canMark,
       ),
   hasReportObject: hasReportObject,
-  items: items ?? List.generate(itemCount, (i) {
-    final bought = i == 1;
-    return TeamShoppingItem(
-      id: 'item-$i',
-      name: i == 0 ? 'خبز' : 'حليب',
-      quantityNote: i == 0 ? '2 رغيف' : null,
-      quantityValue: i == 0 ? firstItemQuantityValue : null,
-      quantityUnit: i == 0 ? firstItemQuantityUnit : null,
-      isRequired: i == 0,
-      position: i + 1,
-      bought: bought,
-      status: bought ? 'bought' : 'untouched',
-      markedByName: bought ? 'أحمد' : null,
-      markedAt: bought ? DateTime(2026, 7, 5, 8, 30) : null,
-      price: i == 0 ? firstItemPrice : null,
-    );
-  }),
+  items:
+      items ??
+      List.generate(itemCount, (i) {
+        final bought = i == 1;
+        return TeamShoppingItem(
+          id: 'item-$i',
+          name: i == 0 ? 'خبز' : 'حليب',
+          quantityNote: i == 0 ? '2 رغيف' : null,
+          quantityValue: i == 0 ? firstItemQuantityValue : null,
+          quantityUnit: i == 0 ? firstItemQuantityUnit : null,
+          isRequired: i == 0,
+          position: i + 1,
+          bought: bought,
+          status: bought ? 'bought' : 'untouched',
+          markedByName: bought ? 'أحمد' : null,
+          markedAt: bought ? DateTime(2026, 7, 5, 8, 30) : null,
+          price: i == 0 ? firstItemPrice : null,
+        );
+      }),
 );
 
 // _sampleTeamDetail's only member is the leader, who can't be
@@ -190,6 +211,10 @@ class _FakeTurnService extends TeamTurnService {
   TeamTurnState? state;
   Object? error;
   int getTurnStateCallCount = 0;
+  int skipMissedTurnCallCount = 0;
+  String? lastSkipTeamId;
+  String? lastSkipTurnId;
+  String? lastSkipReason;
 
   _FakeTurnService({this.state}) : super(AuthService());
 
@@ -198,6 +223,47 @@ class _FakeTurnService extends TeamTurnService {
     getTurnStateCallCount++;
     if (error != null) throw error!;
     return state ?? _sampleTurnState();
+  }
+
+  @override
+  Future<TeamTurnState> ensureTodayTurn(String teamId) async {
+    if (error != null) throw error!;
+    state = _sampleTurnState();
+    return state!;
+  }
+
+  @override
+  Future<TeamTurnState> skipMissedTurn(
+    String teamId,
+    String turnId, {
+    String? reason,
+  }) async {
+    skipMissedTurnCallCount++;
+    lastSkipTeamId = teamId;
+    lastSkipTurnId = turnId;
+    lastSkipReason = reason;
+    if (error != null) throw error!;
+    state = TeamTurnState(
+      canManageTurns: true,
+      todayTurn: null,
+      nextMember: const TurnMemberRef(
+        memberId: 'mem-1',
+        position: 1,
+        displayName: 'محمد',
+      ),
+      lastCompletedTurn: null,
+      history: const [
+        TurnEntry(
+          id: 'prev-turn',
+          turnDate: '2026-07-04',
+          status: 'skipped',
+          memberId: 'mem-2',
+          displayName: 'سالم',
+          position: 2,
+        ),
+      ],
+    );
+    return state!;
   }
 }
 
@@ -464,6 +530,15 @@ Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _scrollToTurnCard(WidgetTester tester) async {
+  await tester.scrollUntilVisible(
+    find.text('نظام النوبات اليومي'),
+    300,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('hero member counts isolate numeric fragments', (tester) async {
     await _pump(tester);
@@ -564,15 +639,27 @@ void main() {
     expect(shoppingService.lastMarkedBought, true);
   });
 
-  testWidgets('available actions show اشتريت and لم أشترِ when can_edit_marks true', (tester) async {
-    await _pump(tester, overview: _sampleShoppingOverview(canMark: true));
-    expect(find.text('اشتريت'), findsWidgets);
-    expect(find.text('لم أشترِ'), findsWidgets);
-  });
+  testWidgets(
+    'available actions show اشتريت and لم أشترِ when can_edit_marks true',
+    (tester) async {
+      await _pump(tester, overview: _sampleShoppingOverview(canMark: true));
+      expect(find.text('اشتريت'), findsWidgets);
+      expect(find.text('لم أشترِ'), findsWidgets);
+    },
+  );
 
   testWidgets('tapping اشتريت calls mark with bought=true', (tester) async {
-    final shoppingService = _FakeTeamShoppingService(overview: _sampleShoppingOverview(canMark: true));
-    await tester.pumpWidget(_buildTest(_FakeAuthService(), teamService: _FakeTeamService(detail: _sampleTeamDetail()), turnService: _FakeTurnService(state: _sampleTurnState()), shoppingService: shoppingService));
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canMark: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.text('اشتريت'));
     expect(shoppingService.lastMarkedBought, true);
@@ -586,64 +673,159 @@ void main() {
     expect(find.text('السبب مطلوب'), findsOneWidget);
   });
 
-  testWidgets('not_bought with reason calls mark with bought=false and reason', (tester) async {
-    final shoppingService = _FakeTeamShoppingService(overview: _sampleShoppingOverview(canMark: true));
-    await tester.pumpWidget(_buildTest(_FakeAuthService(), teamService: _FakeTeamService(detail: _sampleTeamDetail()), turnService: _FakeTurnService(state: _sampleTurnState()), shoppingService: shoppingService));
-    await tester.pumpAndSettle();
-    await _tapVisible(tester, find.text('لم أشترِ'));
-    await tester.enterText(find.widgetWithText(TextField, 'السبب'), 'غير موجود');
-    await tester.tap(find.text('حفظ'));
-    await tester.pumpAndSettle();
-    expect(shoppingService.lastMarkedBought, false);
-    expect(shoppingService.lastMarkedReason, 'غير موجود');
-  });
+  testWidgets(
+    'not_bought with reason calls mark with bought=false and reason',
+    (tester) async {
+      final shoppingService = _FakeTeamShoppingService(
+        overview: _sampleShoppingOverview(canMark: true),
+      );
+      await tester.pumpWidget(
+        _buildTest(
+          _FakeAuthService(),
+          teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+          turnService: _FakeTurnService(state: _sampleTurnState()),
+          shoppingService: shoppingService,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _tapVisible(tester, find.text('لم أشترِ'));
+      await tester.enterText(
+        find.widgetWithText(TextField, 'السبب'),
+        'غير موجود',
+      );
+      await tester.tap(find.text('حفظ'));
+      await tester.pumpAndSettle();
+      expect(shoppingService.lastMarkedBought, false);
+      expect(shoppingService.lastMarkedReason, 'غير موجود');
+    },
+  );
 
-  testWidgets('submit button disabled when required item not bought', (tester) async {
-    final overview = _sampleShoppingOverview(hasReportObject: true, report: const TeamShoppingReport(canSubmit: true, canReview: false, canEditMarks: true));
-    await _pump(tester, overview: overview);
-    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'));
-    expect(button.onPressed, isNull);
-    expect(find.text('يجب شراء كل العناصر الأساسية قبل الإرسال'), findsOneWidget);
-  });
-
-  testWidgets('submit button disabled when optional item untouched', (tester) async {
+  testWidgets('submit button disabled when required item not bought', (
+    tester,
+  ) async {
     final overview = _sampleShoppingOverview(
       hasReportObject: true,
-      report: const TeamShoppingReport(canSubmit: true, canReview: false, canEditMarks: true),
+      report: const TeamShoppingReport(
+        canSubmit: true,
+        canReview: false,
+        canEditMarks: true,
+      ),
+    );
+    await _pump(tester, overview: overview);
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'),
+    );
+    expect(button.onPressed, isNull);
+    expect(
+      find.text('يجب شراء كل العناصر الأساسية قبل الإرسال'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('submit button disabled when optional item untouched', (
+    tester,
+  ) async {
+    final overview = _sampleShoppingOverview(
+      hasReportObject: true,
+      report: const TeamShoppingReport(
+        canSubmit: true,
+        canReview: false,
+        canEditMarks: true,
+      ),
       items: const [
-        TeamShoppingItem(id: 'r', name: 'خبز', isRequired: true, position: 1, bought: true, status: 'bought'),
-        TeamShoppingItem(id: 'o', name: 'شاي', isRequired: false, position: 2, bought: false, status: 'untouched'),
+        TeamShoppingItem(
+          id: 'r',
+          name: 'خبز',
+          isRequired: true,
+          position: 1,
+          bought: true,
+          status: 'bought',
+        ),
+        TeamShoppingItem(
+          id: 'o',
+          name: 'شاي',
+          isRequired: false,
+          position: 2,
+          bought: false,
+          status: 'untouched',
+        ),
       ],
     );
     await _pump(tester, overview: overview);
-    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'));
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'),
+    );
     expect(button.onPressed, isNull);
     expect(find.text('يجب تحديد حالة كل العناصر الاختيارية'), findsOneWidget);
   });
 
-  testWidgets('submit button enabled when required bought and optional resolved', (tester) async {
-    final overview = _sampleShoppingOverview(
-      hasReportObject: true,
-      report: const TeamShoppingReport(canSubmit: true, canReview: false, canEditMarks: true),
-      items: const [
-        TeamShoppingItem(id: 'r', name: 'خبز', isRequired: true, position: 1, bought: true, status: 'bought'),
-        TeamShoppingItem(id: 'o', name: 'شاي', isRequired: false, position: 2, bought: false, status: 'not_bought', reason: 'غير موجود'),
-      ],
-    );
-    await _pump(tester, overview: overview);
-    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'));
-    expect(button.onPressed, isNotNull);
-  });
+  testWidgets(
+    'submit button enabled when required bought and optional resolved',
+    (tester) async {
+      final overview = _sampleShoppingOverview(
+        hasReportObject: true,
+        report: const TeamShoppingReport(
+          canSubmit: true,
+          canReview: false,
+          canEditMarks: true,
+        ),
+        items: const [
+          TeamShoppingItem(
+            id: 'r',
+            name: 'خبز',
+            isRequired: true,
+            position: 1,
+            bought: true,
+            status: 'bought',
+          ),
+          TeamShoppingItem(
+            id: 'o',
+            name: 'شاي',
+            isRequired: false,
+            position: 2,
+            bought: false,
+            status: 'not_bought',
+            reason: 'غير موجود',
+          ),
+        ],
+      );
+      await _pump(tester, overview: overview);
+      final button = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'),
+      );
+      expect(button.onPressed, isNotNull);
+    },
+  );
 
   testWidgets('submit calls submitShoppingReport', (tester) async {
     final shoppingService = _FakeTeamShoppingService(
       overview: _sampleShoppingOverview(
         hasReportObject: true,
-        report: const TeamShoppingReport(canSubmit: true, canReview: false, canEditMarks: true),
-        items: const [TeamShoppingItem(id: 'r', name: 'خبز', isRequired: true, position: 1, bought: true, status: 'bought')],
+        report: const TeamShoppingReport(
+          canSubmit: true,
+          canReview: false,
+          canEditMarks: true,
+        ),
+        items: const [
+          TeamShoppingItem(
+            id: 'r',
+            name: 'خبز',
+            isRequired: true,
+            position: 1,
+            bought: true,
+            status: 'bought',
+          ),
+        ],
       ),
     );
-    await tester.pumpWidget(_buildTest(_FakeAuthService(), teamService: _FakeTeamService(detail: _sampleTeamDetail()), turnService: _FakeTurnService(state: _sampleTurnState()), shoppingService: shoppingService));
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.text('إرسال القائمة للقائد'));
     expect(shoppingService.submitCalled, true);
@@ -651,60 +833,125 @@ void main() {
   });
 
   testWidgets('pending report disables marking/submitting', (tester) async {
-    await _pump(tester, overview: _sampleShoppingOverview(
-      canMark: true,
-      hasReportObject: true,
-      report: TeamShoppingReport(submittedAt: DateTime(2026, 7, 5), leaderStatus: 'pending', canSubmit: false, canReview: false, canEditMarks: false),
-    ));
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        canMark: true,
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: false,
+          canEditMarks: false,
+        ),
+      ),
+    );
     expect(find.text('في انتظار المراجعة'), findsOneWidget);
     expect(find.text('اشتريت'), findsNothing);
     expect(find.text('إرسال القائمة للقائد'), findsNothing);
   });
 
-  testWidgets('rejected report shows leader note and allows editing/resubmission', (tester) async {
-    await _pump(tester, overview: _sampleShoppingOverview(
-      hasReportObject: true,
-      report: TeamShoppingReport(submittedAt: DateTime(2026, 7, 5), leaderStatus: 'rejected', leaderNote: 'راجع السوق', canSubmit: true, canReview: false, canEditMarks: true),
-    ));
-    expect(find.textContaining('راجع السوق'), findsOneWidget);
-    expect(find.text('اشتريت'), findsWidgets);
-    expect(find.text('إرسال القائمة للقائد'), findsOneWidget);
-  });
+  testWidgets(
+    'rejected report shows leader note and allows editing/resubmission',
+    (tester) async {
+      await _pump(
+        tester,
+        overview: _sampleShoppingOverview(
+          hasReportObject: true,
+          report: TeamShoppingReport(
+            submittedAt: DateTime(2026, 7, 5),
+            leaderStatus: 'rejected',
+            leaderNote: 'راجع السوق',
+            canSubmit: true,
+            canReview: false,
+            canEditMarks: true,
+          ),
+        ),
+      );
+      expect(find.textContaining('راجع السوق'), findsOneWidget);
+      expect(find.text('اشتريت'), findsWidgets);
+      expect(find.text('إرسال القائمة للقائد'), findsOneWidget);
+    },
+  );
 
-  testWidgets('leader sees pending report and قبول/رفض buttons', (tester) async {
-    await _pump(tester, overview: _sampleShoppingOverview(
-      hasReportObject: true,
-      report: TeamShoppingReport(submittedAt: DateTime(2026, 7, 5), leaderStatus: 'pending', canSubmit: false, canReview: true, canEditMarks: false),
-    ));
+  testWidgets('leader sees pending report and قبول/رفض buttons', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: true,
+          canEditMarks: false,
+        ),
+      ),
+    );
     expect(find.text('في انتظار المراجعة'), findsOneWidget);
     expect(find.text('قبول'), findsOneWidget);
     expect(find.text('رفض'), findsOneWidget);
   });
 
   testWidgets('reject requires note', (tester) async {
-    await _pump(tester, overview: _sampleShoppingOverview(
-      hasReportObject: true,
-      report: TeamShoppingReport(submittedAt: DateTime(2026, 7, 5), leaderStatus: 'pending', canSubmit: false, canReview: true, canEditMarks: false),
-    ));
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: true,
+          canEditMarks: false,
+        ),
+      ),
+    );
     await _tapVisible(tester, find.text('رفض'));
     await tester.tap(find.text('حفظ'));
     await tester.pumpAndSettle();
     expect(find.text('السبب مطلوب'), findsOneWidget);
   });
 
-  testWidgets('accept calls reviewShoppingReport(status=accepted)', (tester) async {
-    final shoppingService = _FakeTeamShoppingService(overview: _sampleShoppingOverview(
-      hasReportObject: true,
-      report: TeamShoppingReport(submittedAt: DateTime(2026, 7, 5), leaderStatus: 'pending', canSubmit: false, canReview: true, canEditMarks: false),
-    ));
-    await tester.pumpWidget(_buildTest(_FakeAuthService(), teamService: _FakeTeamService(detail: _sampleTeamDetail()), turnService: _FakeTurnService(state: _sampleTurnState()), shoppingService: shoppingService));
+  testWidgets('accept calls reviewShoppingReport(status=accepted)', (
+    tester,
+  ) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: true,
+          canEditMarks: false,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.text('قبول'));
     expect(shoppingService.lastReviewStatus, 'accepted');
   });
 
   testWidgets('non-responsible member sees read-only view', (tester) async {
-    await _pump(tester, overview: _sampleShoppingOverview(canMark: false, includeResponsible: false));
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        canMark: false,
+        includeResponsible: false,
+      ),
+    );
     expect(find.text('اشتريت'), findsNothing);
     expect(find.text('لم أشترِ'), findsNothing);
     expect(find.text('إرسال القائمة للقائد'), findsNothing);
@@ -734,6 +981,168 @@ void main() {
     expect(find.text('تسوق اليوم'), findsOneWidget);
     expect(find.text('خبز'), findsOneWidget);
     expect(find.text('حليب'), findsOneWidget);
+  });
+
+  testWidgets('skippable missed turn shows recovery panel details', (
+    tester,
+  ) async {
+    await _pump(tester, turnState: _blockedTurnState());
+    await _scrollToTurnCard(tester);
+
+    expect(find.text('أكمل الدور السابق أولاً'), findsOneWidget);
+    expect(find.text('يوجد دور سابق لم يبدأ بعد'), findsOneWidget);
+    expect(find.text('العضو: سالم'), findsOneWidget);
+    expect(find.text('التاريخ: ${ltrFragment('2026-07-04')}'), findsOneWidget);
+    expect(find.text('تخطّي الدور السابق'), findsOneWidget);
+    expect(find.text('بدء دور اليوم'), findsNothing);
+  });
+
+  testWidgets('started previous turn does not show skip button', (
+    tester,
+  ) async {
+    await _pump(tester, turnState: _blockedTurnState(canSkip: false));
+    await _scrollToTurnCard(tester);
+
+    expect(find.text('أكمل الدور السابق أولاً'), findsOneWidget);
+    expect(find.text('تخطّي الدور السابق'), findsNothing);
+    expect(find.text('يوجد دور سابق لم يبدأ بعد'), findsNothing);
+  });
+
+  testWidgets('tapping missed-turn skip opens optional reason dialog', (
+    tester,
+  ) async {
+    await _pump(tester, turnState: _blockedTurnState());
+    await _scrollToTurnCard(tester);
+    await _tapVisible(tester, find.text('تخطّي الدور السابق'));
+
+    expect(find.text('سبب التخطي'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'سبب التخطي'), findsOneWidget);
+  });
+
+  testWidgets('empty missed-turn skip reason is allowed', (tester) async {
+    final turnService = _FakeTurnService(state: _blockedTurnState());
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: turnService,
+        shoppingService: _FakeTeamShoppingService(
+          overview: _sampleShoppingOverview(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToTurnCard(tester);
+
+    await _tapVisible(tester, find.text('تخطّي الدور السابق'));
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(turnService.skipMissedTurnCallCount, 1);
+    expect(turnService.lastSkipTeamId, 'team-1');
+    expect(turnService.lastSkipTurnId, 'prev-turn');
+    expect(turnService.lastSkipReason, '');
+    expect(find.text('تم تخطّي الدور السابق'), findsOneWidget);
+    expect(find.text('بدء دور اليوم'), findsOneWidget);
+  });
+
+  testWidgets('non-empty missed-turn skip reason is sent', (tester) async {
+    final turnService = _FakeTurnService(state: _blockedTurnState());
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: turnService,
+        shoppingService: _FakeTeamShoppingService(
+          overview: _sampleShoppingOverview(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToTurnCard(tester);
+
+    await _tapVisible(tester, find.text('تخطّي الدور السابق'));
+    await tester.enterText(
+      find.widgetWithText(TextField, 'سبب التخطي'),
+      'غائب',
+    );
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(turnService.lastSkipReason, 'غائب');
+  });
+
+  testWidgets('missed-turn skip reason over 300 chars is rejected', (
+    tester,
+  ) async {
+    final turnService = _FakeTurnService(state: _blockedTurnState());
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: turnService,
+        shoppingService: _FakeTeamShoppingService(
+          overview: _sampleShoppingOverview(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToTurnCard(tester);
+
+    await _tapVisible(tester, find.text('تخطّي الدور السابق'));
+    await tester.enterText(
+      find.widgetWithText(TextField, 'سبب التخطي'),
+      List.filled(301, 'ا').join(),
+    );
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('النص طويل جداً'), findsOneWidget);
+    expect(turnService.skipMissedTurnCallCount, 0);
+  });
+
+  testWidgets('skipped turn history displays skipped status and reason', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      turnState: const TeamTurnState(
+        canManageTurns: true,
+        todayTurn: null,
+        nextMember: null,
+        lastCompletedTurn: null,
+        history: [
+          TurnEntry(
+            id: 'skipped-turn',
+            turnDate: '2026-07-04',
+            status: 'skipped',
+            memberId: 'mem-2',
+            displayName: 'سالم',
+            position: 2,
+            skipReason: 'غائب',
+          ),
+        ],
+      ),
+    );
+    await _scrollToTurnCard(tester);
+
+    expect(find.text('تم التخطي'), findsOneWidget);
+    expect(find.text('سبب التخطي: غائب'), findsOneWidget);
+  });
+
+  testWidgets('turn recovery panel renders at 320px without overflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pump(tester, turnState: _blockedTurnState());
+    await _scrollToTurnCard(tester);
+
+    expect(find.text('تخطّي الدور السابق'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('canEditList=false hides تعديل القائمة and إضافة عنصر', (
@@ -813,7 +1222,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.edit_outlined));
+    await _tapVisible(
+      tester,
+      find.widgetWithIcon(IconButton, Icons.edit_outlined),
+    );
 
     await tester.enterText(
       find.widgetWithText(TextField, 'اسم العنصر'),
@@ -842,7 +1254,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.delete_outline));
+    await _tapVisible(
+      tester,
+      find.widgetWithIcon(IconButton, Icons.delete_outline),
+    );
 
     expect(find.text('إزالة العنصر'), findsOneWidget);
     await tester.tap(find.text('إزالة'));
@@ -1073,7 +1488,10 @@ void main() {
         firstItemPrice: 150.0,
       ),
     );
-    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.edit_outlined));
+    await _tapVisible(
+      tester,
+      find.widgetWithIcon(IconButton, Icons.edit_outlined),
+    );
 
     expect(find.widgetWithText(TextField, '150'), findsOneWidget);
   });
@@ -1095,7 +1513,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.edit_outlined));
+    await _tapVisible(
+      tester,
+      find.widgetWithIcon(IconButton, Icons.edit_outlined),
+    );
 
     await tester.enterText(find.widgetWithText(TextField, '150'), '');
     await tester.tap(find.text('حفظ'));
@@ -1235,7 +1656,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.edit_outlined));
+    await _tapVisible(
+      tester,
+      find.widgetWithIcon(IconButton, Icons.edit_outlined),
+    );
 
     await tester.enterText(find.widgetWithText(TextField, '2'), '');
     await tester.pump();
@@ -1422,7 +1846,10 @@ void main() {
     final teamDetailCalls = teamService.getTeamDetailCallCount;
     final shoppingListCalls = shoppingService.getShoppingListCallCount;
 
-    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.edit_outlined));
+    await _tapVisible(
+      tester,
+      find.widgetWithIcon(IconButton, Icons.edit_outlined),
+    );
 
     await tester.enterText(
       find.widgetWithText(TextField, 'اسم العنصر'),
@@ -1464,7 +1891,10 @@ void main() {
     final teamDetailCalls = teamService.getTeamDetailCallCount;
     final shoppingListCalls = shoppingService.getShoppingListCallCount;
 
-    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.delete_outline));
+    await _tapVisible(
+      tester,
+      find.widgetWithIcon(IconButton, Icons.delete_outline),
+    );
 
     expect(find.text('إزالة العنصر'), findsOneWidget);
     await tester.tap(find.text('إزالة'));
@@ -1504,7 +1934,10 @@ void main() {
     final shoppingListCalls = shoppingService.getShoppingListCallCount;
     final turnStateCalls = turnService.getTurnStateCallCount;
 
-    await _tapVisible(tester, find.widgetWithIcon(IconButton, Icons.person_off_outlined));
+    await _tapVisible(
+      tester,
+      find.widgetWithIcon(IconButton, Icons.person_off_outlined),
+    );
 
     expect(find.text('تعطيل العضو'), findsOneWidget);
     await tester.tap(find.text('تعطيل'));
@@ -1681,14 +2114,13 @@ extension on TeamShoppingOverview {
     TeamShoppingReport? report,
     bool? hasReportObject,
     bool? canMark,
-  }) =>
-      TeamShoppingOverview(
-        turnDate: turnDate,
-        responsibleMember: responsibleMember,
-        canMark: canMark ?? this.canMark,
-        canEditList: canEditList,
-        report: report ?? this.report,
-        hasReportObject: hasReportObject ?? this.hasReportObject,
-        items: items ?? this.items,
-      );
+  }) => TeamShoppingOverview(
+    turnDate: turnDate,
+    responsibleMember: responsibleMember,
+    canMark: canMark ?? this.canMark,
+    canEditList: canEditList,
+    report: report ?? this.report,
+    hasReportObject: hasReportObject ?? this.hasReportObject,
+    items: items ?? this.items,
+  );
 }
