@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/zad_tokens.dart';
+import 'zad_notification_badge_scope.dart';
 import 'zad_session_scope.dart';
 
 /// The root tabs of the Stitch app shell. الإدارة appears only for admins.
@@ -91,6 +92,7 @@ class ZadBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isAdmin = ZadSessionScope.maybeOf(context)?.isAdmin ?? false;
+    final unreadCount = ZadNotificationBadgeScope.maybeOf(context)?.unreadCount ?? 0;
     final items = isAdmin ? _adminItems : _userItems;
     // 5 tabs need slightly smaller icons/labels to stay safe at 320px.
     final compact = items.length == 5;
@@ -120,6 +122,7 @@ class ZadBottomNav extends StatelessWidget {
                     icon: icon,
                     activeIcon: activeIcon,
                     label: label,
+                    badgeCount: tab == ZadTab.notifications ? unreadCount : 0,
                     onTap: tab == current ? null : () => context.go(route),
                   ),
                 ),
@@ -137,6 +140,7 @@ class _NavItem extends StatelessWidget {
   final IconData icon;
   final IconData activeIcon;
   final String label;
+  final int badgeCount;
   final VoidCallback? onTap;
 
   const _NavItem({
@@ -145,6 +149,7 @@ class _NavItem extends StatelessWidget {
     required this.icon,
     required this.activeIcon,
     required this.label,
+    this.badgeCount = 0,
     required this.onTap,
   });
 
@@ -167,7 +172,22 @@ class _NavItem extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(active ? activeIcon : icon, size: compact ? 20 : 22, color: color),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(
+                    active ? activeIcon : icon,
+                    size: compact ? 20 : 22,
+                    color: color,
+                  ),
+                  if (badgeCount > 0)
+                    PositionedDirectional(
+                      top: -4,
+                      end: -8,
+                      child: _UnreadBadge(count: badgeCount, onDark: active),
+                    ),
+                ],
+              ),
               const SizedBox(height: 2),
               Text(
                 label,
@@ -181,6 +201,41 @@ class _NavItem extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Small pill on the notifications tab icon. Exact count 1-99, "99+"
+/// beyond that; never shown at zero (caller already guards on badgeCount > 0).
+class _UnreadBadge extends StatelessWidget {
+  final int count;
+  final bool onDark;
+  const _UnreadBadge({required this.count, required this.onDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = count > 99 ? '99+' : '$count';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: ZadTokens.danger,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: onDark ? ZadTokens.primary : ZadTokens.surface,
+          width: 1.5,
+        ),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+          height: 1,
         ),
       ),
     );

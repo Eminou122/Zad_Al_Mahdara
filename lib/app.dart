@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'core/routing/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/zad_notification_badge_scope.dart';
 import 'core/widgets/zad_session_scope.dart';
+import 'features/notifications/data/notification_badge_controller.dart';
+import 'features/notifications/data/notification_service.dart';
 import 'services/auth_service.dart';
 
 class ZadApp extends StatefulWidget {
@@ -13,17 +16,44 @@ class ZadApp extends StatefulWidget {
   State<ZadApp> createState() => _ZadAppState();
 }
 
-class _ZadAppState extends State<ZadApp> {
+class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
   late final GoRouter _router;
+  late final NotificationBadgeController _badgeController;
 
   @override
   void initState() {
     super.initState();
     _router = AppRouter(widget.authService).router;
+    _badgeController = NotificationBadgeController(
+      NotificationService(widget.authService),
+    );
+    widget.authService.addListener(_onAuthChanged);
+    WidgetsBinding.instance.addObserver(this);
+    if (widget.authService.isAuthenticated) {
+      _badgeController.refresh();
+    }
+  }
+
+  void _onAuthChanged() {
+    if (widget.authService.isAuthenticated) {
+      _badgeController.refresh();
+    } else {
+      _badgeController.reset();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        widget.authService.isAuthenticated) {
+      _badgeController.refresh();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.authService.removeListener(_onAuthChanged);
     _router.dispose();
     super.dispose();
   }
@@ -36,10 +66,17 @@ class _ZadAppState extends State<ZadApp> {
       theme: AppTheme.light,
       routerConfig: _router,
       // Session scope lets shell widgets (bottom nav) read admin state
-      // without passing flags through every screen.
+      // without passing flags through every screen; the badge scope does
+      // the same for the unread-notification count.
       builder: (context, child) => ZadSessionScope(
         authService: widget.authService,
-        child: Directionality(textDirection: TextDirection.rtl, child: child!),
+        child: ZadNotificationBadgeScope(
+          controller: _badgeController,
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: child!,
+          ),
+        ),
       ),
     );
   }

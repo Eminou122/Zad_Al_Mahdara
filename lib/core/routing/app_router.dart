@@ -47,7 +47,7 @@ class AppRouter {
       '/home' => HomeScreen(authService: authService),
       '/budget' => BudgetScreen(authService: authService),
       '/teams' => TeamsScreen(authService: authService),
-      '/notifications' => const NotificationsScreen(),
+      '/notifications' => NotificationsScreen(authService: authService),
       '/admin' => AdminScreen(authService: authService),
       _ => const SizedBox.shrink(),
     };
@@ -179,7 +179,7 @@ class AppRouter {
       GoRoute(
         path: '/notifications',
         pageBuilder: (_, state) =>
-            _mainPage(state, const NotificationsScreen()),
+            _mainPage(state, NotificationsScreen(authService: authService)),
       ),
       GoRoute(
         path: '/admin',
