@@ -30,6 +30,8 @@ String _formatShoppingPrice(double price) {
   return '$value MRU';
 }
 
+String _formatShoppingMoney(double amount) => _formatShoppingPrice(amount);
+
 // Hassaniya labels for structured shopping quantity units. mru_value means
 // "buy this many MRU worth of the item" (a requested amount), not a
 // currency total — kept visually separate from price via the السعر/الكمية
@@ -283,6 +285,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
             ),
           ),
         _shoppingReportStatus(o),
+        _shoppingFinancialSummary(o),
         if (o.canEditList)
           Padding(
             padding: const EdgeInsets.only(bottom: ZadTokens.s2),
@@ -398,6 +401,79 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _shoppingFinancialSummary(TeamShoppingOverview o) {
+    final report = o.report;
+    if (!report.isAccepted) return const SizedBox.shrink();
+
+    final isResponsible =
+        widget.authService.profile?.id != null &&
+        o.responsibleMember?.id == widget.authService.profile!.id;
+
+    if (!report.hasFinancialSummary) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: ZadTokens.s2),
+        child: _ShoppingFinancialBox(
+          status: 'تقرير قديم بدون حسبة مالية',
+          children: [
+            Text(
+              'لم تُطبَّق الحسبة المالية على هذا التقرير القديم',
+              style: TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final expected = report.expectedTotal!;
+    final actual = report.actualTotal!;
+    final deducted = report.deductionAmount ?? actual;
+    final applied = report.financialApplied;
+    final status = applied ? 'تم تطبيق الخصم' : 'لم يتم تطبيق الخصم بعد';
+    final responsibleMessage = isResponsible
+        ? (deducted == 0
+              ? 'لم يتم خصم أي مبلغ من ميزانيتك'
+              : 'تم خصم ${ltrFragment(_formatShoppingMoney(deducted))} من ميزانيتك')
+        : null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: ZadTokens.s2),
+      child: _ShoppingFinancialBox(
+        status: status,
+        children: [
+          _ShoppingFinancialRow(
+            label: 'التكلفة المتوقعة',
+            value: ltrFragment(_formatShoppingMoney(expected)),
+          ),
+          _ShoppingFinancialRow(
+            label: 'التكلفة الفعلية',
+            value: ltrFragment(_formatShoppingMoney(actual)),
+          ),
+          _ShoppingFinancialRow(
+            label: 'المخصوم من الميزانية',
+            value: ltrFragment(_formatShoppingMoney(deducted)),
+          ),
+          if (responsibleMessage != null) ...[
+            const SizedBox(height: ZadTokens.s1),
+            Text(
+              'تم قبول التقرير',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+            Text(
+              responsibleMessage,
+              style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+            ),
+          ] else if (deducted == 0) ...[
+            const SizedBox(height: ZadTokens.s1),
+            const Text(
+              'لم يتم خصم أي مبلغ من الميزانية',
+              style: TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+            ),
+          ],
         ],
       ),
     );
@@ -1615,6 +1691,66 @@ class _PreviousTurnBlockPanel extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ShoppingFinancialBox extends StatelessWidget {
+  final String status;
+  final List<Widget> children;
+
+  const _ShoppingFinancialBox({required this.status, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBF5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _warmBorder),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(ZadTokens.s2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: _Badge(status, gold: true),
+            ),
+            const SizedBox(height: ZadTokens.s2),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShoppingFinancialRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ShoppingFinancialRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );

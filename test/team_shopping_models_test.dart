@@ -6,10 +6,7 @@ void main() {
     test('parses full payload with responsible member and items', () {
       final ov = TeamShoppingOverview.fromJson({
         'turn_date': '2026-07-05',
-        'responsible_member': {
-          'id': 'mem-1',
-          'display_name': 'محمد',
-        },
+        'responsible_member': {'id': 'mem-1', 'display_name': 'محمد'},
         'can_mark': true,
         'can_edit_list': false,
         'items': [
@@ -235,6 +232,69 @@ void main() {
     });
   });
 
+  group('TeamShoppingReport financial fields', () {
+    test(
+      'parses expected_total, actual_total, expense_id and financial metadata',
+      () {
+        final report = TeamShoppingReport.fromJson({
+          'submitted_at': '2026-07-05T09:00:00Z',
+          'leader_status': 'accepted',
+          'expected_total': '300',
+          'actual_total': 270.5,
+          'expense_id': 'expense-1',
+          'financial_applied_at': '2026-07-05T10:00:00Z',
+          'financial_applied_by': 'leader-1',
+        });
+
+        expect(report.expectedTotal, 300.0);
+        expect(report.actualTotal, 270.5);
+        expect(report.expenseId, 'expense-1');
+        expect(report.financialAppliedAt, DateTime.utc(2026, 7, 5, 10));
+        expect(report.financialAppliedBy, 'leader-1');
+        expect(report.hasFinancialSummary, true);
+        expect(report.financialApplied, true);
+        expect(report.deductionAmount, 270.5);
+        expect(report.hasExpenseLink, true);
+      },
+    );
+
+    test(
+      'historical accepted report with null financial fields parses safely',
+      () {
+        final report = TeamShoppingReport.fromJson({
+          'submitted_at': '2026-07-05T09:00:00Z',
+          'leader_status': 'accepted',
+          'expected_total': null,
+          'actual_total': null,
+        });
+
+        expect(report.isAccepted, true);
+        expect(report.hasFinancialSummary, false);
+        expect(report.financialApplied, false);
+        expect(report.deductionAmount, isNull);
+        expect(report.hasExpenseLink, false);
+      },
+    );
+
+    test('zero actual_total is valid and does not require expense link', () {
+      final report = TeamShoppingReport.fromJson({
+        'submitted_at': '2026-07-05T09:00:00Z',
+        'leader_status': 'accepted',
+        'expected_total': 25,
+        'actual_total': 0,
+        'expense_id': null,
+        'financial_applied_at': '2026-07-05T10:00:00Z',
+        'financial_applied_by': 'leader-1',
+      });
+
+      expect(report.hasFinancialSummary, true);
+      expect(report.actualTotal, 0.0);
+      expect(report.deductionAmount, 0.0);
+      expect(report.hasExpenseLink, false);
+      expect(report.financialApplied, true);
+    });
+  });
+
   group('toJson roundtrip', () {
     test('TeamShoppingResponsibleMember roundtrip', () {
       final original = TeamShoppingResponsibleMember(
@@ -330,19 +390,22 @@ void main() {
       expect(restored.items.first.name, 'خبز');
     });
 
-    test('TeamShoppingOverview roundtrip with null turnDate and responsibleMember', () {
-      final original = TeamShoppingOverview(
-        turnDate: null,
-        responsibleMember: null,
-        canMark: false,
-        canEditList: false,
-        items: const [],
-      );
-      final json = original.toJson();
-      final restored = TeamShoppingOverview.fromJson(json);
-      expect(restored.turnDate, isNull);
-      expect(restored.responsibleMember, isNull);
-      expect(restored.items, isEmpty);
-    });
+    test(
+      'TeamShoppingOverview roundtrip with null turnDate and responsibleMember',
+      () {
+        final original = TeamShoppingOverview(
+          turnDate: null,
+          responsibleMember: null,
+          canMark: false,
+          canEditList: false,
+          items: const [],
+        );
+        final json = original.toJson();
+        final restored = TeamShoppingOverview.fromJson(json);
+        expect(restored.turnDate, isNull);
+        expect(restored.responsibleMember, isNull);
+        expect(restored.items, isEmpty);
+      },
+    );
   });
 }

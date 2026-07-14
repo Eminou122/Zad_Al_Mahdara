@@ -92,7 +92,7 @@ TeamShoppingOverview _sampleShoppingOverview({
 }) => TeamShoppingOverview(
   turnDate: DateTime(2026, 7, 5),
   responsibleMember: includeResponsible
-      ? TeamShoppingResponsibleMember(id: 'mem-1', displayName: 'محمد')
+      ? TeamShoppingResponsibleMember(id: 'p1', displayName: 'محمد')
       : null,
   canMark: canMark,
   canEditList: canEditList,
@@ -457,6 +457,15 @@ class _FakeTeamShoppingService extends TeamShoppingService {
 class _FakeAuthService extends AuthService {
   @override
   String? get currentToken => 'test-token';
+
+  @override
+  UserProfile? get profile => const UserProfile(
+    id: 'p1',
+    displayName: 'محمد',
+    phoneMasked: '22****88',
+    isAdmin: false,
+    isActive: true,
+  );
 }
 
 Widget _buildTest(
@@ -874,6 +883,181 @@ void main() {
       expect(find.text('إرسال القائمة للقائد'), findsOneWidget);
     },
   );
+
+  testWidgets('accepted report shows financial totals and deducted amount', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        canMark: false,
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'accepted',
+          expectedTotal: 300,
+          actualTotal: 270.5,
+          expenseId: 'expense-secret-id',
+          financialAppliedAt: DateTime(2026, 7, 5, 10),
+          financialAppliedBy: 'leader-1',
+          canSubmit: false,
+          canReview: false,
+          canEditMarks: false,
+        ),
+      ),
+    );
+
+    expect(find.text('التكلفة المتوقعة:'), findsOneWidget);
+    expect(find.text('التكلفة الفعلية:'), findsOneWidget);
+    expect(find.text('المخصوم من الميزانية:'), findsOneWidget);
+    expect(find.textContaining('300 MRU'), findsOneWidget);
+    expect(find.textContaining('270.50 MRU'), findsWidgets);
+    expect(find.text('تم تطبيق الخصم'), findsOneWidget);
+    expect(find.textContaining('expense-secret-id'), findsNothing);
+  });
+
+  testWidgets('responsible member sees budget deduction message', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        canMark: false,
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'accepted',
+          expectedTotal: 300,
+          actualTotal: 270,
+          financialAppliedAt: DateTime(2026, 7, 5, 10),
+          financialAppliedBy: 'leader-1',
+          canSubmit: false,
+          canReview: false,
+          canEditMarks: false,
+        ),
+      ),
+    );
+
+    expect(find.text('تم قبول التقرير'), findsOneWidget);
+    expect(find.textContaining('تم خصم'), findsOneWidget);
+    expect(find.textContaining('270 MRU'), findsWidgets);
+  });
+
+  testWidgets('zero actual report shows no deduction message', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        canMark: false,
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'accepted',
+          expectedTotal: 25,
+          actualTotal: 0,
+          financialAppliedAt: DateTime(2026, 7, 5, 10),
+          financialAppliedBy: 'leader-1',
+          canSubmit: false,
+          canReview: false,
+          canEditMarks: false,
+        ),
+      ),
+    );
+
+    expect(find.textContaining('0 MRU'), findsWidgets);
+    expect(find.text('لم يتم خصم أي مبلغ من ميزانيتك'), findsOneWidget);
+  });
+
+  testWidgets('leader sees summary but no budget balance or expense history', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        canMark: false,
+        canEditList: true,
+        includeResponsible: false,
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'accepted',
+          expectedTotal: 300,
+          actualTotal: 270,
+          financialAppliedAt: DateTime(2026, 7, 5, 10),
+          financialAppliedBy: 'leader-1',
+          canSubmit: false,
+          canReview: false,
+          canEditMarks: false,
+        ),
+      ),
+    );
+
+    expect(find.text('التكلفة المتوقعة:'), findsOneWidget);
+    expect(find.text('تم تطبيق الخصم'), findsOneWidget);
+    expect(find.textContaining('ميزانيتك'), findsNothing);
+    expect(find.textContaining('الرصيد'), findsNothing);
+    expect(find.textContaining('expense'), findsNothing);
+  });
+
+  testWidgets('pending and rejected reports do not show deduction summary', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: true,
+          canEditMarks: false,
+        ),
+      ),
+    );
+    expect(find.text('المخصوم من الميزانية:'), findsNothing);
+
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'rejected',
+          leaderNote: 'راجع السوق',
+          canSubmit: true,
+          canReview: false,
+          canEditMarks: true,
+        ),
+      ),
+    );
+    expect(find.text('المخصوم من الميزانية:'), findsNothing);
+  });
+
+  testWidgets('historical accepted report shows legacy financial note', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        canMark: false,
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'accepted',
+          canSubmit: false,
+          canReview: false,
+          canEditMarks: false,
+        ),
+      ),
+    );
+
+    expect(find.text('تقرير قديم بدون حسبة مالية'), findsOneWidget);
+    expect(
+      find.text('لم تُطبَّق الحسبة المالية على هذا التقرير القديم'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('0 MRU'), findsNothing);
+  });
 
   testWidgets('leader sees pending report and قبول/رفض buttons', (
     tester,
