@@ -6,6 +6,7 @@ import 'core/widgets/zad_messaging_badge_scope.dart';
 import 'core/widgets/zad_notification_badge_scope.dart';
 import 'core/widgets/zad_session_scope.dart';
 import 'features/messaging/data/messaging_badge_controller.dart';
+import 'features/messaging/data/messaging_presence_controller.dart';
 import 'features/messaging/data/team_messaging_service.dart';
 import 'features/notifications/data/notification_badge_controller.dart';
 import 'features/notifications/data/notification_service.dart';
@@ -23,6 +24,7 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
   late final GoRouter _router;
   late final NotificationBadgeController _badgeController;
   late final MessagingBadgeController _messagingBadgeController;
+  late final MessagingPresenceController _presenceController;
 
   @override
   void initState() {
@@ -34,11 +36,16 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
     _messagingBadgeController = MessagingBadgeController(
       TeamMessagingService(widget.authService),
     );
+    _presenceController = MessagingPresenceController(
+      widget.authService,
+      TeamMessagingService(widget.authService),
+    );
     widget.authService.addListener(_onAuthChanged);
     WidgetsBinding.instance.addObserver(this);
     if (widget.authService.isAuthenticated) {
       _badgeController.refresh();
       _messagingBadgeController.refresh();
+      _presenceController.start();
     }
   }
 
@@ -46,9 +53,11 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
     if (widget.authService.isAuthenticated) {
       _badgeController.refresh();
       _messagingBadgeController.refresh();
+      _presenceController.start();
     } else {
       _badgeController.reset();
       _messagingBadgeController.reset();
+      _presenceController.reset();
     }
   }
 
@@ -58,6 +67,12 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
         widget.authService.isAuthenticated) {
       _badgeController.refresh();
       _messagingBadgeController.refresh();
+      _presenceController.resume();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      _presenceController.stop();
     }
   }
 
@@ -65,6 +80,7 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.authService.removeListener(_onAuthChanged);
+    _presenceController.dispose();
     _router.dispose();
     super.dispose();
   }

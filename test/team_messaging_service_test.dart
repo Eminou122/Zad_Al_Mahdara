@@ -118,6 +118,58 @@ class _RecordingTeamMessagingService extends TeamMessagingService {
   }
 
   @override
+  Future<void> updateMessagingPresence() async {
+    lastRpc = 'update_messaging_presence';
+    lastParams = {'p_session_token': 'test-token'};
+  }
+
+  @override
+  Future<ConversationLiveState> getConversationLiveState(
+    String conversationId,
+  ) async {
+    lastRpc = 'get_conversation_live_state';
+    lastParams = {
+      'p_session_token': 'test-token',
+      'p_conversation_id': conversationId,
+    };
+    return ConversationLiveState.unknown;
+  }
+
+  @override
+  Future<void> setConversationTyping(
+    String conversationId, {
+    required bool isTyping,
+  }) async {
+    lastRpc = 'set_conversation_typing';
+    lastParams = {
+      'p_session_token': 'test-token',
+      'p_conversation_id': conversationId,
+      'p_is_typing': isTyping,
+    };
+  }
+
+  @override
+  Future<ConversationUpdates> getConversationUpdates({
+    required String conversationId,
+    required TeamMessageCursor? after,
+    int limit = 50,
+  }) async {
+    lastRpc = 'get_conversation_updates';
+    lastParams = {
+      'p_session_token': 'test-token',
+      'p_conversation_id': conversationId,
+      'p_after_created_at': after?.createdAt.toIso8601String(),
+      'p_after_id': after?.id,
+      'p_limit': limit,
+    };
+    return ConversationUpdates(
+      conversationId: conversationId,
+      messages: const [],
+      unreadCount: 0,
+    );
+  }
+
+  @override
   Future<TeamAnnouncement> createTeamAnnouncement({
     required String teamId,
     required String body,
@@ -336,6 +388,59 @@ void main() {
       await svc.markConversationRead('conv-1');
       expect(svc.lastRpc, 'mark_team_conversation_read');
       expect(svc.lastParams!['p_conversation_id'], 'conv-1');
+    });
+
+    test('presence heartbeat params are exact', () async {
+      final svc = _RecordingTeamMessagingService();
+      await svc.updateMessagingPresence();
+      expect(svc.lastRpc, 'update_messaging_presence');
+      expect(svc.lastParams, {'p_session_token': 'test-token'});
+    });
+
+    test('live-state params are exact', () async {
+      final svc = _RecordingTeamMessagingService();
+      await svc.getConversationLiveState('conv-1');
+      expect(svc.lastRpc, 'get_conversation_live_state');
+      expect(svc.lastParams!['p_conversation_id'], 'conv-1');
+      expect(svc.lastParams!.containsKey('p_profile_id'), false);
+    });
+
+    test('typing true and false params are exact', () async {
+      final svc = _RecordingTeamMessagingService();
+      await svc.setConversationTyping('conv-1', isTyping: true);
+      expect(svc.lastRpc, 'set_conversation_typing');
+      expect(svc.lastParams!['p_is_typing'], true);
+      expect(svc.lastParams!.containsKey('p_body'), false);
+
+      await svc.setConversationTyping('conv-1', isTyping: false);
+      expect(svc.lastParams!['p_is_typing'], false);
+    });
+
+    test('updates RPC sends both cursor parts', () async {
+      final svc = _RecordingTeamMessagingService();
+      final cursor = TeamMessageCursor(
+        createdAt: DateTime.utc(2026, 7, 13, 9),
+        id: 'msg-9',
+      );
+      await svc.getConversationUpdates(
+        conversationId: 'conv-1',
+        after: cursor,
+        limit: 7,
+      );
+      expect(svc.lastRpc, 'get_conversation_updates');
+      expect(
+        svc.lastParams!['p_after_created_at'],
+        cursor.createdAt.toIso8601String(),
+      );
+      expect(svc.lastParams!['p_after_id'], 'msg-9');
+      expect(svc.lastParams!['p_limit'], 7);
+    });
+
+    test('updates RPC sends null cursor parts together', () async {
+      final svc = _RecordingTeamMessagingService();
+      await svc.getConversationUpdates(conversationId: 'conv-1', after: null);
+      expect(svc.lastParams!['p_after_created_at'], isNull);
+      expect(svc.lastParams!['p_after_id'], isNull);
     });
 
     test('mark_team_announcement_read sends announcement id', () async {

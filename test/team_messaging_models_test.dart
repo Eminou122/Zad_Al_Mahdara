@@ -196,6 +196,117 @@ void main() {
     });
   });
 
+  group('ConversationLiveState.fromJson', () {
+    test('parses online state', () {
+      final state = ConversationLiveState.fromJson({
+        'other_participant': {
+          'profile_id': 'p-2',
+          'display_name': 'القائد',
+          'is_online': true,
+          'last_active_at': '2026-07-13T10:00:00.000Z',
+          'is_typing': false,
+          'typing_until': null,
+        },
+      });
+      expect(state.otherProfileId, 'p-2');
+      expect(state.displayName, 'القائد');
+      expect(state.isOnline, true);
+      expect(state.hasKnownPresence, true);
+      expect(state.statusLabel, 'متصل الآن');
+    });
+
+    test('parses offline known timestamp', () {
+      final state = ConversationLiveState.fromJson({
+        'other_participant': {
+          'profile_id': 'p-2',
+          'display_name': 'القائد',
+          'is_online': false,
+          'last_active_at': '2026-07-13T10:00:00.000Z',
+          'is_typing': false,
+        },
+      });
+      expect(state.isOnline, false);
+      expect(state.hasKnownPresence, true);
+      expect(state.statusLabel, contains('آخر ظهور'));
+    });
+
+    test('parses unknown presence without fake offline timestamp', () {
+      final state = ConversationLiveState.fromJson({
+        'other_participant': {
+          'profile_id': 'p-2',
+          'display_name': 'القائد',
+          'is_online': false,
+          'last_active_at': null,
+          'is_typing': false,
+        },
+      });
+      expect(state.isOnline, false);
+      expect(state.hasKnownPresence, false);
+      expect(state.statusLabel, isNull);
+    });
+
+    test('parses typing state and expiry defensively', () {
+      final state = ConversationLiveState.fromJson({
+        'other_participant': {
+          'profile_id': 'p-2',
+          'display_name': 'القائد',
+          'is_online': false,
+          'is_typing': 'true',
+          'typing_until': DateTime.now()
+              .add(const Duration(seconds: 5))
+              .toUtc()
+              .toIso8601String(),
+        },
+      });
+      expect(state.isTyping, true);
+      expect(state.typingIsActive, true);
+    });
+  });
+
+  group('ConversationUpdates.fromJson', () {
+    test('parses messages, newest cursor, unread count, and live state', () {
+      final updates = ConversationUpdates.fromJson({
+        'conversation_id': 'conv-1',
+        'items': [
+          {
+            'id': 'msg-1',
+            'conversation_id': 'conv-1',
+            'sender_profile_id': 'p-1',
+            'sender_name': 'a',
+            'sender_role': 'member',
+            'body': 'b',
+            'created_at': '2026-07-13T10:00:00.000Z',
+            'is_read': true,
+          },
+        ],
+        'newest_cursor': {
+          'created_at': '2026-07-13T10:00:00.000Z',
+          'id': 'msg-1',
+        },
+        'unread_count': '2',
+        'live_state': {
+          'other_participant': {'profile_id': 'p-2', 'is_online': false},
+        },
+      });
+      expect(updates.messages, hasLength(1));
+      expect(updates.newestCursor!.id, 'msg-1');
+      expect(updates.unreadCount, 2);
+      expect(updates.liveState!.otherProfileId, 'p-2');
+    });
+
+    test('malformed optional fields are safe', () {
+      final updates = ConversationUpdates.fromJson({
+        'conversation_id': 'conv-1',
+        'items': [],
+        'newest_cursor': 'bad',
+        'unread_count': 'bad',
+      });
+      expect(updates.messages, isEmpty);
+      expect(updates.newestCursor, isNull);
+      expect(updates.unreadCount, 0);
+    });
+  });
+
   group('SentTeamMessage.fromJson', () {
     test('parses nested conversation + message', () {
       final sent = SentTeamMessage.fromJson({

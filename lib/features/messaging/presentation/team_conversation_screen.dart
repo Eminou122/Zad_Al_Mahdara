@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 
 import 'package:flutter/material.dart';
 import '../../../core/theme/zad_tokens.dart';
@@ -28,6 +28,11 @@ class TeamConversationScreen extends StatefulWidget {
   final String? currentUserRole;
 
   final TeamMessagingService? service;
+  final Duration syncInterval;
+  final Duration relaxedSyncInterval;
+  final Duration typingDebounce;
+  final Duration typingRefreshInterval;
+  final Duration typingIdleTimeout;
 
   const TeamConversationScreen({
     super.key,
@@ -38,13 +43,19 @@ class TeamConversationScreen extends StatefulWidget {
     this.otherPartyName,
     this.currentUserRole,
     this.service,
+    this.syncInterval = const Duration(seconds: 2),
+    this.relaxedSyncInterval = const Duration(seconds: 5),
+    this.typingDebounce = const Duration(milliseconds: 400),
+    this.typingRefreshInterval = const Duration(seconds: 3),
+    this.typingIdleTimeout = const Duration(seconds: 3),
   });
 
   @override
   State<TeamConversationScreen> createState() => _TeamConversationScreenState();
 }
 
-class _TeamConversationScreenState extends State<TeamConversationScreen> {
+class _TeamConversationScreenState extends State<TeamConversationScreen>
+    with WidgetsBindingObserver {
   late final TeamMessagingService _svc;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _composerCtrl = TextEditingController();
@@ -60,12 +71,26 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
   bool _sending = false;
   String? _error;
   String? _composerError;
+  bool _syncing = false;
+  int _emptySyncs = 0;
+  int _syncFailures = 0;
+  bool _syncErrorVisible = false;
+  bool _showNewMessages = false;
+  bool _foreground = true;
+
+  Timer? _syncTimer;
+  Timer? _typingDebounceTimer;
+  Timer? _typingIdleTimer;
+  DateTime? _lastTypingSentAt;
+  bool _typingActive = false;
 
   String? _teamId;
   String? _teamName;
   String? _otherPartyName;
   String? _role;
   bool _roleTrusted = false;
+  TeamMessageCursor? _newestCursor;
+  ConversationLiveState? _liveState;
 
   String? get _myProfileId => widget.authService.profile?.id;
 
@@ -81,16 +106,37 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
     _teamName = widget.teamName;
     _otherPartyName = widget.otherPartyName;
     _role = widget.currentUserRole;
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
+    _composerCtrl.addListener(_onComposerChanged);
     _load();
   }
 
   @override
   void dispose() {
+    _stopSync();
+    _clearTypingBestEffort();
+    _typingDebounceTimer?.cancel();
+    _typingIdleTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _composerCtrl.removeListener(_onComposerChanged);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _composerCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final foreground = state == AppLifecycleState.resumed;
+    if (foreground == _foreground) return;
+    _foreground = foreground;
+    if (foreground) {
+      _scheduleSync(immediate: true);
+    } else {
+      _stopSync();
+      _clearTypingBestEffort();
+    }
   }
 
   void _onScroll() {
@@ -108,6 +154,24 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
       if (seen.add(it.id)) out.add(it);
     }
     return out;
+  }
+
+  TeamMessageCursor? _cursorFromNewest(List<TeamMessage> items) {
+    if (items.isEmpty) return null;
+    final sorted = [...items]..sort(_newestFirst);
+    final newest = sorted.first;
+    return TeamMessageCursor(createdAt: newest.createdAt, id: newest.id);
+  }
+
+  int _newestFirst(TeamMessage a, TeamMessage b) {
+    final byDate = b.createdAt.compareTo(a.createdAt);
+    if (byDate != 0) return byDate;
+    return b.id.compareTo(a.id);
+  }
+
+  bool get _nearNewest {
+    if (!_scrollController.hasClients) return true;
+    return _scrollController.position.pixels <= 80;
   }
 
   /// Best-effort context hydration for the deep-link case (opened from a
@@ -169,14 +233,16 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
       if (!mounted) return;
       _deriveRoleFromMessages(page.items);
       setState(() {
-        _messages = _dedupe(page.items);
+        _messages = _dedupe(page.items)..sort(_newestFirst);
         _hasMore = page.hasMore;
         _nextCursor = page.nextCursor;
+        _newestCursor = _cursorFromNewest(_messages);
         _hasLoadedOnce = true;
         _loading = false;
         _refreshing = false;
       });
       unawaited(_markReadAndRefreshBadge());
+      _scheduleSync(immediate: true);
     } catch (e) {
       if (!mounted) return;
       if (isInitialLoad) {
@@ -203,6 +269,83 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
     ZadMessagingBadgeScope.maybeOf(context)?.refresh();
   }
 
+  void _scheduleSync({bool immediate = false}) {
+    if (!_foreground || !_hasLoadedOnce || _error != null) return;
+    _syncTimer?.cancel();
+    final interval = _emptySyncs >= 3
+        ? widget.relaxedSyncInterval
+        : widget.syncInterval;
+    if (immediate) {
+      unawaited(_syncNow());
+    }
+    _syncTimer = Timer(interval, () {
+      unawaited(_syncNow());
+      _scheduleSync();
+    });
+  }
+
+  void _stopSync() {
+    _syncTimer?.cancel();
+    _syncTimer = null;
+  }
+
+  Future<void> _syncNow() async {
+    if (_syncing || !_foreground || !_hasLoadedOnce) return;
+    _syncing = true;
+    try {
+      final updates = await _svc.getConversationUpdates(
+        conversationId: widget.conversationId,
+        after: _newestCursor,
+        limit: _pageSize,
+      );
+      if (!mounted) return;
+      final wasNearNewest = _nearNewest;
+      final existing = _messages.map((m) => m.id).toSet();
+      final incoming = updates.messages
+          .where((m) => existing.add(m.id))
+          .toList(growable: false);
+      setState(() {
+        if (incoming.isNotEmpty) {
+          _messages = _dedupe([...incoming, ..._messages])..sort(_newestFirst);
+          _emptySyncs = 0;
+          _showNewMessages = !wasNearNewest;
+        } else {
+          _emptySyncs++;
+        }
+        _newestCursor = updates.newestCursor ?? _cursorFromNewest(_messages);
+        _liveState = updates.liveState ?? _liveState;
+        _otherPartyName ??= updates.liveState?.displayName;
+        _syncFailures = 0;
+        _syncErrorVisible = false;
+      });
+      if (incoming.isNotEmpty) {
+        unawaited(_markReadAndRefreshBadge());
+        if (wasNearNewest) _scrollToNewest();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final text = userErrorText(e);
+      final denied = text.contains('صلاحية') || text.contains('لم يعد');
+      setState(() {
+        _syncFailures++;
+        _syncErrorVisible = _syncFailures >= 3;
+        if (denied) _error = text;
+      });
+      if (denied) _stopSync();
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  void _scrollToNewest() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   Future<void> _loadMore() async {
     if (_loadingMore || !_hasMore) return;
     final cursor = _nextCursor;
@@ -221,6 +364,7 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
           ..._messages,
           ...page.items.where((it) => !existingIds.contains(it.id)),
         ];
+        _messages.sort(_newestFirst);
         _hasMore = page.hasMore;
         _nextCursor = page.nextCursor;
         _loadingMore = false;
@@ -258,11 +402,18 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
           : await _svc.sendMessageToTeamLeader(teamId: _teamId!, body: text);
       if (!mounted) return;
       setState(() {
-        _messages = [result.message, ..._messages];
+        _messages = _dedupe([result.message, ..._messages])
+          ..sort(_newestFirst);
+        _newestCursor = _cursorFromNewest(_messages);
         _composerCtrl.clear();
         _sending = false;
+        _showNewMessages = false;
+        _emptySyncs = 0;
       });
+      _clearTypingBestEffort();
+      _scrollToNewest();
       ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+      _scheduleSync(immediate: true);
     } catch (e) {
       if (!mounted) return;
       // Preserve the typed draft on failure (section 10).
@@ -271,6 +422,50 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
         _composerError = userErrorText(e);
       });
     }
+  }
+
+  void _onComposerChanged() {
+    if (!_canCompose) return;
+    final hasText = _composerCtrl.text.trim().isNotEmpty;
+    _typingDebounceTimer?.cancel();
+    _typingIdleTimer?.cancel();
+    if (!hasText) {
+      _clearTypingBestEffort();
+      return;
+    }
+    final now = DateTime.now();
+    final shouldRefresh =
+        !_typingActive ||
+        _lastTypingSentAt == null ||
+        now.difference(_lastTypingSentAt!) >= widget.typingRefreshInterval;
+    if (shouldRefresh) {
+      _typingDebounceTimer = Timer(widget.typingDebounce, () {
+        unawaited(_sendTyping(true));
+      });
+    }
+    _typingIdleTimer = Timer(widget.typingIdleTimeout, _clearTypingBestEffort);
+  }
+
+  Future<void> _sendTyping(bool isTyping) async {
+    try {
+      await _svc.setConversationTyping(
+        widget.conversationId,
+        isTyping: isTyping,
+      );
+      _typingActive = isTyping;
+      _lastTypingSentAt = isTyping ? DateTime.now() : null;
+    } catch (_) {
+      // Draft text stays local; typing is best-effort comfort UI.
+    }
+  }
+
+  void _clearTypingBestEffort() {
+    _typingDebounceTimer?.cancel();
+    _typingIdleTimer?.cancel();
+    if (!_typingActive) return;
+    _typingActive = false;
+    _lastTypingSentAt = null;
+    unawaited(_sendTyping(false));
   }
 
   @override
@@ -285,10 +480,30 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
             children: [
               if (_otherPartyName != null)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    _otherPartyName!,
-                    style: const TextStyle(fontSize: 12.5),
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Column(
+                    children: [
+                      Text(
+                        _otherPartyName!,
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
+                      if (_liveState?.statusLabel != null)
+                        Text(
+                          _liveState!.statusLabel!,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: ZadTokens.textMuted,
+                          ),
+                        ),
+                      if (_liveState?.typingIsActive ?? false)
+                        const Text(
+                          'يكتب الآن...',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: ZadTokens.primary,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               if (_refreshing) const LinearProgressIndicator(minHeight: 2),
@@ -329,10 +544,31 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
 
     return Column(
       children: [
+        if (_syncErrorVisible)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: ZadTokens.s3),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: ZadInfoBanner(
+                    'تعذر تحديث الرسائل',
+                    kind: ZadBannerKind.warning,
+                  ),
+                ),
+                const SizedBox(width: ZadTokens.s2),
+                OutlinedButton(
+                  onPressed: () => _scheduleSync(immediate: true),
+                  child: const Text('إعادة المحاولة'),
+                ),
+              ],
+            ),
+          ),
         Expanded(
-          child: RefreshIndicator(
-            onRefresh: _load,
-            child: _messages.isEmpty
+          child: Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: _load,
+                child: _messages.isEmpty
                 ? LayoutBuilder(
                     builder: (context, constraints) => SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
@@ -352,7 +588,7 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
                       ),
                     ),
                   )
-                : ListView.builder(
+                    : ListView.builder(
                     controller: _scrollController,
                     reverse: true,
                     physics: const AlwaysScrollableScrollPhysics(),
@@ -372,6 +608,24 @@ class _TeamConversationScreenState extends State<TeamConversationScreen> {
                       );
                     },
                   ),
+              ),
+              if (_showNewMessages)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: ZadTokens.s2,
+                  child: Center(
+                    child: FilledButton.tonalIcon(
+                      onPressed: () {
+                        setState(() => _showNewMessages = false);
+                        _scrollToNewest();
+                      },
+                      icon: const Icon(Icons.arrow_downward),
+                      label: const Text('رسائل جديدة'),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
         _composer(),

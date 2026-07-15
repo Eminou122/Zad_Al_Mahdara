@@ -9,6 +9,12 @@ int _int(dynamic v, [int fallback = 0]) {
   return fallback;
 }
 
+bool _bool(dynamic v, [bool fallback = false]) {
+  if (v is bool) return v;
+  if (v is String) return v.toLowerCase() == 'true';
+  return fallback;
+}
+
 String _str(dynamic v, [String fallback = '']) => v is String ? v : fallback;
 
 String? _strOrNull(dynamic v) => v is String && v.isNotEmpty ? v : null;
@@ -192,6 +198,100 @@ class TeamMessagesPage {
           )
         : null,
   );
+}
+
+class ConversationLiveState {
+  final String? otherProfileId;
+  final String? displayName;
+  final bool isOnline;
+  final DateTime? lastActiveAt;
+  final bool isTyping;
+  final DateTime? typingUntil;
+
+  const ConversationLiveState({
+    this.otherProfileId,
+    this.displayName,
+    required this.isOnline,
+    this.lastActiveAt,
+    required this.isTyping,
+    this.typingUntil,
+  });
+
+  static const unknown = ConversationLiveState(
+    isOnline: false,
+    isTyping: false,
+  );
+
+  bool get hasKnownPresence => lastActiveAt != null;
+
+  bool get typingIsActive =>
+      isTyping &&
+      typingUntil != null &&
+      typingUntil!.isAfter(DateTime.now().toUtc());
+
+  String? get statusLabel {
+    if (isOnline) return 'متصل الآن';
+    final seen = lastActiveAt;
+    if (seen == null) return null;
+    final diff = DateTime.now().difference(seen.toLocal());
+    if (diff.inMinutes < 1) return 'آخر ظهور منذ أقل من دقيقة';
+    if (diff.inHours < 1) return 'آخر ظهور منذ ${diff.inMinutes} دقيقة';
+    if (diff.inDays < 1) return 'آخر ظهور منذ ${diff.inHours} ساعة';
+    return 'آخر ظهور منذ ${diff.inDays} يوم';
+  }
+
+  factory ConversationLiveState.fromJson(Map<String, dynamic> j) {
+    final participant = j['other_participant'];
+    if (participant is! Map || participant.isEmpty) {
+      return ConversationLiveState.unknown;
+    }
+    final p = Map<String, dynamic>.from(participant);
+    return ConversationLiveState(
+      otherProfileId: _strOrNull(p['profile_id']),
+      displayName: _strOrNull(p['display_name']),
+      isOnline: _bool(p['is_online']),
+      lastActiveAt: _date(p['last_active_at']),
+      isTyping: _bool(p['is_typing']),
+      typingUntil: _date(p['typing_until']),
+    );
+  }
+}
+
+class ConversationUpdates {
+  final String conversationId;
+  final List<TeamMessage> messages;
+  final TeamMessageCursor? newestCursor;
+  final int unreadCount;
+  final ConversationLiveState? liveState;
+
+  const ConversationUpdates({
+    required this.conversationId,
+    required this.messages,
+    this.newestCursor,
+    required this.unreadCount,
+    this.liveState,
+  });
+
+  factory ConversationUpdates.fromJson(Map<String, dynamic> j) =>
+      ConversationUpdates(
+        conversationId: _str(j['conversation_id']),
+        messages: (j['items'] as List? ?? [])
+            .map(
+              (e) => TeamMessage.fromJson(Map<String, dynamic>.from(e as Map)),
+            )
+            .toList(),
+        newestCursor: j['newest_cursor'] is Map
+            ? TeamMessageCursor.fromJson(
+                Map<String, dynamic>.from(j['newest_cursor'] as Map),
+              )
+            : null,
+        unreadCount: _int(j['unread_count']),
+        liveState: j['live_state'] is Map
+            ? ConversationLiveState.fromJson(
+                Map<String, dynamic>.from(j['live_state'] as Map),
+              )
+            : null,
+      );
 }
 
 /// Minimal conversation identity returned by send/reply, enough to

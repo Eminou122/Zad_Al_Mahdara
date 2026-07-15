@@ -145,6 +145,66 @@ class TeamMessagingService {
     });
   }
 
+  Future<void> updateMessagingPresence() {
+    return _run(() async {
+      await _c.rpc(
+        'update_messaging_presence',
+        params: {'p_session_token': _token},
+      );
+    });
+  }
+
+  Future<ConversationLiveState> getConversationLiveState(
+    String conversationId,
+  ) {
+    return _run(() async {
+      final res = await _c.rpc(
+        'get_conversation_live_state',
+        params: {
+          'p_session_token': _token,
+          'p_conversation_id': conversationId,
+        },
+      );
+      return ConversationLiveState.fromJson(
+        Map<String, dynamic>.from(res as Map),
+      );
+    });
+  }
+
+  Future<void> setConversationTyping(
+    String conversationId, {
+    required bool isTyping,
+  }) {
+    return _run(() async {
+      await _c.rpc(
+        'set_conversation_typing',
+        params: {
+          'p_session_token': _token,
+          'p_conversation_id': conversationId,
+          'p_is_typing': isTyping,
+        },
+      );
+    });
+  }
+
+  Future<ConversationUpdates> getConversationUpdates({
+    required String conversationId,
+    required TeamMessageCursor? after,
+    int limit = 50,
+  }) {
+    return _run(() async {
+      final params = <String, dynamic>{
+        'p_session_token': _token,
+        'p_conversation_id': conversationId,
+        'p_after_created_at': after?.createdAt.toIso8601String(),
+        'p_after_id': after?.id,
+        'p_limit': limit,
+      };
+      final res = await _c.rpc('get_conversation_updates', params: params);
+      return ConversationUpdates.fromJson(Map<String, dynamic>.from(res as Map));
+    });
+  }
+
   Future<TeamAnnouncement> createTeamAnnouncement({
     required String teamId,
     required String body,

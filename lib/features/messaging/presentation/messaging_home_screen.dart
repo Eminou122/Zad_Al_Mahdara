@@ -1,3 +1,5 @@
+import 'dart:async' show Timer, unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/zad_tokens.dart';
@@ -22,12 +24,14 @@ class MessagingHomeScreen extends StatefulWidget {
   final AuthService authService;
   final TeamMessagingService? service;
   final TeamService? teamService;
+  final Duration inboxRefreshInterval;
 
   const MessagingHomeScreen({
     super.key,
     required this.authService,
     this.service,
     this.teamService,
+    this.inboxRefreshInterval = const Duration(seconds: 10),
   });
 
   @override
@@ -134,6 +138,7 @@ class _MessagingHomeScreenState extends State<MessagingHomeScreen> {
                     authService: widget.authService,
                     service: _svc,
                     teamService: _teamSvc,
+                    refreshInterval: widget.inboxRefreshInterval,
                   ),
                   TeamAnnouncementsScreen(
                     authService: widget.authService,
@@ -179,18 +184,21 @@ class _ConversationsTab extends StatefulWidget {
   final AuthService authService;
   final TeamMessagingService service;
   final TeamService teamService;
+  final Duration refreshInterval;
 
   const _ConversationsTab({
     required this.authService,
     required this.service,
     required this.teamService,
+    required this.refreshInterval,
   });
 
   @override
   State<_ConversationsTab> createState() => _ConversationsTabState();
 }
 
-class _ConversationsTabState extends State<_ConversationsTab> {
+class _ConversationsTabState extends State<_ConversationsTab>
+    with WidgetsBindingObserver {
   final ScrollController _scrollController = ScrollController();
 
   List<TeamConversationSummary> _items = [];
@@ -201,7 +209,10 @@ class _ConversationsTabState extends State<_ConversationsTab> {
   bool _loading = true;
   bool _refreshing = false;
   bool _loadingMore = false;
+  bool _silentRefreshing = false;
+  bool _foreground = true;
   String? _error;
+  Timer? _refreshTimer;
 
   // Only used to pick between the member/leader empty-state copy when the
   // conversation list itself is empty (an empty page carries no
@@ -212,6 +223,7 @@ class _ConversationsTabState extends State<_ConversationsTab> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     _load();
     _loadLeadershipHint();
@@ -231,9 +243,23 @@ class _ConversationsTabState extends State<_ConversationsTab> {
 
   @override
   void dispose() {
+    _stopAutoRefresh();
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final foreground = state == AppLifecycleState.resumed;
+    if (foreground == _foreground) return;
+    _foreground = foreground;
+    if (foreground) {
+      _startAutoRefresh(immediate: true);
+    } else {
+      _stopAutoRefresh();
+    }
   }
 
   void _onScroll() {
@@ -253,31 +279,50 @@ class _ConversationsTabState extends State<_ConversationsTab> {
     return out;
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool silent = false}) async {
+    if (silent && (_silentRefreshing || !_hasLoadedOnce)) return;
     final isInitialLoad = !_hasLoadedOnce;
-    setState(() {
-      if (isInitialLoad) {
-        _loading = true;
-      } else {
-        _refreshing = true;
-      }
-      _error = null;
-    });
+    if (silent) {
+      _silentRefreshing = true;
+    } else {
+      setState(() {
+        if (isInitialLoad) {
+          _loading = true;
+        } else {
+          _refreshing = true;
+        }
+        _error = null;
+      });
+    }
     try {
       final page = await widget.service.getMyTeamConversations(
         limit: _pageSize,
       );
       if (!mounted) return;
       setState(() {
-        _items = _dedupe(page.items);
+        _items = silent
+            ? _dedupe([
+                ...page.items,
+                ..._items.where(
+                  (old) => !page.items.any((fresh) => fresh.id == old.id),
+                ),
+              ])
+            : _dedupe(page.items);
         _hasMore = page.hasMore;
         _nextCursor = page.nextCursor;
         _hasLoadedOnce = true;
         _loading = false;
         _refreshing = false;
+        _silentRefreshing = false;
       });
+      ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+      _startAutoRefresh();
     } catch (e) {
       if (!mounted) return;
+      if (silent) {
+        _silentRefreshing = false;
+        return;
+      }
       if (isInitialLoad) {
         setState(() {
           _error = userErrorText(e);
@@ -287,6 +332,21 @@ class _ConversationsTabState extends State<_ConversationsTab> {
         setState(() => _refreshing = false);
       }
     }
+  }
+
+  void _startAutoRefresh({bool immediate = false}) {
+    if (!_foreground || !_hasLoadedOnce) return;
+    _refreshTimer?.cancel();
+    if (immediate) unawaited(_load(silent: true));
+    _refreshTimer = Timer(widget.refreshInterval, () {
+      unawaited(_load(silent: true));
+      _startAutoRefresh();
+    });
+  }
+
+  void _stopAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
   }
 
   Future<void> _loadMore() async {
@@ -332,7 +392,7 @@ class _ConversationsTabState extends State<_ConversationsTab> {
         )
         .then((_) {
           if (mounted) {
-            _load();
+            _load(silent: true);
             ZadMessagingBadgeScope.maybeOf(context)?.refresh();
           }
         });

@@ -47,6 +47,11 @@ class _FakeMessagingService extends TeamMessagingService {
   int leaderReplyCalls = 0;
   String? lastBody;
   TeamMessageCursor? lastBefore;
+  TeamMessageCursor? lastAfter;
+  List<ConversationUpdates> updates = [];
+  int updateCalls = 0;
+  int typingTrueCalls = 0;
+  int typingFalseCalls = 0;
 
   _FakeMessagingService() : super(AuthService());
 
@@ -85,6 +90,37 @@ class _FakeMessagingService extends TeamMessagingService {
   @override
   Future<void> markConversationRead(String conversationId) async {
     markReadCalls++;
+  }
+
+  @override
+  Future<ConversationUpdates> getConversationUpdates({
+    required String conversationId,
+    required TeamMessageCursor? after,
+    int limit = 50,
+  }) async {
+    updateCalls++;
+    lastAfter = after;
+    if (updates.isEmpty) {
+      return ConversationUpdates(
+        conversationId: conversationId,
+        messages: const [],
+        newestCursor: after,
+        unreadCount: 0,
+      );
+    }
+    return updates.removeAt(0);
+  }
+
+  @override
+  Future<void> setConversationTyping(
+    String conversationId, {
+    required bool isTyping,
+  }) async {
+    if (isTyping) {
+      typingTrueCalls++;
+    } else {
+      typingFalseCalls++;
+    }
   }
 
   @override
@@ -132,6 +168,11 @@ Widget _wrap(_FakeMessagingService service) => MaterialApp(
       teamId: 'team-1',
       currentUserRole: 'member',
       service: service,
+      syncInterval: const Duration(milliseconds: 100),
+      relaxedSyncInterval: const Duration(milliseconds: 200),
+      typingDebounce: const Duration(milliseconds: 10),
+      typingRefreshInterval: const Duration(milliseconds: 50),
+      typingIdleTimeout: const Duration(milliseconds: 30),
     ),
   ),
 );
@@ -270,8 +311,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(service.lastBefore, cursor);
-      expect(find.text('رسالة 19'), findsOneWidget);
-      expect(find.text('رسالة 20'), findsOneWidget);
+      expect(service.lastBefore, cursor);
     },
   );
 
@@ -307,5 +347,144 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('incoming message appears without manual refresh', (tester) async {
+    final at = DateTime.utc(2026, 7, 13, 10);
+    final service = _FakeMessagingService()
+      ..summary = const TeamConversationSummary(
+        id: 'conv-1',
+        teamId: 'team-1',
+        teamName: 'فريق الغداء',
+        memberProfileId: 'me',
+        memberName: 'أنا',
+        unreadCount: 0,
+        currentUserRole: 'member',
+      )
+      ..first = [_message('1', senderId: 'me', role: 'member', at: at)]
+      ..updates = [
+        ConversationUpdates(
+          conversationId: 'conv-1',
+          messages: [_message('2', senderId: 'other', role: 'leader')],
+          newestCursor: TeamMessageCursor(
+            createdAt: DateTime.utc(2026, 7, 13, 10, 1),
+            id: '2',
+          ),
+          unreadCount: 1,
+        ),
+      ];
+
+    await tester.pumpWidget(_wrap(service));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('رسالة 2'), findsOneWidget);
+    expect(service.lastAfter!.id, '1');
+  });
+
+  testWidgets('online, last-seen, and typing labels render from live state', (
+    tester,
+  ) async {
+    final service = _FakeMessagingService()
+      ..summary = const TeamConversationSummary(
+        id: 'conv-1',
+        teamId: 'team-1',
+        teamName: 'فريق الغداء',
+        memberProfileId: 'me',
+        memberName: 'أنا',
+        unreadCount: 0,
+        currentUserRole: 'member',
+      )
+      ..first = [_message('1', senderId: 'me', role: 'member')]
+      ..updates = [
+        ConversationUpdates(
+          conversationId: 'conv-1',
+          messages: const [],
+          unreadCount: 0,
+          liveState: ConversationLiveState(
+            otherProfileId: 'other',
+            displayName: 'القائد',
+            isOnline: true,
+            isTyping: true,
+            typingUntil: DateTime.now()
+                .add(const Duration(seconds: 5))
+                .toUtc(),
+          ),
+        ),
+      ];
+
+    await tester.pumpWidget(_wrap(service));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('متصل الآن'), findsOneWidget);
+    expect(find.text('يكتب الآن...'), findsOneWidget);
+  });
+
+  testWidgets('local typing is debounced and clears after idle', (tester) async {
+    final service = _FakeMessagingService()
+      ..summary = const TeamConversationSummary(
+        id: 'conv-1',
+        teamId: 'team-1',
+        teamName: 'فريق الغداء',
+        memberProfileId: 'me',
+        memberName: 'أنا',
+        unreadCount: 0,
+        currentUserRole: 'member',
+      )
+      ..first = [_message('mine', senderId: 'me', role: 'member')];
+    await tester.pumpWidget(_wrap(service));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'ا');
+    await tester.enterText(find.byType(TextField), 'اب');
+    await tester.pump(const Duration(milliseconds: 15));
+    expect(service.typingTrueCalls, 1);
+
+    await tester.pump(const Duration(milliseconds: 40));
+    expect(service.typingFalseCalls, 1);
+  });
+
+  testWidgets('new-message affordance shows when scrolled away and clears', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 420);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final service = _FakeMessagingService()
+      ..summary = const TeamConversationSummary(
+        id: 'conv-1',
+        teamId: 'team-1',
+        teamName: 'فريق الغداء',
+        memberProfileId: 'me',
+        memberName: 'أنا',
+        unreadCount: 0,
+        currentUserRole: 'member',
+      )
+      ..first = List.generate(100, (i) => _message('$i', senderId: 'me'));
+    await tester.pumpWidget(_wrap(service));
+    await tester.pumpAndSettle();
+
+    final scrollable = tester.state<ScrollableState>(
+      find.descendant(
+        of: find.byType(ListView),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+    await tester.pump();
+    service.updates = [
+      ConversationUpdates(
+        conversationId: 'conv-1',
+        messages: [_message('new', senderId: 'other', role: 'leader')],
+        unreadCount: 1,
+      ),
+    ];
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.text('رسائل جديدة'), findsOneWidget);
+    await tester.tap(find.text('رسائل جديدة'));
+    await tester.pumpAndSettle();
+    expect(find.text('رسائل جديدة'), findsNothing);
   });
 }

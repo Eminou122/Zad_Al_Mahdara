@@ -100,7 +100,11 @@ class _FakeTeamService extends TeamService {
   ];
 }
 
-Widget _wrap(_FakeMessagingService service, {bool leader = false}) =>
+Widget _wrap(
+  _FakeMessagingService service, {
+  bool leader = false,
+  Duration inboxRefreshInterval = const Duration(seconds: 10),
+}) =>
     MaterialApp(
       home: Directionality(
         textDirection: TextDirection.rtl,
@@ -108,6 +112,7 @@ Widget _wrap(_FakeMessagingService service, {bool leader = false}) =>
           authService: _FakeAuthService(),
           service: service,
           teamService: _FakeTeamService(leader: leader),
+          inboxRefreshInterval: inboxRefreshInterval,
         ),
       ),
     );
@@ -249,5 +254,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(service.conversationCalls, greaterThan(callsBefore));
+  });
+
+  testWidgets('silent inbox refresh updates preview and unread count', (
+    tester,
+  ) async {
+    final service = _FakeMessagingService()
+      ..first = [_conversation('1', unread: 0)];
+    await tester.pumpWidget(_wrap(service));
+    await tester.pumpAndSettle();
+
+    expect(find.text('0'), findsNothing);
+    service.first = [_conversation('1', unread: 4)];
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pump();
+
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('المحادثات'), findsOneWidget);
   });
 }
