@@ -212,7 +212,10 @@ void main() {
       expect(state.displayName, 'القائد');
       expect(state.isOnline, true);
       expect(state.hasKnownPresence, true);
-      expect(state.statusLabel, 'متصل الآن');
+      expect(
+        state.statusLabelAt(DateTime.utc(2026, 7, 13, 10, 0, 30)),
+        'متصل الآن',
+      );
     });
 
     test('parses offline known timestamp', () {
@@ -260,6 +263,20 @@ void main() {
       });
       expect(state.isTyping, true);
       expect(state.typingIsActive, true);
+    });
+
+    test('does not trust stale online flag forever', () {
+      final now = DateTime.utc(2026, 7, 13, 10, 2);
+      final state = ConversationLiveState(
+        otherProfileId: 'p-2',
+        displayName: 'القائد',
+        isOnline: true,
+        lastActiveAt: now.subtract(const Duration(seconds: 61)),
+        isTyping: false,
+      );
+
+      expect(state.isOnlineAt(now), false);
+      expect(state.statusLabelAt(now), contains('آخر ظهور'));
     });
   });
 

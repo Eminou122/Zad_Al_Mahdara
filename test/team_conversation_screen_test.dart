@@ -159,20 +159,29 @@ class _FakeMessagingService extends TeamMessagingService {
   }
 }
 
-Widget _wrap(_FakeMessagingService service) => MaterialApp(
+Widget _wrap(
+  _FakeMessagingService service, {
+  String currentUserRole = 'member',
+  String? otherPartyName,
+  Duration onlineWindow = const Duration(seconds: 60),
+  DateTime Function()? currentTime,
+}) => MaterialApp(
   home: Directionality(
     textDirection: TextDirection.rtl,
     child: TeamConversationScreen(
       authService: _FakeAuthService(),
       conversationId: 'conv-1',
       teamId: 'team-1',
-      currentUserRole: 'member',
+      otherPartyName: otherPartyName,
+      currentUserRole: currentUserRole,
       service: service,
       syncInterval: const Duration(milliseconds: 100),
       relaxedSyncInterval: const Duration(milliseconds: 200),
       typingDebounce: const Duration(milliseconds: 10),
       typingRefreshInterval: const Duration(milliseconds: 50),
       typingIdleTimeout: const Duration(milliseconds: 30),
+      onlineWindow: onlineWindow,
+      currentTime: currentTime,
     ),
   ),
 );
@@ -349,7 +358,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('incoming message appears without manual refresh', (tester) async {
+  testWidgets('incoming message appears without manual refresh', (
+    tester,
+  ) async {
     final at = DateTime.utc(2026, 7, 13, 10);
     final service = _FakeMessagingService()
       ..summary = const TeamConversationSummary(
@@ -405,9 +416,7 @@ void main() {
             displayName: 'القائد',
             isOnline: true,
             isTyping: true,
-            typingUntil: DateTime.now()
-                .add(const Duration(seconds: 5))
-                .toUtc(),
+            typingUntil: DateTime.now().add(const Duration(seconds: 5)).toUtc(),
           ),
         ),
       ];
@@ -415,11 +424,191 @@ void main() {
     await tester.pumpWidget(_wrap(service));
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('متصل الآن'), findsOneWidget);
+    expect(find.text('متصل الآن'), findsNothing);
     expect(find.text('يكتب الآن...'), findsOneWidget);
   });
 
-  testWidgets('local typing is debounced and clears after idle', (tester) async {
+  testWidgets(
+    'member header uses trusted leader name instead of self summary',
+    (tester) async {
+      final service = _FakeMessagingService()
+        ..summary = const TeamConversationSummary(
+          id: 'conv-1',
+          teamId: 'team-1',
+          teamName: 'فريق الغداء',
+          memberProfileId: 'me',
+          memberName: 'أنا',
+          unreadCount: 0,
+          currentUserRole: 'member',
+        )
+        ..first = [_message('1', senderId: 'other', role: 'leader')]
+        ..updates = [
+          const ConversationUpdates(
+            conversationId: 'conv-1',
+            messages: [],
+            unreadCount: 0,
+            liveState: ConversationLiveState(
+              otherProfileId: 'leader-1',
+              displayName: 'القائد الجديد',
+              isOnline: false,
+              isTyping: false,
+            ),
+          ),
+        ];
+
+      await tester.pumpWidget(_wrap(service, otherPartyName: 'أنا'));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('القائد الجديد'), findsOneWidget);
+      expect(find.text('أنا'), findsNothing);
+    },
+  );
+
+  testWidgets('leader header uses member name from trusted summary', (
+    tester,
+  ) async {
+    final service = _FakeMessagingService()
+      ..summary = const TeamConversationSummary(
+        id: 'conv-1',
+        teamId: 'team-1',
+        teamName: 'فريق الغداء',
+        memberProfileId: 'member-1',
+        memberName: 'أحمد',
+        unreadCount: 0,
+        currentUserRole: 'leader',
+      )
+      ..first = [_message('1', senderId: 'me', role: 'leader')];
+
+    await tester.pumpWidget(_wrap(service, currentUserRole: 'leader'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('أحمد'), findsOneWidget);
+  });
+
+  testWidgets('self-as-peer live payload is ignored safely', (tester) async {
+    final service = _FakeMessagingService()
+      ..first = [_message('1', senderId: 'other', role: 'leader')]
+      ..updates = [
+        const ConversationUpdates(
+          conversationId: 'conv-1',
+          messages: [],
+          unreadCount: 0,
+          liveState: ConversationLiveState(
+            otherProfileId: 'me',
+            displayName: 'أنا',
+            isOnline: true,
+            isTyping: false,
+          ),
+        ),
+      ];
+
+    await tester.pumpWidget(_wrap(service, otherPartyName: 'أنا'));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('أنا'), findsNothing);
+    expect(find.text('متصل الآن'), findsNothing);
+  });
+
+  testWidgets('online status expires locally without another message', (
+    tester,
+  ) async {
+    var now = DateTime.utc(2026, 7, 13, 10);
+    final service = _FakeMessagingService()
+      ..summary = const TeamConversationSummary(
+        id: 'conv-1',
+        teamId: 'team-1',
+        teamName: 'فريق الغداء',
+        memberProfileId: 'me',
+        memberName: 'أنا',
+        unreadCount: 0,
+        currentUserRole: 'member',
+      )
+      ..first = [_message('1', senderId: 'other', role: 'leader')]
+      ..updates = [
+        ConversationUpdates(
+          conversationId: 'conv-1',
+          messages: const [],
+          unreadCount: 0,
+          liveState: ConversationLiveState(
+            otherProfileId: 'leader-1',
+            displayName: 'القائد',
+            isOnline: true,
+            lastActiveAt: now,
+            isTyping: false,
+          ),
+        ),
+      ];
+
+    await tester.pumpWidget(
+      _wrap(
+        service,
+        onlineWindow: const Duration(milliseconds: 50),
+        currentTime: () => now,
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(find.text('متصل الآن'), findsOneWidget);
+
+    now = now.add(const Duration(milliseconds: 60));
+    await tester.pump(const Duration(milliseconds: 60));
+
+    expect(find.text('متصل الآن'), findsNothing);
+    expect(find.textContaining('آخر ظهور'), findsOneWidget);
+  });
+
+  testWidgets('empty polling update still refreshes peer presence', (
+    tester,
+  ) async {
+    final service = _FakeMessagingService()
+      ..summary = const TeamConversationSummary(
+        id: 'conv-1',
+        teamId: 'team-1',
+        teamName: 'فريق الغداء',
+        memberProfileId: 'me',
+        memberName: 'أنا',
+        unreadCount: 0,
+        currentUserRole: 'member',
+      )
+      ..first = [_message('1', senderId: 'other', role: 'leader')]
+      ..updates = [
+        const ConversationUpdates(
+          conversationId: 'conv-1',
+          messages: [],
+          unreadCount: 0,
+          liveState: ConversationLiveState(
+            otherProfileId: 'leader-1',
+            displayName: 'القائد',
+            isOnline: false,
+            isTyping: false,
+          ),
+        ),
+        ConversationUpdates(
+          conversationId: 'conv-1',
+          messages: const [],
+          unreadCount: 0,
+          liveState: ConversationLiveState(
+            otherProfileId: 'leader-1',
+            displayName: 'القائد',
+            isOnline: true,
+            lastActiveAt: DateTime.now().toUtc(),
+            isTyping: false,
+          ),
+        ),
+      ];
+
+    await tester.pumpWidget(_wrap(service));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('متصل الآن'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(find.text('متصل الآن'), findsOneWidget);
+    expect(find.text('القائد'), findsWidgets);
+  });
+
+  testWidgets('local typing is debounced and clears after idle', (
+    tester,
+  ) async {
     final service = _FakeMessagingService()
       ..summary = const TeamConversationSummary(
         id: 'conv-1',

@@ -33,6 +33,8 @@ class TeamConversationScreen extends StatefulWidget {
   final Duration typingDebounce;
   final Duration typingRefreshInterval;
   final Duration typingIdleTimeout;
+  final Duration onlineWindow;
+  final DateTime Function() currentTime;
 
   const TeamConversationScreen({
     super.key,
@@ -48,7 +50,9 @@ class TeamConversationScreen extends StatefulWidget {
     this.typingDebounce = const Duration(milliseconds: 400),
     this.typingRefreshInterval = const Duration(seconds: 3),
     this.typingIdleTimeout = const Duration(seconds: 3),
-  });
+    this.onlineWindow = const Duration(seconds: 60),
+    DateTime Function()? currentTime,
+  }) : currentTime = currentTime ?? DateTime.now;
 
   @override
   State<TeamConversationScreen> createState() => _TeamConversationScreenState();
@@ -79,6 +83,7 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
   bool _foreground = true;
 
   Timer? _syncTimer;
+  Timer? _liveStateTimer;
   Timer? _typingDebounceTimer;
   Timer? _typingIdleTimer;
   DateTime? _lastTypingSentAt;
@@ -93,6 +98,7 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
   ConversationLiveState? _liveState;
 
   String? get _myProfileId => widget.authService.profile?.id;
+  String? get _myDisplayName => widget.authService.profile?.displayName;
 
   bool get _canCompose =>
       _roleTrusted &&
@@ -104,7 +110,9 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
     _svc = widget.service ?? TeamMessagingService(widget.authService);
     _teamId = widget.teamId;
     _teamName = widget.teamName;
-    _otherPartyName = widget.otherPartyName;
+    _otherPartyName = widget.otherPartyName == _myDisplayName
+        ? null
+        : widget.otherPartyName;
     _role = widget.currentUserRole;
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
@@ -115,6 +123,7 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
   @override
   void dispose() {
     _stopSync();
+    _stopLiveStateTimer();
     _clearTypingBestEffort();
     _typingDebounceTimer?.cancel();
     _typingIdleTimer?.cancel();
@@ -133,8 +142,10 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
     _foreground = foreground;
     if (foreground) {
       _scheduleSync(immediate: true);
+      _scheduleLiveStateTimer();
     } else {
       _stopSync();
+      _stopLiveStateTimer();
       _clearTypingBestEffort();
     }
   }
@@ -174,6 +185,8 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
     return _scrollController.position.pixels <= 80;
   }
 
+  DateTime get _now => widget.currentTime();
+
   /// Best-effort context hydration for the deep-link case (opened from a
   /// notification, so no list-row/send-result hints exist): reuses
   /// get_my_team_conversations (already one of the nine RPCs) to find this
@@ -193,7 +206,9 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
       if (match == null) return;
       _teamId ??= match.teamId;
       _teamName ??= match.teamName;
-      _otherPartyName ??= match.memberName;
+      if (match.isLeaderView && match.memberName != _myDisplayName) {
+        _otherPartyName ??= match.memberName;
+      }
       _role = match.currentUserRole;
       _roleTrusted = true;
     } catch (_) {
@@ -289,6 +304,50 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
     _syncTimer = null;
   }
 
+  void _stopLiveStateTimer() {
+    _liveStateTimer?.cancel();
+    _liveStateTimer = null;
+  }
+
+  void _scheduleLiveStateTimer() {
+    _stopLiveStateTimer();
+    final live = _liveState;
+    if (!_foreground || live == null) return;
+
+    final now = _now.toUtc();
+    final wakeups = <DateTime>[];
+    final seen = live.lastActiveAt?.toUtc();
+    if (seen != null) {
+      wakeups.add(seen.add(widget.onlineWindow));
+    }
+    final typingUntil = live.typingUntil?.toUtc();
+    if (typingUntil != null && live.isTyping) {
+      wakeups.add(typingUntil);
+    }
+    wakeups.removeWhere((t) => !t.isAfter(now));
+    if (wakeups.isEmpty) return;
+    wakeups.sort();
+    _liveStateTimer = Timer(wakeups.first.difference(now), () {
+      if (mounted) setState(() {});
+      _scheduleLiveStateTimer();
+    });
+  }
+
+  void _applyLiveState(ConversationLiveState? live) {
+    if (live == null) return;
+    final myId = _myProfileId;
+    if (myId != null && live.otherProfileId == myId) {
+      _liveState = ConversationLiveState.unknown;
+      if (_otherPartyName == _myDisplayName) _otherPartyName = null;
+      return;
+    }
+    _liveState = live;
+    final name = live.displayName;
+    if (name != null && name != _myDisplayName) {
+      _otherPartyName = name;
+    }
+  }
+
   Future<void> _syncNow() async {
     if (_syncing || !_foreground || !_hasLoadedOnce) return;
     _syncing = true;
@@ -313,11 +372,11 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
           _emptySyncs++;
         }
         _newestCursor = updates.newestCursor ?? _cursorFromNewest(_messages);
-        _liveState = updates.liveState ?? _liveState;
-        _otherPartyName ??= updates.liveState?.displayName;
+        _applyLiveState(updates.liveState);
         _syncFailures = 0;
         _syncErrorVisible = false;
       });
+      _scheduleLiveStateTimer();
       if (incoming.isNotEmpty) {
         unawaited(_markReadAndRefreshBadge());
         if (wasNearNewest) _scrollToNewest();
@@ -402,8 +461,7 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
           : await _svc.sendMessageToTeamLeader(teamId: _teamId!, body: text);
       if (!mounted) return;
       setState(() {
-        _messages = _dedupe([result.message, ..._messages])
-          ..sort(_newestFirst);
+        _messages = _dedupe([result.message, ..._messages])..sort(_newestFirst);
         _newestCursor = _cursorFromNewest(_messages);
         _composerCtrl.clear();
         _sending = false;
@@ -433,7 +491,7 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
       _clearTypingBestEffort();
       return;
     }
-    final now = DateTime.now();
+    final now = _now;
     final shouldRefresh =
         !_typingActive ||
         _lastTypingSentAt == null ||
@@ -453,7 +511,7 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
         isTyping: isTyping,
       );
       _typingActive = isTyping;
-      _lastTypingSentAt = isTyping ? DateTime.now() : null;
+      _lastTypingSentAt = isTyping ? _now : null;
     } catch (_) {
       // Draft text stays local; typing is best-effort comfort UI.
     }
@@ -470,6 +528,13 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
 
   @override
   Widget build(BuildContext context) {
+    final liveState = _liveState;
+    final now = _now;
+    final isTyping = liveState?.typingIsActiveAt(now) ?? false;
+    final statusLabel = isTyping
+        ? null
+        : liveState?.statusLabelAt(now, onlineWindow: widget.onlineWindow);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_teamName ?? 'المحادثة', overflow: TextOverflow.ellipsis),
@@ -487,20 +552,20 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
                         _otherPartyName!,
                         style: const TextStyle(fontSize: 12.5),
                       ),
-                      if (_liveState?.statusLabel != null)
-                        Text(
-                          _liveState!.statusLabel!,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: ZadTokens.textMuted,
-                          ),
-                        ),
-                      if (_liveState?.typingIsActive ?? false)
+                      if (isTyping)
                         const Text(
                           'يكتب الآن...',
                           style: TextStyle(
                             fontSize: 11,
                             color: ZadTokens.primary,
+                          ),
+                        )
+                      else if (statusLabel != null)
+                        Text(
+                          statusLabel,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: ZadTokens.textMuted,
                           ),
                         ),
                     ],
@@ -569,45 +634,50 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
               RefreshIndicator(
                 onRefresh: _load,
                 child: _messages.isEmpty
-                ? LayoutBuilder(
-                    builder: (context, constraints) => SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight,
-                        ),
-                        child: const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(ZadTokens.s4),
-                            child: Text(
-                              'لا توجد رسائل بعد',
-                              style: TextStyle(color: ZadTokens.textMuted),
+                    ? LayoutBuilder(
+                        builder: (context, constraints) =>
+                            SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minHeight: constraints.maxHeight,
+                                ),
+                                child: const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(ZadTokens.s4),
+                                    child: Text(
+                                      'لا توجد رسائل بعد',
+                                      style: TextStyle(
+                                        color: ZadTokens.textMuted,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
+                      )
                     : ListView.builder(
-                    controller: _scrollController,
-                    reverse: true,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(ZadTokens.s3),
-                    itemCount: _messages.length + (_hasMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _messages.length) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: ZadTokens.s3),
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-                      final m = _messages[index];
-                      return _MessageBubble(
-                        message: m,
-                        isMine: m.isSentBy(_myProfileId),
-                      );
-                    },
-                  ),
+                        controller: _scrollController,
+                        reverse: true,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(ZadTokens.s3),
+                        itemCount: _messages.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= _messages.length) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(
+                                vertical: ZadTokens.s3,
+                              ),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          final m = _messages[index];
+                          return _MessageBubble(
+                            message: m,
+                            isMine: m.isSentBy(_myProfileId),
+                          );
+                        },
+                      ),
               ),
               if (_showNewMessages)
                 Positioned(

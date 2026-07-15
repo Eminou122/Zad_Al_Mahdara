@@ -224,21 +224,35 @@ class ConversationLiveState {
 
   bool get hasKnownPresence => lastActiveAt != null;
 
-  bool get typingIsActive =>
-      isTyping &&
-      typingUntil != null &&
-      typingUntil!.isAfter(DateTime.now().toUtc());
+  bool typingIsActiveAt(DateTime now) =>
+      isTyping && typingUntil != null && typingUntil!.isAfter(now.toUtc());
 
-  String? get statusLabel {
-    if (isOnline) return 'متصل الآن';
+  bool isOnlineAt(
+    DateTime now, {
+    Duration window = const Duration(seconds: 60),
+  }) {
+    final seen = lastActiveAt;
+    if (seen == null) return false;
+    return isOnline && seen.toUtc().isAfter(now.toUtc().subtract(window));
+  }
+
+  bool get typingIsActive => typingIsActiveAt(DateTime.now());
+
+  String? statusLabelAt(
+    DateTime now, {
+    Duration onlineWindow = const Duration(seconds: 60),
+  }) {
+    if (isOnlineAt(now, window: onlineWindow)) return 'متصل الآن';
     final seen = lastActiveAt;
     if (seen == null) return null;
-    final diff = DateTime.now().difference(seen.toLocal());
+    final diff = now.difference(seen.toLocal());
     if (diff.inMinutes < 1) return 'آخر ظهور منذ أقل من دقيقة';
     if (diff.inHours < 1) return 'آخر ظهور منذ ${diff.inMinutes} دقيقة';
     if (diff.inDays < 1) return 'آخر ظهور منذ ${diff.inHours} ساعة';
     return 'آخر ظهور منذ ${diff.inDays} يوم';
   }
+
+  String? get statusLabel => statusLabelAt(DateTime.now());
 
   factory ConversationLiveState.fromJson(Map<String, dynamic> j) {
     final participant = j['other_participant'];
