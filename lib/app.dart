@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'core/routing/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/zad_messaging_badge_scope.dart';
 import 'core/widgets/zad_notification_badge_scope.dart';
 import 'core/widgets/zad_session_scope.dart';
+import 'features/messaging/data/messaging_badge_controller.dart';
+import 'features/messaging/data/team_messaging_service.dart';
 import 'features/notifications/data/notification_badge_controller.dart';
 import 'features/notifications/data/notification_service.dart';
 import 'services/auth_service.dart';
@@ -19,6 +22,7 @@ class ZadApp extends StatefulWidget {
 class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
   late final GoRouter _router;
   late final NotificationBadgeController _badgeController;
+  late final MessagingBadgeController _messagingBadgeController;
 
   @override
   void initState() {
@@ -27,18 +31,24 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
     _badgeController = NotificationBadgeController(
       NotificationService(widget.authService),
     );
+    _messagingBadgeController = MessagingBadgeController(
+      TeamMessagingService(widget.authService),
+    );
     widget.authService.addListener(_onAuthChanged);
     WidgetsBinding.instance.addObserver(this);
     if (widget.authService.isAuthenticated) {
       _badgeController.refresh();
+      _messagingBadgeController.refresh();
     }
   }
 
   void _onAuthChanged() {
     if (widget.authService.isAuthenticated) {
       _badgeController.refresh();
+      _messagingBadgeController.refresh();
     } else {
       _badgeController.reset();
+      _messagingBadgeController.reset();
     }
   }
 
@@ -47,6 +57,7 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed &&
         widget.authService.isAuthenticated) {
       _badgeController.refresh();
+      _messagingBadgeController.refresh();
     }
   }
 
@@ -72,9 +83,12 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
         authService: widget.authService,
         child: ZadNotificationBadgeScope(
           controller: _badgeController,
-          child: Directionality(
-            textDirection: TextDirection.rtl,
-            child: child!,
+          child: ZadMessagingBadgeScope(
+            controller: _messagingBadgeController,
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: child!,
+            ),
           ),
         ),
       ),

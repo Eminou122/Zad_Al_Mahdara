@@ -8,6 +8,7 @@ import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_empty_state.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_logo_badge.dart';
+import '../../../core/widgets/zad_messaging_badge_scope.dart';
 import '../../../core/widgets/zad_notification_badge_scope.dart';
 import '../../../services/auth_service.dart';
 import '../data/notification_service.dart';
@@ -246,11 +247,70 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             item.teamId ?? (payloadTeamId is String ? payloadTeamId : null);
         if (teamId == null || teamId.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('تعذر فتح الفريق المرتبط بهذا الإشعار')),
+            const SnackBar(
+              content: Text('تعذر فتح الفريق المرتبط بهذا الإشعار'),
+            ),
           );
           return;
         }
         context.push('/teams/$teamId');
+      case 'open_team_conversation':
+        final payload = item.actionPayload;
+        final teamId = payload?['team_id'] is String
+            ? payload!['team_id'] as String
+            : item.teamId;
+        final conversationId = payload?['conversation_id'];
+        if (teamId == null ||
+            teamId.isEmpty ||
+            conversationId is! String ||
+            conversationId.isEmpty) {
+          if (teamId != null && teamId.isNotEmpty) {
+            context.push('/teams/$teamId');
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تعذر فتح المحادثة المرتبطة بهذا الإشعار'),
+            ),
+          );
+          return;
+        }
+        context
+            .push(
+              '/messages/conversation/$conversationId',
+              extra: {'teamId': teamId},
+            )
+            .then((_) {
+              if (mounted) {
+                ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+              }
+            });
+      case 'open_team_announcements':
+        final payload = item.actionPayload;
+        final teamId = payload?['team_id'] is String
+            ? payload!['team_id'] as String
+            : item.teamId;
+        if (teamId == null || teamId.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تعذر فتح الإعلانات المرتبطة بهذا الإشعار'),
+            ),
+          );
+          return;
+        }
+        final announcementId = payload?['announcement_id'];
+        context
+            .push(
+              '/teams/$teamId/announcements',
+              extra: {
+                if (announcementId is String) 'announcementId': announcementId,
+              },
+            )
+            .then((_) {
+              if (mounted) {
+                ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+              }
+            });
       default:
         // Unknown or missing action_type: nothing to do, already marked
         // read above — stay on the notifications screen.
@@ -331,7 +391,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     }
 
-    return _shell(body: RefreshIndicator(onRefresh: _load, child: body));
+    return _shell(
+      body: RefreshIndicator(onRefresh: _load, child: body),
+    );
   }
 
   Widget _shell({required Widget body}) {
@@ -342,9 +404,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           children: [
             ZadLogoBadge(size: 30),
             SizedBox(width: ZadTokens.s2 + 2),
-            Flexible(
-              child: Text('الإشعارات', overflow: TextOverflow.ellipsis),
-            ),
+            Flexible(child: Text('الإشعارات', overflow: TextOverflow.ellipsis)),
           ],
         ),
         bottom: _refreshing

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/zad_tokens.dart';
+import 'zad_messaging_badge_scope.dart';
 import 'zad_notification_badge_scope.dart';
 import 'zad_session_scope.dart';
 
 /// The root tabs of the Stitch app shell. الإدارة appears only for admins.
-enum ZadTab { home, budget, teams, notifications, admin }
+enum ZadTab { home, budget, teams, messages, notifications, admin }
 
 /// Stitch-style fixed bottom navigation: cream surface with rounded top
 /// corners, active tab as a deep-green pill (white filled icon + label),
@@ -25,6 +26,7 @@ class ZadBottomNav extends StatelessWidget {
       '/home' => ZadTab.home,
       '/budget' || '/budget/recurring' => ZadTab.budget,
       '/teams' => ZadTab.teams,
+      '/messages' => ZadTab.messages,
       '/notifications' => ZadTab.notifications,
       '/admin' => ZadTab.admin,
       _ => null,
@@ -34,7 +36,12 @@ class ZadBottomNav extends StatelessWidget {
 
   /// Root tabs never show a back arrow (Stitch top bar).
   static bool isRootTab(String location) => switch (location) {
-    '/home' || '/budget' || '/teams' || '/notifications' || '/admin' => true,
+    '/home' ||
+    '/budget' ||
+    '/teams' ||
+    '/messages' ||
+    '/notifications' ||
+    '/admin' => true,
     _ => false,
   };
 
@@ -66,6 +73,13 @@ class ZadBottomNav extends StatelessWidget {
     'الفرق',
     '/teams',
   );
+  static const _messages = (
+    ZadTab.messages,
+    Icons.mail_outline,
+    Icons.mail,
+    'الرسائل',
+    '/messages',
+  );
   static const _notifications = (
     ZadTab.notifications,
     Icons.notifications_outlined,
@@ -82,20 +96,31 @@ class ZadBottomNav extends StatelessWidget {
   );
 
   // In this RTL Row the first child lands at the RIGHT edge.
-  // Normal users (4 tabs): الرئيسية at the far right, then الميزانية،
-  // الفرق، التنبيهات reading right→left.
-  static const _userItems = [_home, _budget, _teams, _notifications];
-  // Admins (5 tabs): الرئيسية exactly centered — right→left reads
-  // الميزانية، الفرق، الرئيسية، التنبيهات، الإدارة (admin at far left edge).
-  static const _adminItems = [_budget, _teams, _home, _notifications, _admin];
+  // Normal users (5 tabs): الرئيسية at the far right, then الميزانية،
+  // الفرق، الرسائل، التنبيهات reading right→left.
+  static const _userItems = [_home, _budget, _teams, _messages, _notifications];
+  // Admins (6 tabs): الرئيسية still near-centered — right→left reads
+  // الميزانية، الفرق، الرئيسية، الرسائل، التنبيهات، الإدارة (admin at far
+  // left edge).
+  static const _adminItems = [
+    _budget,
+    _teams,
+    _home,
+    _messages,
+    _notifications,
+    _admin,
+  ];
 
   @override
   Widget build(BuildContext context) {
     final isAdmin = ZadSessionScope.maybeOf(context)?.isAdmin ?? false;
-    final unreadCount = ZadNotificationBadgeScope.maybeOf(context)?.unreadCount ?? 0;
+    final unreadCount =
+        ZadNotificationBadgeScope.maybeOf(context)?.unreadCount ?? 0;
+    final messagingUnreadCount =
+        ZadMessagingBadgeScope.maybeOf(context)?.totalUnreadCount ?? 0;
     final items = isAdmin ? _adminItems : _userItems;
-    // 5 tabs need slightly smaller icons/labels to stay safe at 320px.
-    final compact = items.length == 5;
+    // 5+ tabs need slightly smaller icons/labels to stay safe at 320px.
+    final compact = items.length >= 5;
     return Material(
       color: ZadTokens.surface,
       elevation: 10,
@@ -122,7 +147,11 @@ class ZadBottomNav extends StatelessWidget {
                     icon: icon,
                     activeIcon: activeIcon,
                     label: label,
-                    badgeCount: tab == ZadTab.notifications ? unreadCount : 0,
+                    badgeCount: switch (tab) {
+                      ZadTab.notifications => unreadCount,
+                      ZadTab.messages => messagingUnreadCount,
+                      _ => 0,
+                    },
                     onTap: tab == current ? null : () => context.go(route),
                   ),
                 ),

@@ -26,6 +26,10 @@ import '../../features/teams/domain/team_models.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/admin/presentation/admin_screen.dart';
 import '../../features/account/presentation/account_screen.dart';
+import '../../features/messaging/presentation/messaging_home_screen.dart';
+import '../../features/messaging/presentation/team_conversation_screen.dart';
+import '../../features/messaging/presentation/team_announcements_screen.dart';
+import '../../features/messaging/presentation/compose_team_announcement_screen.dart';
 
 class AppRouter {
   final AuthService authService;
@@ -47,6 +51,7 @@ class AppRouter {
       '/home' => HomeScreen(authService: authService),
       '/budget' => BudgetScreen(authService: authService),
       '/teams' => TeamsScreen(authService: authService),
+      '/messages' => MessagingHomeScreen(authService: authService),
       '/notifications' => NotificationsScreen(authService: authService),
       '/admin' => AdminScreen(authService: authService),
       _ => const SizedBox.shrink(),
@@ -82,8 +87,9 @@ class AppRouter {
   late final GoRouter router = GoRouter(
     refreshListenable: authService,
     redirect: _guard,
-    initialLocation:
-        kIsWeb && Uri.base.fragment.isNotEmpty ? Uri.base.fragment : '/',
+    initialLocation: kIsWeb && Uri.base.fragment.isNotEmpty
+        ? Uri.base.fragment
+        : '/',
     observers: [appRouteObserver],
     routes: [
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
@@ -175,6 +181,68 @@ class AppRouter {
           authService: authService,
           teamId: state.pathParameters['id']!,
         ),
+      ),
+      GoRoute(
+        path: '/messages',
+        pageBuilder: (_, state) =>
+            _mainPage(state, MessagingHomeScreen(authService: authService)),
+      ),
+      GoRoute(
+        path: '/messages/conversation/:conversationId',
+        builder: (_, state) {
+          final conversationId = state.pathParameters['conversationId'];
+          if (conversationId == null || conversationId.isEmpty) {
+            return const Scaffold(
+              body: Center(child: Text('تعذر فتح المحادثة')),
+            );
+          }
+          final extra = state.extra;
+          final hints = extra is Map ? Map<String, dynamic>.from(extra) : null;
+          return TeamConversationScreen(
+            authService: authService,
+            conversationId: conversationId,
+            teamId: hints?['teamId'] as String?,
+            teamName: hints?['teamName'] as String?,
+            otherPartyName: hints?['otherPartyName'] as String?,
+            currentUserRole: hints?['currentUserRole'] as String?,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/teams/:id/announcements',
+        builder: (_, state) {
+          final teamId = state.pathParameters['id'];
+          if (teamId == null || teamId.isEmpty) {
+            return const Scaffold(
+              body: Center(child: Text('تعذر فتح الإعلانات')),
+            );
+          }
+          final extra = state.extra;
+          final hints = extra is Map ? Map<String, dynamic>.from(extra) : null;
+          return TeamAnnouncementsScreen(
+            authService: authService,
+            teamId: teamId,
+            teamName: hints?['teamName'] as String?,
+            isLeader: hints?['isLeader'] as bool? ?? false,
+            focusAnnouncementId: hints?['announcementId'] as String?,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/teams/:id/announcements/new',
+        builder: (_, state) {
+          final teamId = state.pathParameters['id'];
+          if (teamId == null || teamId.isEmpty) {
+            return const Scaffold(
+              body: Center(child: Text('تعذر فتح الإعلانات')),
+            );
+          }
+          return ComposeTeamAnnouncementScreen(
+            authService: authService,
+            teamId: teamId,
+            teamName: state.extra as String?,
+          );
+        },
       ),
       GoRoute(
         path: '/notifications',

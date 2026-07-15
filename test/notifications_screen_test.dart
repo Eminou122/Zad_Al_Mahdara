@@ -120,13 +120,22 @@ Widget _buildApp({NotificationService? service, AuthService? authService}) {
     routes: [
       GoRoute(
         path: '/notifications',
-        builder: (_, _) =>
-            NotificationsScreen(authService: auth, service: svc),
+        builder: (_, _) => NotificationsScreen(authService: auth, service: svc),
       ),
       GoRoute(
         path: '/teams/:id',
         builder: (_, state) =>
             Scaffold(body: Text('team-detail-${state.pathParameters['id']}')),
+      ),
+      GoRoute(
+        path: '/messages/conversation/:id',
+        builder: (_, state) =>
+            Scaffold(body: Text('conversation-${state.pathParameters['id']}')),
+      ),
+      GoRoute(
+        path: '/teams/:id/announcements',
+        builder: (_, state) =>
+            Scaffold(body: Text('announcements-${state.pathParameters['id']}')),
       ),
     ],
   );
@@ -156,7 +165,8 @@ void main() {
   testWidgets('loading state shows a spinner before data resolves', (
     tester,
   ) async {
-    final svc = _FakeNotificationService()..gate = Completer<NotificationsPage>();
+    final svc = _FakeNotificationService()
+      ..gate = Completer<NotificationsPage>();
     await tester.pumpWidget(_buildApp(service: svc));
     await tester.pump();
 
@@ -273,6 +283,65 @@ void main() {
     expect(find.text('team-detail-team-7'), findsOneWidget);
   });
 
+  testWidgets('open_team_conversation navigates by conversation id', (
+    tester,
+  ) async {
+    final svc = _FakeNotificationService()
+      ..firstPageItems = [
+        _item(
+          id: 'n1',
+          actionType: 'open_team_conversation',
+          actionPayload: {'team_id': 'team-1', 'conversation_id': 'conv-7'},
+        ),
+      ];
+    await tester.pumpWidget(_buildApp(service: svc));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('عنوان n1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('conversation-conv-7'), findsOneWidget);
+    expect(svc.markReadCallCount, 1);
+  });
+
+  testWidgets('open_team_announcements navigates by team id', (tester) async {
+    final svc = _FakeNotificationService()
+      ..firstPageItems = [
+        _item(
+          id: 'n1',
+          actionType: 'open_team_announcements',
+          actionPayload: {'team_id': 'team-8', 'announcement_id': 'ann-1'},
+        ),
+      ];
+    await tester.pumpWidget(_buildApp(service: svc));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('عنوان n1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('announcements-team-8'), findsOneWidget);
+  });
+
+  testWidgets('malformed conversation payload shows friendly snackbar', (
+    tester,
+  ) async {
+    final svc = _FakeNotificationService()
+      ..firstPageItems = [
+        _item(id: 'n1', actionType: 'open_team_conversation'),
+      ];
+    await tester.pumpWidget(_buildApp(service: svc));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('عنوان n1'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.text('تعذر فتح المحادثة المرتبطة بهذا الإشعار'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('unknown action_type does not crash and stays put', (
     tester,
   ) async {
@@ -366,7 +435,12 @@ void main() {
       ..firstPageItems = firstPage
       ..hasMore = true
       ..nextCursor = NotificationCursor(
-        createdAt: DateTime(2026, 7, 13, 10).subtract(const Duration(minutes: 19)),
+        createdAt: DateTime(
+          2026,
+          7,
+          13,
+          10,
+        ).subtract(const Duration(minutes: 19)),
         id: 'n19',
       );
     svc.secondPageItems = [_item(id: 'n20')];
@@ -392,17 +466,17 @@ void main() {
         for (var i = 0; i < 20; i++)
           _item(
             id: 'n$i',
-            createdAt: DateTime(
-              2026,
-              7,
-              13,
-              10,
-            ).subtract(Duration(minutes: i)),
+            createdAt: DateTime(2026, 7, 13, 10).subtract(Duration(minutes: i)),
           ),
       ]
       ..hasMore = true
       ..nextCursor = NotificationCursor(
-        createdAt: DateTime(2026, 7, 13, 10).subtract(const Duration(minutes: 19)),
+        createdAt: DateTime(
+          2026,
+          7,
+          13,
+          10,
+        ).subtract(const Duration(minutes: 19)),
         id: 'n19',
       );
     // Second page overlaps deliberately with n19 (already shown) plus a
@@ -443,11 +517,7 @@ void main() {
     final svc = _FakeNotificationService()
       ..firstPageItems = [
         _item(id: 'n1'),
-        _item(
-          id: 'n2',
-          isRead: true,
-          type: 'shopping_report_rejected',
-        ),
+        _item(id: 'n2', isRead: true, type: 'shopping_report_rejected'),
       ]
       ..unreadCount = 1;
     await tester.pumpWidget(_buildApp(service: svc));

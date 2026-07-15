@@ -64,20 +64,30 @@ Widget _buildSwipeNav({GlobalKey? childKey}) {
 
 void main() {
   group('ZadBottomNav.routesFor', () {
-    test('normal user gets the 4 non-admin routes, no /admin', () {
+    test('normal user gets the 5 non-admin routes, no /admin', () {
       final routes = ZadBottomNav.routesFor(false);
-      expect(routes, ['/home', '/budget', '/teams', '/notifications']);
+      expect(routes, [
+        '/home',
+        '/budget',
+        '/teams',
+        '/messages',
+        '/notifications',
+      ]);
       expect(routes, isNot(contains('/admin')));
     });
 
-    test('admin user gets 5 routes including /admin', () {
+    test('admin user gets 6 routes including /admin', () {
       final routes = ZadBottomNav.routesFor(true);
-      expect(
-        routes,
-        ['/budget', '/teams', '/home', '/notifications', '/admin'],
-      );
+      expect(routes, [
+        '/budget',
+        '/teams',
+        '/home',
+        '/messages',
+        '/notifications',
+        '/admin',
+      ]);
       expect(routes, contains('/admin'));
-      expect(routes.length, 5);
+      expect(routes.length, 6);
     });
   });
 
@@ -87,6 +97,7 @@ void main() {
         '/home',
         '/budget',
         '/teams',
+        '/messages',
         '/notifications',
         '/admin',
       ]) {
@@ -300,8 +311,11 @@ void main() {
 
       expect(find.text('فرقي'), findsOneWidget);
 
-      pc.animateToPage(1,
-          duration: const Duration(milliseconds: 100), curve: Curves.linear);
+      pc.animateToPage(
+        1,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.linear,
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('الفرق العامة'), findsOneWidget);
@@ -311,7 +325,9 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        MaterialApp.router(routerConfig: _testRouter(const Text('الصفحة الرئيسية'))),
+        MaterialApp.router(
+          routerConfig: _testRouter(const Text('الصفحة الرئيسية')),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -338,7 +354,9 @@ void main() {
       expect(_childGlobalOffset(childKey), equals(initialPos));
     });
 
-    testWidgets('diagonal vertical drag does not move the page', (tester) async {
+    testWidgets('diagonal vertical drag does not move the page', (
+      tester,
+    ) async {
       final childKey = GlobalKey();
       await tester.pumpWidget(_buildSwipeNav(childKey: childKey));
       await tester.pump();
@@ -371,7 +389,9 @@ void main() {
       expect(pos.dx, greaterThan(initialPos.dx + 20));
     });
 
-    testWidgets('horizontal drag releases and returns to origin', (tester) async {
+    testWidgets('horizontal drag releases and returns to origin', (
+      tester,
+    ) async {
       final childKey = GlobalKey();
       await tester.pumpWidget(_buildSwipeNav(childKey: childKey));
       await tester.pump();
@@ -435,7 +455,9 @@ void main() {
       );
     });
 
-    testWidgets('neighbor preview appears during horizontal drag', (tester) async {
+    testWidgets('neighbor preview appears during horizontal drag', (
+      tester,
+    ) async {
       await tester.pumpWidget(_buildSwipeNav());
       await tester.pump();
 
@@ -508,25 +530,26 @@ void main() {
       expect(find.text('الصفحة الرئيسية'), findsNothing);
     });
 
-    testWidgets('fast vertical flick with tiny horizontal jitter does NOT navigate', (
-      tester,
-    ) async {
-      final childKey = GlobalKey();
-      await tester.pumpWidget(_buildSwipeNav(childKey: childKey));
-      await tester.pump();
+    testWidgets(
+      'fast vertical flick with tiny horizontal jitter does NOT navigate',
+      (tester) async {
+        final childKey = GlobalKey();
+        await tester.pumpWidget(_buildSwipeNav(childKey: childKey));
+        await tester.pump();
 
-      final initialPos = _childGlobalOffset(childKey);
+        final initialPos = _childGlobalOffset(childKey);
 
-      // Fast vertical flick: dx=3, dy=-150 → vertical-dominant on first move
-      final gesture = await tester.startGesture(const Offset(200, 500));
-      await gesture.moveTo(const Offset(203, 350));
-      await tester.pump();
-      await gesture.up();
-      await tester.pump();
+        // Fast vertical flick: dx=3, dy=-150 → vertical-dominant on first move
+        final gesture = await tester.startGesture(const Offset(200, 500));
+        await gesture.moveTo(const Offset(203, 350));
+        await tester.pump();
+        await gesture.up();
+        await tester.pump();
 
-      // First move is vertical-dominant → rejected → page did not move
-      expect(_childGlobalOffset(childKey), equals(initialPos));
-    });
+        // First move is vertical-dominant → rejected → page did not move
+        expect(_childGlobalOffset(childKey), equals(initialPos));
+      },
+    );
   });
 
   group('ZadSwipeNav nested boundary defer (Teams-style child PageView)', () {
@@ -666,7 +689,12 @@ void main() {
               child: MediaQuery(
                 data: const MediaQueryData(size: Size(800, 600)),
                 child: ZadSwipeNav(
-                  routes: const ['/home', '/budget', '/teams', '/notifications'],
+                  routes: const [
+                    '/home',
+                    '/budget',
+                    '/teams',
+                    '/notifications',
+                  ],
                   index: 0,
                   screenBuilder: (route) => Text('SCREEN:$route'),
                   child: const SizedBox.expand(
@@ -688,9 +716,7 @@ void main() {
         // ('الميزانية' itself may legitimately appear in the stable
         // bottom-nav overlay, so check for the placeholder icon instead.)
         expect(
-          tester
-              .widgetList<Icon>(find.byType(Icon))
-              .where((i) => i.size == 48),
+          tester.widgetList<Icon>(find.byType(Icon)).where((i) => i.size == 48),
           isEmpty,
         );
       },
@@ -699,8 +725,9 @@ void main() {
 
   group('ZadSwipeNav filmstrip offset (Gate 29.8)', () {
     Offset globalPosOf(GlobalKey key) =>
-        (key.currentContext!.findRenderObject() as RenderBox)
-            .localToGlobal(Offset.zero);
+        (key.currentContext!.findRenderObject() as RenderBox).localToGlobal(
+          Offset.zero,
+        );
 
     testWidgets(
       'neighbor is offset like a real filmstrip on a partial positive drag, not pinned at Offset.zero',
@@ -713,7 +740,12 @@ void main() {
               child: MediaQuery(
                 data: const MediaQueryData(size: Size(800, 600)),
                 child: ZadSwipeNav(
-                  routes: const ['/home', '/budget', '/teams', '/notifications'],
+                  routes: const [
+                    '/home',
+                    '/budget',
+                    '/teams',
+                    '/notifications',
+                  ],
                   index: 0,
                   screenBuilder: (route) => route == '/budget'
                       ? SizedBox(key: neighborKey, width: 800, height: 600)
@@ -749,7 +781,12 @@ void main() {
               child: MediaQuery(
                 data: const MediaQueryData(size: Size(800, 600)),
                 child: ZadSwipeNav(
-                  routes: const ['/home', '/budget', '/teams', '/notifications'],
+                  routes: const [
+                    '/home',
+                    '/budget',
+                    '/teams',
+                    '/notifications',
+                  ],
                   index: 1,
                   screenBuilder: (route) => route == '/home'
                       ? SizedBox(key: neighborKey, width: 800, height: 600)
@@ -784,7 +821,12 @@ void main() {
               child: MediaQuery(
                 data: const MediaQueryData(size: Size(800, 600)),
                 child: ZadSwipeNav(
-                  routes: const ['/home', '/budget', '/teams', '/notifications'],
+                  routes: const [
+                    '/home',
+                    '/budget',
+                    '/teams',
+                    '/notifications',
+                  ],
                   index: 0,
                   screenBuilder: (route) => Text('SCREEN:$route'),
                   child: const SizedBox.expand(
@@ -893,7 +935,12 @@ void main() {
               child: MediaQuery(
                 data: const MediaQueryData(size: Size(800, 600)),
                 child: ZadSwipeNav(
-                  routes: const ['/home', '/budget', '/teams', '/notifications'],
+                  routes: const [
+                    '/home',
+                    '/budget',
+                    '/teams',
+                    '/notifications',
+                  ],
                   index: 0,
                   screenBuilder: (route) => Text('SCREEN:$route'),
                   child: const SizedBox.expand(
@@ -979,71 +1026,70 @@ void main() {
       },
     );
 
-    testWidgets(
-      'commit drives the neighbor to x ≈ 0 before navigating',
-      (tester) async {
-        final neighborKey = GlobalKey();
-        var navigated = false;
-        final routes = ['/home', '/budget'];
-        final router = GoRouter(
-          initialLocation: '/home',
-          routes: [
-            GoRoute(
-              path: '/home',
-              pageBuilder: (_, state) => CustomTransitionPage<void>(
+    testWidgets('commit drives the neighbor to x ≈ 0 before navigating', (
+      tester,
+    ) async {
+      final neighborKey = GlobalKey();
+      var navigated = false;
+      final routes = ['/home', '/budget'];
+      final router = GoRouter(
+        initialLocation: '/home',
+        routes: [
+          GoRoute(
+            path: '/home',
+            pageBuilder: (_, state) => CustomTransitionPage<void>(
+              key: state.pageKey,
+              child: ZadSwipeNav(
+                routes: routes,
+                index: 0,
+                screenBuilder: (r) => r == '/budget'
+                    ? SizedBox(key: neighborKey, width: 800, height: 600)
+                    : const SizedBox(width: 800, height: 600),
+                child: const Center(child: Text('HOME_PAGE')),
+              ),
+              transitionsBuilder: (_, animation, _, child) =>
+                  FadeTransition(opacity: animation, child: child),
+            ),
+          ),
+          GoRoute(
+            path: '/budget',
+            pageBuilder: (_, state) {
+              navigated = true;
+              return CustomTransitionPage<void>(
                 key: state.pageKey,
-                child: ZadSwipeNav(
-                  routes: routes,
-                  index: 0,
-                  screenBuilder: (r) => r == '/budget'
-                      ? SizedBox(key: neighborKey, width: 800, height: 600)
-                      : const SizedBox(width: 800, height: 600),
-                  child: const Center(child: Text('HOME_PAGE')),
-                ),
+                child: const Center(child: Text('BUDGET_PAGE')),
                 transitionsBuilder: (_, animation, _, child) =>
                     FadeTransition(opacity: animation, child: child),
-              ),
-            ),
-            GoRoute(
-              path: '/budget',
-              pageBuilder: (_, state) {
-                navigated = true;
-                return CustomTransitionPage<void>(
-                  key: state.pageKey,
-                  child: const Center(child: Text('BUDGET_PAGE')),
-                  transitionsBuilder: (_, animation, _, child) =>
-                      FadeTransition(opacity: animation, child: child),
-                );
-              },
-            ),
-          ],
-        );
+              );
+            },
+          ),
+        ],
+      );
 
-        await tester.binding.setSurfaceSize(const Size(800, 600));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(const Size(800, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
 
-        final gesture = await tester.startGesture(const Offset(400, 300));
-        await gesture.moveBy(const Offset(100, 0));
-        await tester.pump();
-        await gesture.up();
-        await tester.pump(); // first frame starts the settle ticker (t = 0)
+      final gesture = await tester.startGesture(const Offset(400, 300));
+      await gesture.moveBy(const Offset(100, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump(); // first frame starts the settle ticker (t = 0)
 
-        // 240ms into the 250ms settle: neighbor nearly at x = 0
-        // (linear controller: expected ≈ -28), navigation not yet fired.
-        await tester.pump(const Duration(milliseconds: 240));
-        final navBox = neighborKey.currentContext!.findRenderObject()
-            as RenderBox;
-        expect(navBox.localToGlobal(Offset.zero).dx.abs(), lessThan(60));
-        expect(navigated, isFalse);
+      // 240ms into the 250ms settle: neighbor nearly at x = 0
+      // (linear controller: expected ≈ -28), navigation not yet fired.
+      await tester.pump(const Duration(milliseconds: 240));
+      final navBox =
+          neighborKey.currentContext!.findRenderObject() as RenderBox;
+      expect(navBox.localToGlobal(Offset.zero).dx.abs(), lessThan(60));
+      expect(navigated, isFalse);
 
-        await tester.pumpAndSettle();
-        expect(navigated, isTrue);
-        expect(find.text('BUDGET_PAGE'), findsOneWidget);
-      },
-    );
+      await tester.pumpAndSettle();
+      expect(navigated, isTrue);
+      expect(find.text('BUDGET_PAGE'), findsOneWidget);
+    });
 
     testWidgets(
       'browser-style route change (router.go) shows the new section',
@@ -1086,8 +1132,21 @@ void main() {
       );
     }
 
-    const userRoutes = ['/home', '/budget', '/teams', '/notifications'];
-    const adminRoutes = ['/budget', '/teams', '/home', '/notifications', '/admin'];
+    const userRoutes = [
+      '/home',
+      '/budget',
+      '/teams',
+      '/messages',
+      '/notifications',
+    ];
+    const adminRoutes = [
+      '/budget',
+      '/teams',
+      '/home',
+      '/messages',
+      '/notifications',
+      '/admin',
+    ];
 
     testWidgets('at the first route, outward drag does not move the page and '
         'shows no neighbor', (tester) async {
@@ -1144,8 +1203,9 @@ void main() {
       expect(_childGlobalOffset(childKey), equals(initialPos));
     });
 
-    testWidgets('valid inward drag still works from the first and last route',
-        (tester) async {
+    testWidgets('valid inward drag still works from the first and last route', (
+      tester,
+    ) async {
       final childKey = GlobalKey();
 
       // First route, inward (positive → index 1).
@@ -1181,12 +1241,16 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('admin 5-route strip clamps at both ends too', (tester) async {
+    testWidgets('admin route strip clamps at both ends too', (tester) async {
       final childKey = GlobalKey();
 
-      // Last admin route (index 4), outward.
+      // Last admin route, outward.
       await tester.pumpWidget(
-        buildAt(routes: adminRoutes, index: 4, childKey: childKey),
+        buildAt(
+          routes: adminRoutes,
+          index: adminRoutes.length - 1,
+          childKey: childKey,
+        ),
       );
       await tester.pump();
       var initialPos = _childGlobalOffset(childKey);
@@ -1406,8 +1470,9 @@ void main() {
   });
 
   group('TeamsScreen real-widget behavior', () {
-    testWidgets('FAB appears only on "فرقي" and segmented control switches',
-        (tester) async {
+    testWidgets('FAB appears only on "فرقي" and segmented control switches', (
+      tester,
+    ) async {
       await tester.binding.setSurfaceSize(const Size(800, 600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -1634,20 +1699,20 @@ class _FakeTeamService extends TeamService {
 
   @override
   Future<List<TeamSummary>> getMyTeams() async => const [
-        TeamSummary(
-          id: 't1',
-          name: 'فريق الغداء',
-          teamType: 'lunch',
-          isPublic: false,
-          status: 'open',
-          leaderName: 'قائد',
-          memberCount: 3,
-          activeMemberCount: 3,
-          inactiveMemberCount: 0,
-          myRole: 'leader',
-          isLeader: true,
-        ),
-      ];
+    TeamSummary(
+      id: 't1',
+      name: 'فريق الغداء',
+      teamType: 'lunch',
+      isPublic: false,
+      status: 'open',
+      leaderName: 'قائد',
+      memberCount: 3,
+      activeMemberCount: 3,
+      inactiveMemberCount: 0,
+      myRole: 'leader',
+      isLeader: true,
+    ),
+  ];
 
   @override
   Future<List<TeamSummary>> getPublicTeams() async => const [];

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:zad_al_mahdara/core/routing/route_observer.dart';
 import 'package:zad_al_mahdara/core/utils/ltr_fragment.dart';
 import 'package:zad_al_mahdara/core/widgets/zad_section_header.dart';
@@ -12,6 +13,8 @@ import 'package:zad_al_mahdara/features/teams/domain/team_models.dart';
 import 'package:zad_al_mahdara/features/teams/domain/team_shopping_models.dart';
 import 'package:zad_al_mahdara/features/teams/domain/team_turn_models.dart';
 import 'package:zad_al_mahdara/features/teams/presentation/team_detail_screen.dart';
+import 'package:zad_al_mahdara/features/messaging/data/team_messaging_service.dart';
+import 'package:zad_al_mahdara/features/messaging/domain/team_messaging_models.dart';
 import 'package:zad_al_mahdara/services/auth_service.dart';
 
 TeamDetail _sampleTeamDetail() => TeamDetail(
@@ -171,6 +174,25 @@ TeamDetail _teamDetailWithManageableMember({bool memberActive = true}) =>
       canEdit: true,
       isMember: true,
     );
+
+TeamDetail _ordinaryMemberDetail({bool isMember = true}) => TeamDetail(
+  team: TeamInfo(
+    id: 'team-1',
+    name: 'فريق الغداء',
+    teamType: 'lunch',
+    isPublic: true,
+    status: 'open',
+    leaderId: 'leader-1',
+    leaderName: 'أحمد',
+    memberCount: 2,
+    activeMemberCount: isMember ? 2 : 1,
+    inactiveMemberCount: isMember ? 0 : 1,
+    createdAt: DateTime(2026, 7, 1),
+  ),
+  members: const [],
+  canEdit: false,
+  isMember: isMember,
+);
 
 class _FakeTeamService extends TeamService {
   TeamDetail? detail;
@@ -454,6 +476,39 @@ class _FakeTeamShoppingService extends TeamShoppingService {
   }
 }
 
+class _FakeMessagingService extends TeamMessagingService {
+  int sendCalls = 0;
+  String? lastBody;
+
+  _FakeMessagingService() : super(AuthService());
+
+  @override
+  Future<SentTeamMessage> sendMessageToTeamLeader({
+    required String teamId,
+    required String body,
+  }) async {
+    sendCalls++;
+    lastBody = body;
+    return SentTeamMessage(
+      conversation: const TeamConversationRef(
+        id: 'conv-1',
+        teamId: 'team-1',
+        memberProfileId: 'p1',
+      ),
+      message: TeamMessage(
+        id: 'msg-1',
+        conversationId: 'conv-1',
+        senderProfileId: 'p1',
+        senderName: 'محمد',
+        senderRole: 'member',
+        body: body,
+        createdAt: DateTime(2026, 7, 13, 10),
+        isRead: true,
+      ),
+    );
+  }
+}
+
 class _FakeAuthService extends AuthService {
   @override
   String? get currentToken => 'test-token';
@@ -473,6 +528,7 @@ Widget _buildTest(
   TeamService? teamService,
   TeamTurnService? turnService,
   TeamShoppingService? shoppingService,
+  TeamMessagingService? messagingService,
 }) {
   return MaterialApp(
     home: Directionality(
@@ -483,6 +539,7 @@ Widget _buildTest(
         teamService: teamService,
         turnService: turnService,
         shoppingService: shoppingService,
+        messagingService: messagingService,
       ),
     ),
   );
@@ -549,6 +606,84 @@ Future<void> _scrollToTurnCard(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('ordinary active member sees messaging and announcements', (
+    tester,
+  ) async {
+    await _pump(tester, detail: _ordinaryMemberDetail());
+
+    expect(find.text('مراسلة قائد الفريق'), findsOneWidget);
+    expect(find.text('الإعلانات'), findsOneWidget);
+    expect(find.text('إعلان جديد'), findsNothing);
+  });
+
+  testWidgets('leader sees announcements but not member messaging', (
+    tester,
+  ) async {
+    await _pump(tester, detail: _sampleTeamDetail());
+
+    expect(find.text('الإعلانات'), findsOneWidget);
+    expect(find.text('مراسلة قائد الفريق'), findsNothing);
+  });
+
+  testWidgets('ineligible non-member does not see messaging or announcements', (
+    tester,
+  ) async {
+    await _pump(tester, detail: _ordinaryMemberDetail(isMember: false));
+
+    expect(find.text('مراسلة قائد الفريق'), findsNothing);
+    expect(find.text('الإعلانات'), findsNothing);
+  });
+
+  testWidgets('first-message dialog blocks blank and sends trimmed body', (
+    tester,
+  ) async {
+    final messagingService = _FakeMessagingService();
+    final router = GoRouter(
+      initialLocation: '/teams/team-1',
+      routes: [
+        GoRoute(
+          path: '/teams/:id',
+          builder: (context, state) => TeamDetailScreen(
+            authService: _FakeAuthService(),
+            teamId: 'team-1',
+            teamService: _FakeTeamService(detail: _ordinaryMemberDetail()),
+            turnService: _FakeTurnService(state: _sampleTurnState()),
+            shoppingService: _FakeTeamShoppingService(),
+            messagingService: messagingService,
+          ),
+        ),
+        GoRoute(
+          path: '/messages/conversation/:id',
+          builder: (_, state) => Scaffold(
+            body: Text('conversation-${state.pathParameters['id']}'),
+          ),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp.router(
+        routerConfig: router,
+        builder: (context, child) =>
+            Directionality(textDirection: TextDirection.rtl, child: child!),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('مراسلة قائد الفريق'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('إرسال'));
+    await tester.pumpAndSettle();
+    expect(find.text('اكتب رسالة أولاً'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).last, '  السلام عليكم  ');
+    await tester.tap(find.text('إرسال'));
+    await tester.pumpAndSettle();
+
+    expect(messagingService.sendCalls, 1);
+    expect(messagingService.lastBody, 'السلام عليكم');
+    expect(find.text('conversation-conv-1'), findsOneWidget);
+  });
+
   testWidgets('hero member counts isolate numeric fragments', (tester) async {
     await _pump(tester);
 

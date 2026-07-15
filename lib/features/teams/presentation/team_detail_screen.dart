@@ -10,8 +10,11 @@ import '../../../core/widgets/zad_bottom_nav.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_confirm.dart';
 import '../../../core/widgets/zad_info_banner.dart';
+import '../../../core/widgets/zad_messaging_badge_scope.dart';
 import '../../../core/widgets/zad_section_header.dart';
 import '../../../services/auth_service.dart';
+import '../../messaging/data/team_messaging_service.dart';
+import '../../messaging/domain/team_messaging_models.dart';
 import '../data/team_service.dart';
 import '../data/team_shopping_service.dart';
 import '../data/team_turn_service.dart';
@@ -60,6 +63,7 @@ class TeamDetailScreen extends StatefulWidget {
   final TeamService? teamService;
   final TeamTurnService? turnService;
   final TeamShoppingService? shoppingService;
+  final TeamMessagingService? messagingService;
   const TeamDetailScreen({
     super.key,
     required this.authService,
@@ -67,6 +71,7 @@ class TeamDetailScreen extends StatefulWidget {
     this.teamService,
     this.turnService,
     this.shoppingService,
+    this.messagingService,
   });
 
   @override
@@ -77,6 +82,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   late final TeamService _svc;
   late final TeamTurnService _turnSvc;
   late final TeamShoppingService _shoppingSvc;
+  late final TeamMessagingService _messagingSvc;
   TeamDetail? _detail;
   TeamTurnState? _turnState;
   TeamShoppingOverview? _shoppingOverview;
@@ -97,6 +103,8 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     _svc = widget.teamService ?? TeamService(widget.authService);
     _turnSvc = widget.turnService ?? TeamTurnService(widget.authService);
     _shoppingSvc = widget.shoppingService ?? TeamShoppingService();
+    _messagingSvc =
+        widget.messagingService ?? TeamMessagingService(widget.authService);
     _load();
   }
 
@@ -922,6 +930,24 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     );
   }
 
+  Future<void> _openMessageLeaderComposer() async {
+    final result = await showDialog<SentTeamMessage>(
+      context: context,
+      builder: (_) =>
+          _MessageLeaderDialog(service: _messagingSvc, teamId: widget.teamId),
+    );
+    if (result == null || !mounted) return;
+    ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+    context.push(
+      '/messages/conversation/${result.conversation.id}',
+      extra: {
+        'teamId': result.conversation.teamId,
+        'teamName': _detail?.team.name,
+        'currentUserRole': 'member',
+      },
+    );
+  }
+
   Future<void> _startTurn() async {
     setState(() => _turnLoading = true);
     try {
@@ -1190,13 +1216,47 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                   const SizedBox(height: ZadTokens.s4),
                   // Add-member moved to the gold FAB (Stitch); edit stays.
                   if (d.canEdit)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.edit),
+                            label: const Text('تعديل الفريق'),
+                            onPressed: () => context.push(
+                              '/teams/${widget.teamId}/edit',
+                              extra: team,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: ZadTokens.s2),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.campaign_outlined),
+                            label: const Text('الإعلانات'),
+                            onPressed: () => context.push(
+                              '/teams/${widget.teamId}/announcements',
+                              extra: {'teamName': team.name, 'isLeader': true},
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  else if (d.isMember) ...[
                     OutlinedButton.icon(
-                      icon: const Icon(Icons.edit),
-                      label: const Text('تعديل الفريق'),
+                      icon: const Icon(Icons.campaign_outlined),
+                      label: const Text('الإعلانات'),
                       onPressed: () => context.push(
-                        '/teams/${widget.teamId}/edit',
-                        extra: team,
+                        '/teams/${widget.teamId}/announcements',
+                        extra: {'teamName': team.name, 'isLeader': false},
                       ),
+                    ),
+                    const SizedBox(height: ZadTokens.s2),
+                  ],
+                  if (d.isMember && !d.canEdit)
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      label: const Text('مراسلة قائد الفريق'),
+                      onPressed: _openMessageLeaderComposer,
                     ),
                   const SizedBox(height: ZadTokens.s4),
                   ..._shoppingCard(),
@@ -1289,6 +1349,106 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
           },
         ),
       ),
+    );
+  }
+}
+
+class _MessageLeaderDialog extends StatefulWidget {
+  final TeamMessagingService service;
+  final String teamId;
+
+  const _MessageLeaderDialog({required this.service, required this.teamId});
+
+  @override
+  State<_MessageLeaderDialog> createState() => _MessageLeaderDialogState();
+}
+
+class _MessageLeaderDialogState extends State<_MessageLeaderDialog> {
+  final _controller = TextEditingController();
+  String? _error;
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (_sending) return;
+    final text = _controller.text.trim();
+    if (text.isEmpty) {
+      setState(() => _error = 'اكتب رسالة أولاً');
+      return;
+    }
+    if (text.length > 2000) {
+      setState(() => _error = 'الرسالة طويلة جداً');
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      final sent = await widget.service.sendMessageToTeamLeader(
+        teamId: widget.teamId,
+        body: text,
+      );
+      if (mounted) Navigator.pop(context, sent);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _error = userErrorText(e);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('رسالة إلى قائد الفريق'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            maxLines: 4,
+            minLines: 2,
+            maxLength: 2000,
+            enabled: !_sending,
+            decoration: const InputDecoration(
+              hintText: 'اكتب رسالتك',
+              counterText: '',
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: ZadTokens.s2),
+            Text(
+              _error!,
+              style: const TextStyle(color: ZadTokens.danger, fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _sending ? null : () => Navigator.pop(context),
+          child: const Text('إلغاء'),
+        ),
+        TextButton(
+          onPressed: _sending ? null : _send,
+          child: _sending
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('إرسال'),
+        ),
+      ],
     );
   }
 }
