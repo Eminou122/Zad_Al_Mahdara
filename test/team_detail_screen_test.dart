@@ -304,6 +304,8 @@ class _FakeTeamShoppingService extends TeamShoppingService {
   bool submitCalled = false;
   String? lastReviewStatus;
   String? lastReviewNote;
+  int reviewCallCount = 0;
+  Object? reviewError;
 
   String? lastAddedName;
   String? lastAddedQuantityNote;
@@ -386,6 +388,8 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     DateTime? date,
     String? note,
   }) async {
+    reviewCallCount++;
+    if (reviewError != null) throw reviewError!;
     lastReviewStatus = status;
     lastReviewNote = note;
     overview = _sampleShoppingOverview(
@@ -1233,6 +1237,187 @@ void main() {
     await tester.tap(find.text('حفظ'));
     await tester.pumpAndSettle();
     expect(find.text('السبب مطلوب'), findsOneWidget);
+  });
+
+  testWidgets('رفض opens a confirmation dialog with the required copy '
+      'after the reason is entered', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: true,
+          canEditMarks: false,
+        ),
+      ),
+    );
+    await _tapVisible(tester, find.text('رفض'));
+    await tester.enterText(find.byType(TextField).last, 'سبب الرفض');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تأكيد رفض التقرير'), findsOneWidget);
+    expect(find.text('هل أنت متأكد من رفض تقرير التسوق؟'), findsOneWidget);
+    expect(find.text('إلغاء'), findsOneWidget);
+    expect(find.text('تأكيد الرفض'), findsOneWidget);
+  });
+
+  testWidgets('cancelling the confirmation performs zero reject RPC calls', (
+    tester,
+  ) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: true,
+          canEditMarks: false,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapVisible(tester, find.text('رفض'));
+    await tester.enterText(find.byType(TextField).last, 'سبب الرفض');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('إلغاء').last);
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.reviewCallCount, 0);
+    expect(find.text('تأكيد رفض التقرير'), findsNothing);
+    // Still pending — cancel never touched the report state.
+    expect(find.text('في انتظار المراجعة'), findsOneWidget);
+  });
+
+  testWidgets('confirming rejection invokes reject exactly once and shows '
+      'the success message', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: true,
+          canEditMarks: false,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapVisible(tester, find.text('رفض'));
+    await tester.enterText(find.byType(TextField).last, 'سبب الرفض');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تأكيد الرفض'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.reviewCallCount, 1);
+    expect(shoppingService.lastReviewStatus, 'rejected');
+    expect(shoppingService.lastReviewNote, 'سبب الرفض');
+    expect(find.text('تم رفض التقرير'), findsOneWidget);
+  });
+
+  testWidgets('double-tapping تأكيد الرفض does not duplicate the RPC call', (
+    tester,
+  ) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: true,
+          canEditMarks: false,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapVisible(tester, find.text('رفض'));
+    await tester.enterText(find.byType(TextField).last, 'سبب الرفض');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    final confirmButton = find.text('تأكيد الرفض');
+    await tester.tap(confirmButton);
+    // Second tap lands after the dialog's own guard has already disabled
+    // the button — asserting that is the point of this test, so the
+    // resulting missed-hit-test warning is expected, not a bug.
+    await tester.tap(confirmButton, warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.reviewCallCount, 1);
+  });
+
+  testWidgets('failed rejection does not show success and keeps the report '
+      'pending', (tester) async {
+    final shoppingService =
+        _FakeTeamShoppingService(
+          overview: _sampleShoppingOverview(
+            hasReportObject: true,
+            report: TeamShoppingReport(
+              submittedAt: DateTime(2026, 7, 5),
+              leaderStatus: 'pending',
+              canSubmit: false,
+              canReview: true,
+              canEditMarks: false,
+            ),
+          ),
+        )..reviewError = Exception('تعذر تحديث حالة التقرير');
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapVisible(tester, find.text('رفض'));
+    await tester.enterText(find.byType(TextField).last, 'سبب الرفض');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تأكيد الرفض'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.reviewCallCount, 1);
+    expect(find.text('تم رفض التقرير'), findsNothing);
+    expect(find.text('في انتظار المراجعة'), findsOneWidget);
+    expect(find.text('قبول'), findsOneWidget);
+    expect(find.text('رفض'), findsOneWidget);
   });
 
   testWidgets('accept calls reviewShoppingReport(status=accepted)', (

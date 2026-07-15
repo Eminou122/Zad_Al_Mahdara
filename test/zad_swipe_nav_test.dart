@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:zad_al_mahdara/core/widgets/zad_bottom_nav.dart';
 import 'package:zad_al_mahdara/core/widgets/zad_nested_swipe_scope.dart';
 import 'package:zad_al_mahdara/core/widgets/zad_swipe_nav.dart';
+import 'package:zad_al_mahdara/features/messaging/data/team_messaging_service.dart';
+import 'package:zad_al_mahdara/features/messaging/domain/team_messaging_models.dart';
+import 'package:zad_al_mahdara/features/messaging/presentation/messaging_home_screen.dart';
 import 'package:zad_al_mahdara/features/teams/data/team_service.dart';
 import 'package:zad_al_mahdara/features/teams/domain/team_models.dart';
 import 'package:zad_al_mahdara/features/teams/presentation/teams_screen.dart';
@@ -76,12 +79,12 @@ void main() {
       expect(routes, isNot(contains('/admin')));
     });
 
-    test('admin user gets 6 routes including /admin', () {
+    test('admin user gets 6 routes including /admin, home-first order', () {
       final routes = ZadBottomNav.routesFor(true);
       expect(routes, [
+        '/home',
         '/budget',
         '/teams',
-        '/home',
         '/messages',
         '/notifications',
         '/admin',
@@ -1140,9 +1143,9 @@ void main() {
       '/notifications',
     ];
     const adminRoutes = [
+      '/home',
       '/budget',
       '/teams',
-      '/home',
       '/messages',
       '/notifications',
       '/admin',
@@ -1469,6 +1472,48 @@ void main() {
     });
   });
 
+  group('MessagingHomeScreen nested-swipe registration (Gate 52.3)', () {
+    testWidgets(
+      'MessagingHomeScreen registers its PageController, giving root a '
+      'controller with room to move so it can defer instead of navigating '
+      'away from /messages',
+      (tester) async {
+        PageController? received;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Directionality(
+              textDirection: TextDirection.rtl,
+              child: NotificationListener<PageControllerRegistration>(
+                onNotification: (n) {
+                  received = n.controller;
+                  return true;
+                },
+                child: MessagingHomeScreen(
+                  authService: _FakeMessagesAuthService(),
+                  service: _FakeMessagingServiceForNav(),
+                  teamService: _FakeTeamService(),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Same registration mechanism Teams uses — this is the piece that
+        // was missing before Gate 52.3 (Messages used TabBarView, which
+        // owns its PageController internally and can't register it), so
+        // root always took every horizontal drag on /messages itself.
+        expect(received, isNotNull);
+        expect(received!.hasClients, isTrue);
+        // At page 0 there is a next page (الإعلانات) to move to — this is
+        // exactly the check ZadSwipeNav._childCanMove performs to decide
+        // whether to defer to Messages' own PageView instead of treating
+        // the drag as a root tab change.
+        expect(received!.position.extentAfter, greaterThan(0));
+      },
+    );
+  });
+
   group('TeamsScreen real-widget behavior', () {
     testWidgets('FAB appears only on "فرقي" and segmented control switches', (
       tester,
@@ -1691,6 +1736,32 @@ class _PageViewChildState extends State<_PageViewChild> {
       ),
     );
   }
+}
+
+/// Empty in-memory TeamMessagingService for Messages nested-swipe tests —
+/// only the segmented control + PageView shell matters here, not content.
+class _FakeMessagingServiceForNav extends TeamMessagingService {
+  _FakeMessagingServiceForNav() : super(AuthService());
+
+  @override
+  Future<TeamConversationsPage> getMyTeamConversations({
+    int limit = 30,
+    TeamConversationCursor? before,
+    bool unreadOnly = false,
+  }) async => const TeamConversationsPage(items: [], hasMore: false);
+
+  @override
+  Future<TeamAnnouncementsPage> getMyTeamAnnouncements({
+    String? teamId,
+    int limit = 30,
+    TeamAnnouncementCursor? before,
+    bool unreadOnly = false,
+  }) async => const TeamAnnouncementsPage(items: [], hasMore: false);
+}
+
+class _FakeMessagesAuthService extends AuthService {
+  @override
+  String? get currentToken => 'test-token';
 }
 
 /// In-memory TeamService: one team on "فرقي", none on "الفرق العامة".

@@ -40,8 +40,8 @@ import '../theme/zad_tokens.dart';
 /// Edge clamp (Gate 29.12): before applying any drag offset, the drag
 /// direction must have a real neighboring tab. At the first tab the
 /// outward direction is blocked completely (no movement, no preview, no
-/// route attempt), and likewise at the last tab — for both the 4-tab user
-/// strip and the 5-tab admin strip.
+/// route attempt), and likewise at the last tab — for both the 5-tab user
+/// strip and the 6-tab admin strip.
 ///
 /// State preservation (Gate 29.12): when [screenBuilder] is supplied,
 /// this widget acts as a persistent tab shell. Every root screen it has
@@ -420,6 +420,7 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
     '/home': Icons.home_outlined,
     '/budget': Icons.account_balance_wallet_outlined,
     '/teams': Icons.groups_outlined,
+    '/messages': Icons.mail_outline,
     '/notifications': Icons.notifications_outlined,
     '/admin': Icons.admin_panel_settings_outlined,
   };
@@ -428,6 +429,7 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
     '/home': 'الرئيسية',
     '/budget': 'الميزانية',
     '/teams': 'الفرق',
+    '/messages': 'الرسائل',
     '/notifications': 'التنبيهات',
     '/admin': 'الإدارة',
   };

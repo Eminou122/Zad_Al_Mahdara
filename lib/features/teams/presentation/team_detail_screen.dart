@@ -15,6 +15,7 @@ import '../../../core/widgets/zad_section_header.dart';
 import '../../../services/auth_service.dart';
 import '../../messaging/data/team_messaging_service.dart';
 import '../../messaging/domain/team_messaging_models.dart';
+import '../../messaging/presentation/message_team_leader_dialog.dart';
 import '../data/team_service.dart';
 import '../data/team_shopping_service.dart';
 import '../data/team_turn_service.dart';
@@ -91,6 +92,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   bool _turnLoading = false;
   bool _shoppingLoading = false;
   bool _routeSubscribed = false;
+  String? _reviewingStatus;
   String? _error;
   String? _shoppingError;
   final Set<String> _busyMembers = {};
@@ -362,12 +364,31 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
             runSpacing: ZadTokens.s1,
             children: [
               FilledButton(
-                onPressed: () => _reviewShoppingReport('accepted'),
-                child: const Text('قبول'),
+                onPressed: _reviewingStatus != null
+                    ? null
+                    : () => _reviewShoppingReport('accepted'),
+                child: _reviewingStatus == 'accepted'
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('قبول'),
               ),
               OutlinedButton(
-                onPressed: () => _reviewShoppingReport('rejected'),
-                child: const Text('رفض'),
+                onPressed: _reviewingStatus != null
+                    ? null
+                    : () => _reviewShoppingReport('rejected'),
+                child: _reviewingStatus == 'rejected'
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('رفض'),
               ),
             ],
           ),
@@ -725,6 +746,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   }
 
   Future<void> _reviewShoppingReport(String status) async {
+    if (_reviewingStatus != null) return;
     String? note;
     if (status == 'rejected') {
       note = await showDialog<String>(
@@ -735,10 +757,16 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
           maxLength: 300,
         ),
       );
-      if (note == null) return;
+      if (note == null || !mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => const _ConfirmRejectReportDialog(),
+      );
+      if (confirmed != true || !mounted) return;
     }
     final token = widget.authService.currentToken;
     if (token == null) return;
+    setState(() => _reviewingStatus = status);
     try {
       final overview = await _shoppingSvc.reviewShoppingReport(
         sessionToken: token,
@@ -748,7 +776,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
         note: note,
       );
       if (mounted) {
-        setState(() => _shoppingOverview = overview);
+        setState(() {
+          _shoppingOverview = overview;
+          _reviewingStatus = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -759,6 +790,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _reviewingStatus = null);
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
@@ -933,8 +965,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   Future<void> _openMessageLeaderComposer() async {
     final result = await showDialog<SentTeamMessage>(
       context: context,
-      builder: (_) =>
-          _MessageLeaderDialog(service: _messagingSvc, teamId: widget.teamId),
+      builder: (_) => MessageTeamLeaderDialog(
+        service: _messagingSvc,
+        teamId: widget.teamId,
+      ),
     );
     if (result == null || !mounted) return;
     ZadMessagingBadgeScope.maybeOf(context)?.refresh();
@@ -1349,106 +1383,6 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
           },
         ),
       ),
-    );
-  }
-}
-
-class _MessageLeaderDialog extends StatefulWidget {
-  final TeamMessagingService service;
-  final String teamId;
-
-  const _MessageLeaderDialog({required this.service, required this.teamId});
-
-  @override
-  State<_MessageLeaderDialog> createState() => _MessageLeaderDialogState();
-}
-
-class _MessageLeaderDialogState extends State<_MessageLeaderDialog> {
-  final _controller = TextEditingController();
-  String? _error;
-  bool _sending = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    if (_sending) return;
-    final text = _controller.text.trim();
-    if (text.isEmpty) {
-      setState(() => _error = 'اكتب رسالة أولاً');
-      return;
-    }
-    if (text.length > 2000) {
-      setState(() => _error = 'الرسالة طويلة جداً');
-      return;
-    }
-    setState(() {
-      _sending = true;
-      _error = null;
-    });
-    try {
-      final sent = await widget.service.sendMessageToTeamLeader(
-        teamId: widget.teamId,
-        body: text,
-      );
-      if (mounted) Navigator.pop(context, sent);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _sending = false;
-        _error = userErrorText(e);
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('رسالة إلى قائد الفريق'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            maxLines: 4,
-            minLines: 2,
-            maxLength: 2000,
-            enabled: !_sending,
-            decoration: const InputDecoration(
-              hintText: 'اكتب رسالتك',
-              counterText: '',
-            ),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: ZadTokens.s2),
-            Text(
-              _error!,
-              style: const TextStyle(color: ZadTokens.danger, fontSize: 12),
-            ),
-          ],
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: _sending ? null : () => Navigator.pop(context),
-          child: const Text('إلغاء'),
-        ),
-        TextButton(
-          onPressed: _sending ? null : _send,
-          child: _sending
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('إرسال'),
-        ),
-      ],
     );
   }
 }
@@ -2233,6 +2167,55 @@ class _ShoppingReasonDialogState extends State<_ShoppingReasonDialog> {
         child: const Text('إلغاء'),
       ),
       FilledButton(onPressed: _submit, child: const Text('حفظ')),
+    ],
+  );
+}
+
+/// Final confirmation before a leader rejection actually submits — shown
+/// after the reason dialog, before the RPC fires. Guards its own confirm
+/// tap (`_confirmed`) so a rapid double-tap on تأكيد الرفض can never pop
+/// the dialog's route twice (which would otherwise pop whatever route is
+/// underneath once the dialog itself is already gone).
+class _ConfirmRejectReportDialog extends StatefulWidget {
+  const _ConfirmRejectReportDialog();
+
+  @override
+  State<_ConfirmRejectReportDialog> createState() =>
+      _ConfirmRejectReportDialogState();
+}
+
+class _ConfirmRejectReportDialogState
+    extends State<_ConfirmRejectReportDialog> {
+  bool _confirmed = false;
+
+  void _confirm() {
+    if (_confirmed) return;
+    setState(() => _confirmed = true);
+    Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('تأكيد رفض التقرير'),
+    content: const Text('هل أنت متأكد من رفض تقرير التسوق؟'),
+    actions: [
+      TextButton(
+        onPressed: _confirmed ? null : () => Navigator.of(context).pop(false),
+        child: const Text('إلغاء'),
+      ),
+      FilledButton(
+        onPressed: _confirmed ? null : _confirm,
+        child: _confirmed
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Text('تأكيد الرفض'),
+      ),
     ],
   );
 }

@@ -9,6 +9,7 @@ import '../../../core/widgets/zad_empty_state.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_logo_badge.dart';
 import '../../../core/widgets/zad_messaging_badge_scope.dart';
+import '../../../core/widgets/zad_nested_swipe_scope.dart';
 import '../../../services/auth_service.dart';
 import '../../teams/data/team_service.dart';
 import '../data/team_messaging_service.dart';
@@ -33,24 +34,56 @@ class MessagingHomeScreen extends StatefulWidget {
   State<MessagingHomeScreen> createState() => _MessagingHomeScreenState();
 }
 
-class _MessagingHomeScreenState extends State<MessagingHomeScreen>
-    with SingleTickerProviderStateMixin {
+/// Same segmented-control + [PageController] + [PageView] pattern as
+/// TeamsScreen's فرقي/الفرق العامة sections — not a [TabController]/
+/// [TabBarView], which owns its [PageController] internally and can't
+/// register it with the root [ZadSwipeNav]. Registering our own controller
+/// via [PageControllerRegistration] lets the root swipe detector defer to
+/// this page's own horizontal drag whenever it still has room to move, so
+/// swiping between المحادثات/الإعلانات never fights with (or accidentally
+/// triggers) a root tab change.
+class _MessagingHomeScreenState extends State<MessagingHomeScreen> {
   late final TeamMessagingService _svc;
   late final TeamService _teamSvc;
-  late final TabController _tabController;
+  late final PageController _pageController;
+  int _messagesPage = 0;
 
   @override
   void initState() {
     super.initState();
     _svc = widget.service ?? TeamMessagingService(widget.authService);
     _teamSvc = widget.teamService ?? TeamService(widget.authService);
-    _tabController = TabController(length: 2, vsync: this);
+    _pageController = PageController();
+    _pageController.addListener(_onPageChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        PageControllerRegistration(_pageController).dispatch(context);
+      }
+    });
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _pageController.removeListener(_onPageChanged);
+    _pageController.dispose();
     super.dispose();
+  }
+
+  void _onPageChanged() {
+    if (!_pageController.hasClients) return;
+    final page = _pageController.page ?? 0;
+    final rounded = page.round();
+    if (rounded != _messagesPage) {
+      setState(() => _messagesPage = rounded);
+    }
+  }
+
+  void _goToPage(int index) {
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -65,32 +98,81 @@ class _MessagingHomeScreenState extends State<MessagingHomeScreen>
             Flexible(child: Text('الرسائل', overflow: TextOverflow.ellipsis)),
           ],
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'المحادثات'),
-            Tab(text: 'الإعلانات'),
+      ),
+      bottomNavigationBar: const ZadBottomNav(current: ZadTab.messages),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.fromLTRB(
+                ZadTokens.s3,
+                ZadTokens.s3,
+                ZadTokens.s3,
+                ZadTokens.s1,
+              ),
+              padding: const EdgeInsets.all(4),
+              constraints: const BoxConstraints(
+                maxWidth: ZadTokens.contentMaxWidth,
+              ),
+              decoration: BoxDecoration(
+                color: ZadTokens.surfaceContainer,
+                borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+              ),
+              child: Row(
+                children: [
+                  _tab('المحادثات', _messagesPage == 0, () => _goToPage(0)),
+                  _tab('الإعلانات', _messagesPage == 1, () => _goToPage(1)),
+                ],
+              ),
+            ),
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _ConversationsTab(
+                    authService: widget.authService,
+                    service: _svc,
+                    teamService: _teamSvc,
+                  ),
+                  TeamAnnouncementsScreen(
+                    authService: widget.authService,
+                    service: _svc,
+                    showAppBar: false,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
-      bottomNavigationBar: const ZadBottomNav(current: ZadTab.messages),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _ConversationsTab(
-            authService: widget.authService,
-            service: _svc,
-            teamService: _teamSvc,
-          ),
-          TeamAnnouncementsScreen(
-            authService: widget.authService,
-            service: _svc,
-            showAppBar: false,
-          ),
-        ],
-      ),
     );
   }
+
+  Widget _tab(String label, bool selected, VoidCallback onTap) => Expanded(
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? ZadTokens.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(ZadTokens.radiusSm + 2),
+          boxShadow: selected ? ZadTokens.cardShadow : null,
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.bold,
+            color: selected ? Colors.white : ZadTokens.textMuted,
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _ConversationsTab extends StatefulWidget {

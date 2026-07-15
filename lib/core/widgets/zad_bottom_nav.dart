@@ -91,7 +91,7 @@ class ZadBottomNav extends StatelessWidget {
     ZadTab.admin,
     Icons.admin_panel_settings_outlined,
     Icons.admin_panel_settings,
-    'الإدارة',
+    'لوحة الإدارة',
     '/admin',
   );
 
@@ -99,13 +99,13 @@ class ZadBottomNav extends StatelessWidget {
   // Normal users (5 tabs): الرئيسية at the far right, then الميزانية،
   // الفرق، الرسائل، التنبيهات reading right→left.
   static const _userItems = [_home, _budget, _teams, _messages, _notifications];
-  // Admins (6 tabs): الرئيسية still near-centered — right→left reads
-  // الميزانية، الفرق، الرئيسية، الرسائل، التنبيهات، الإدارة (admin at far
-  // left edge).
+  // Admins (6 tabs): same right→left order as normal users with لوحة الإدارة
+  // appended at the far left edge — right→left reads الرئيسية، الميزانية،
+  // الفرق، الرسائل، التنبيهات، لوحة الإدارة.
   static const _adminItems = [
+    _home,
     _budget,
     _teams,
-    _home,
     _messages,
     _notifications,
     _admin,

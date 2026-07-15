@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zad_al_mahdara/core/theme/zad_tokens.dart';
 import 'package:zad_al_mahdara/features/messaging/data/team_messaging_service.dart';
 import 'package:zad_al_mahdara/features/messaging/domain/team_messaging_models.dart';
 import 'package:zad_al_mahdara/features/messaging/presentation/messaging_home_screen.dart';
@@ -174,5 +175,79 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('initially shows المحادثات (page 0)', (tester) async {
+    await tester.pumpWidget(_wrap(_FakeMessagingService()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('لا توجد محادثات حتى الآن'), findsOneWidget);
+    expect(find.text('لا توجد إعلانات للفريق'), findsNothing);
+  });
+
+  testWidgets('tapping الإعلانات changes the visible page', (tester) async {
+    await tester.pumpWidget(_wrap(_FakeMessagingService()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('الإعلانات').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('نص الإعلان 1'), findsOneWidget);
+    expect(find.text('لا توجد محادثات حتى الآن'), findsNothing);
+
+    // Tapping back returns to المحادثات.
+    await tester.tap(find.text('المحادثات').first);
+    await tester.pumpAndSettle();
+    expect(find.text('لا توجد محادثات حتى الآن'), findsOneWidget);
+  });
+
+  testWidgets('horizontal swipe changes to الإعلانات and reverse swipe '
+      'returns to المحادثات', (tester) async {
+    await tester.pumpWidget(_wrap(_FakeMessagingService()));
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(PageView), const Offset(500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('نص الإعلان 1'), findsOneWidget);
+    expect(find.text('لا توجد محادثات حتى الآن'), findsNothing);
+
+    await tester.drag(find.byType(PageView), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('لا توجد محادثات حتى الآن'), findsOneWidget);
+  });
+
+  testWidgets('selected tab style stays in sync with the visible page', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_wrap(_FakeMessagingService()));
+    await tester.pumpAndSettle();
+
+    Color? colorOf(String label) =>
+        tester.widget<Text>(find.text(label).first).style?.color;
+
+    expect(colorOf('المحادثات'), Colors.white);
+    expect(colorOf('الإعلانات'), ZadTokens.textMuted);
+
+    await tester.drag(find.byType(PageView), const Offset(500, 0));
+    await tester.pumpAndSettle();
+
+    expect(colorOf('المحادثات'), ZadTokens.textMuted);
+    expect(colorOf('الإعلانات'), Colors.white);
+  });
+
+  testWidgets('pull-to-refresh on المحادثات still works', (tester) async {
+    final service = _FakeMessagingService()..first = [_conversation('1')];
+    await tester.pumpWidget(_wrap(service));
+    await tester.pumpAndSettle();
+    final callsBefore = service.conversationCalls;
+
+    // Same downward-fling gesture used elsewhere in this suite to trigger
+    // RefreshIndicator's onRefresh.
+    await tester.fling(find.byType(ListView), const Offset(0, 300), 1000);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(service.conversationCalls, greaterThan(callsBefore));
   });
 }

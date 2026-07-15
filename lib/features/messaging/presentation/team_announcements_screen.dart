@@ -8,8 +8,11 @@ import '../../../core/widgets/zad_empty_state.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_messaging_badge_scope.dart';
 import '../../../services/auth_service.dart';
+import '../../teams/data/team_service.dart';
+import '../../teams/domain/team_models.dart';
 import '../data/team_messaging_service.dart';
 import '../domain/team_messaging_models.dart';
+import 'message_team_leader_dialog.dart';
 
 const int _pageSize = 30;
 
@@ -25,6 +28,7 @@ class TeamAnnouncementsScreen extends StatefulWidget {
   final bool isLeader;
   final String? focusAnnouncementId;
   final TeamMessagingService? service;
+  final TeamService? teamService;
   final bool showAppBar;
 
   const TeamAnnouncementsScreen({
@@ -35,6 +39,7 @@ class TeamAnnouncementsScreen extends StatefulWidget {
     this.isLeader = false,
     this.focusAnnouncementId,
     this.service,
+    this.teamService,
     this.showAppBar = true,
   });
 
@@ -45,6 +50,7 @@ class TeamAnnouncementsScreen extends StatefulWidget {
 
 class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
   late final TeamMessagingService _svc;
+  late final TeamService _teamSvc;
   final ScrollController _scrollController = ScrollController();
 
   List<TeamAnnouncement> _items = [];
@@ -57,13 +63,16 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
   bool _loadingMore = false;
   String? _error;
   final Set<String> _markingRead = {};
+  bool _canMessageLeader = false;
 
   @override
   void initState() {
     super.initState();
     _svc = widget.service ?? TeamMessagingService(widget.authService);
+    _teamSvc = widget.teamService ?? TeamService(widget.authService);
     _scrollController.addListener(_onScroll);
     _load();
+    _loadEligibility();
   }
 
   @override
@@ -71,6 +80,37 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant TeamAnnouncementsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.teamId == widget.teamId) return;
+    _canMessageLeader = false;
+    _loadEligibility();
+  }
+
+  bool _eligibleToMessageLeader(TeamDetail detail) {
+    final profile = widget.authService.profile;
+    if (profile == null || !profile.isActive || !detail.isMember) return false;
+    for (final member in detail.members) {
+      if (member.profileId == profile.id) {
+        return member.isActive && member.hasAccount && member.role != 'leader';
+      }
+    }
+    return false;
+  }
+
+  Future<void> _loadEligibility() async {
+    final teamId = widget.teamId;
+    if (teamId == null) return;
+    try {
+      final detail = await _teamSvc.getTeamDetail(teamId);
+      if (!mounted) return;
+      setState(() => _canMessageLeader = _eligibleToMessageLeader(detail));
+    } catch (_) {
+      if (mounted) setState(() => _canMessageLeader = false);
+    }
   }
 
   void _onScroll() {
@@ -214,6 +254,25 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
     ZadMessagingBadgeScope.maybeOf(context)?.refresh();
   }
 
+  Future<void> _openMessageLeaderComposer(TeamAnnouncement item) async {
+    if (!_canMessageLeader) return;
+    final result = await showDialog<SentTeamMessage>(
+      context: context,
+      builder: (_) =>
+          MessageTeamLeaderDialog(service: _svc, teamId: item.teamId),
+    );
+    if (result == null || !mounted) return;
+    ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+    context.push(
+      '/messages/conversation/${result.conversation.id}',
+      extra: {
+        'teamId': result.conversation.teamId,
+        'teamName': item.teamName,
+        'currentUserRole': 'member',
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final body = _body();
@@ -306,6 +365,9 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
             item: item,
             busy: _markingRead.contains(item.id),
             showTeamName: widget.teamId == null,
+            onMessageLeader: _canMessageLeader
+                ? () => _openMessageLeaderComposer(item)
+                : null,
             onTap: () => _markRead(item),
           );
         },
@@ -320,12 +382,14 @@ class _AnnouncementCard extends StatelessWidget {
   final TeamAnnouncement item;
   final bool busy;
   final bool showTeamName;
+  final VoidCallback? onMessageLeader;
   final VoidCallback onTap;
 
   const _AnnouncementCard({
     required this.item,
     required this.busy,
     required this.showTeamName,
+    this.onMessageLeader,
     required this.onTap,
   });
 
@@ -401,6 +465,17 @@ class _AnnouncementCard extends StatelessWidget {
                   color: ZadTokens.textMuted,
                 ),
               ),
+              if (onMessageLeader != null) ...[
+                const SizedBox(height: ZadTokens.s2),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: onMessageLeader,
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: const Text('مراسلة قائد الفريق'),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
