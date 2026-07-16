@@ -56,8 +56,7 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              // Navigation lives in the bottom bar; these rows are help only:
-              // tapping opens an explanation sheet, never navigates.
+              // Bottom tabs stay fixed; Home can still host feature shortcuts.
               const ZadSectionHeader('دليل سريع'),
               ..._tips(context, isAdmin: authService.isAdmin),
               const SizedBox(height: ZadTokens.s5),
@@ -125,6 +124,14 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
       (
+        Icons.school_outlined,
+        ZadTokens.primary,
+        ZadTokens.primary.withValues(alpha: 0.10),
+        'دليل الطلاب',
+        'تصفح الطلاب والفرق العامة',
+        const <String>[],
+      ),
+      (
         Icons.notifications_outlined,
         ZadTokens.primaryDark,
         ZadTokens.surfaceContainer,
@@ -164,14 +171,16 @@ class HomeScreen extends StatelessWidget {
             tint: tint,
             title: title,
             body: body,
-            onTap: () => _showGuide(
-              context,
-              icon: icon,
-              iconColor: color,
-              tint: tint,
-              title: title,
-              points: points,
-            ),
+            onTap: title == 'دليل الطلاب'
+                ? () => context.push('/directory')
+                : () => _showGuide(
+                    context,
+                    icon: icon,
+                    iconColor: color,
+                    tint: tint,
+                    title: title,
+                    points: points,
+                  ),
           ),
         ),
       ],
@@ -269,8 +278,7 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-/// Guidance row (Stitch list-card style): tinted icon tile, title, one-line
-/// tip, info affordance. Help content — the bottom nav is the navigation.
+/// Guidance/shortcut row: tinted icon tile, title, one-line tip, affordance.
 class _TipRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
@@ -338,9 +346,10 @@ class _TipRow extends StatelessWidget {
                   ],
                 ),
               ),
-              // Info affordance, not a navigation chevron.
-              const Icon(
-                Icons.info_outline,
+              Icon(
+                title == 'دليل الطلاب'
+                    ? Icons.arrow_forward_ios
+                    : Icons.info_outline,
                 size: 20,
                 color: ZadTokens.textMuted,
               ),

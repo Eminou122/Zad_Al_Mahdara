@@ -26,6 +26,7 @@ import '../../features/teams/domain/team_models.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/admin/presentation/admin_screen.dart';
 import '../../features/account/presentation/account_screen.dart';
+import '../../features/directory/presentation/student_directory_screen.dart';
 import '../../features/messaging/presentation/messaging_home_screen.dart';
 import '../../features/messaging/presentation/team_conversation_screen.dart';
 import '../../features/messaging/presentation/team_announcements_screen.dart';
@@ -181,6 +182,10 @@ class AppRouter {
           authService: authService,
           teamId: state.pathParameters['id']!,
         ),
+      ),
+      GoRoute(
+        path: '/directory',
+        builder: (_, _) => StudentDirectoryScreen(authService: authService),
       ),
       GoRoute(
         path: '/messages',
