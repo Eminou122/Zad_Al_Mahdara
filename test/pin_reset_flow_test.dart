@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zad_al_mahdara/core/widgets/mauritanian_phone_field.dart';
 import 'package:zad_al_mahdara/features/auth/presentation/forgot_pin_screen.dart';
 import 'package:zad_al_mahdara/features/auth/presentation/reset_pin_screen.dart';
 import 'package:zad_al_mahdara/services/auth_service.dart';
@@ -29,10 +30,13 @@ void main() {
 
   testWidgets('reset PIN validates inputs locally', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: ResetPinScreen(authService: _FakeAuthService()),
+      MediaQuery(
+        data: const MediaQueryData(size: Size(320, 640)),
+        child: MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: ResetPinScreen(authService: _FakeAuthService()),
+          ),
         ),
       ),
     );
@@ -48,15 +52,38 @@ void main() {
   ) async {
     final service = _FakeAuthService(completeOk: false);
     await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: ResetPinScreen(authService: service),
+      MediaQuery(
+        data: const MediaQueryData(size: Size(320, 640)),
+        child: MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: ResetPinScreen(authService: service),
+          ),
         ),
       ),
     );
 
     final fields = find.byType(TextField);
+    final phoneField = tester.widget<TextField>(
+      find.descendant(
+        of: find.byType(MauritanianPhoneField),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(phoneField.textDirection, TextDirection.ltr);
+    expect(
+      tester
+          .widget<Directionality>(
+            find
+                .ancestor(
+                  of: find.byType(ResetPinScreen),
+                  matching: find.byType(Directionality),
+                )
+                .first,
+          )
+          .textDirection,
+      TextDirection.rtl,
+    );
     await tester.enterText(fields.at(0), '49413435');
     await tester.enterText(fields.at(1), '12345678');
     await tester.enterText(fields.at(2), '2468');
@@ -73,6 +100,7 @@ void main() {
       findsOneWidget,
     );
     expect(service.completedPhone, '49413435');
+    expect(tester.takeException(), isNull);
     _expectNearestTextDirection(
       tester,
       find.text('12345678'),

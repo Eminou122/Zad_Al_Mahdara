@@ -8,6 +8,7 @@ import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_logo_badge.dart';
+import '../../../core/widgets/mauritanian_phone_field.dart';
 import '../../../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -141,19 +142,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                       if (_error != null)
                         ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
-                      TextField(
+                      MauritanianPhoneField(
                         controller: _phoneCtrl,
-                        keyboardType: TextInputType.phone,
-                        maxLength: 11,
-                        inputFormatters: const [
-                          MauritanianPhoneInputFormatter(),
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: 'رقم الهاتف',
-                          hintText: 'مثال: 00 00 00 00',
-                          prefixIcon: Icon(Icons.phone_outlined),
-                          counterText: '',
-                        ),
+                        labelText: 'رقم الهاتف',
+                        hintText: 'مثال: 00 00 00 00',
                       ),
                       const SizedBox(height: ZadTokens.s3),
                       TextField(

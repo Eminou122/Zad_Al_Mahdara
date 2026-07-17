@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zad_al_mahdara/core/widgets/mauritanian_phone_field.dart';
 import 'package:zad_al_mahdara/features/auth/presentation/forgot_pin_screen.dart';
 import 'package:zad_al_mahdara/features/auth/presentation/login_screen.dart';
 import 'package:zad_al_mahdara/features/auth/presentation/register_screen.dart';
@@ -12,6 +13,7 @@ void main() {
     final service = _PhoneAuthService();
     await _pump(tester, LoginScreen(authService: service));
     final fields = find.byType(TextField);
+    _expectPhoneFieldLtr(tester);
     await tester.enterText(fields.at(0), '1234567');
     await tester.tap(find.text('دخول'));
     await tester.pump();
@@ -26,6 +28,7 @@ void main() {
     await tester.tap(find.text('دخول'));
     await tester.pump();
     expect(service.loginPhone, '12345678');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('registration formats pasted phone and submits digits', (
@@ -34,6 +37,7 @@ void main() {
     final service = _PhoneAuthService();
     await _pump(tester, RegisterScreen(authService: service));
     final fields = find.byType(TextField);
+    _expectPhoneFieldLtr(tester);
     await tester.enterText(fields.at(0), 'Name');
     await tester.enterText(fields.at(1), '12 34 56 78');
     await tester.enterText(fields.at(2), '1234');
@@ -45,6 +49,7 @@ void main() {
     await tester.tap(find.text('إنشاء الحساب'));
     await tester.pump();
     expect(service.registerPhone, '12345678');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('forgot PIN validates and submits normalized digits at 320px', (
@@ -52,12 +57,33 @@ void main() {
   ) async {
     final service = _PhoneAuthService();
     await _pump(tester, ForgotPinScreen(authService: service));
+    _expectPhoneFieldLtr(tester);
     await tester.enterText(find.byType(TextField), '12-34-56-78');
     await tester.tap(find.text('إرسال الطلب'));
     await tester.pump();
     expect(service.resetPhone, '12345678');
     expect(tester.takeException(), isNull);
   });
+}
+
+void _expectPhoneFieldLtr(WidgetTester tester) {
+  expect(
+    tester
+        .widget<TextField>(
+          find.descendant(
+            of: find.byType(MauritanianPhoneField),
+            matching: find.byType(TextField),
+          ),
+        )
+        .textDirection,
+    TextDirection.ltr,
+  );
+  expect(
+    tester
+        .widget<Directionality>(find.byType(Directionality).last)
+        .textDirection,
+    TextDirection.rtl,
+  );
 }
 
 Future<void> _pump(WidgetTester tester, Widget screen) => tester
