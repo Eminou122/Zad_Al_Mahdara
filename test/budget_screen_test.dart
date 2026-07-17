@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +16,12 @@ class _StubBudgetService extends BudgetService {
   List<RecurringPurchase> recurringItems;
   RecurringPurchaseOverview? recurringStats;
   Object? error;
+  Object? markError;
+  List<TodayRecurringPurchase>? markResult;
+  Completer<List<TodayRecurringPurchase>>? markCompleter;
+  final List<Completer<List<TodayRecurringPurchase>>> todayCompleters = [];
+  int markCalls = 0;
+  int todayCalls = 0;
 
   _StubBudgetService({
     required AuthService authService,
@@ -22,6 +30,9 @@ class _StubBudgetService extends BudgetService {
     this.recurringItems = const [],
     this.recurringStats,
     this.error,
+    this.markError,
+    this.markResult,
+    this.markCompleter,
   }) : super(authService);
 
   @override
@@ -33,6 +44,10 @@ class _StubBudgetService extends BudgetService {
   @override
   Future<List<TodayRecurringPurchase>> getTodayRecurringPurchases() async {
     if (error != null) throw error!;
+    todayCalls++;
+    if (todayCompleters.isNotEmpty) {
+      return todayCompleters.removeAt(0).future;
+    }
     return todayRecurring;
   }
 
@@ -47,22 +62,36 @@ class _StubBudgetService extends BudgetService {
     if (error != null) throw error!;
     return recurringStats!;
   }
+
+  @override
+  Future<List<TodayRecurringPurchase>> markRecurringPurchaseOccurrence({
+    required String recurringPurchaseId,
+    required DateTime occurrenceDate,
+    required String status,
+    String? note,
+  }) async {
+    markCalls++;
+    if (markError != null) throw markError!;
+    if (markCompleter != null) return markCompleter!.future;
+    return markResult ?? todayRecurring;
+  }
 }
 
 AuthService _authWithProfile(String profileId) {
   final auth = AuthService();
-  auth.setTestProfile(UserProfile(
-    id: profileId,
-    displayName: 'Test User',
-    phoneMasked: '******00',
-    isAdmin: false,
-    isActive: true,
-  ));
+  auth.setTestProfile(
+    UserProfile(
+      id: profileId,
+      displayName: 'Test User',
+      phoneMasked: '******00',
+      isAdmin: false,
+      isActive: true,
+    ),
+  );
   return auth;
 }
 
-Widget _host(Widget child) =>
-    MaterialApp(home: Scaffold(body: child));
+Widget _host(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 /// Some tests need extra height because the budget screen has many sections.
 void _tallViewport(WidgetTester tester) {
@@ -112,6 +141,31 @@ final _recurringStats = RecurringPurchaseOverview(
   skippedCount: 0,
 );
 
+TodayRecurringPurchase _todayPurchase({
+  required String id,
+  required String name,
+  String status = 'unmarked',
+}) => TodayRecurringPurchase(
+  recurringPurchaseId: id,
+  name: name,
+  price: 25,
+  frequency: 'daily',
+  occurrenceDate: DateTime(2026, 7, 4),
+  status: status,
+);
+
+Future<void> _pumpBudget(
+  WidgetTester tester,
+  AuthService auth,
+  _StubBudgetService service,
+) async {
+  _tallViewport(tester);
+  await tester.pumpWidget(
+    _host(BudgetScreen(authService: auth, budgetService: service)),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -126,9 +180,9 @@ void main() {
         recurringStats: _recurringStats,
       );
 
-      await tester.pumpWidget(_host(
-        BudgetScreen(authService: auth, budgetService: service),
-      ));
+      await tester.pumpWidget(
+        _host(BudgetScreen(authService: auth, budgetService: service)),
+      );
       await tester.pumpAndSettle();
 
       // Verify cache was saved
@@ -146,9 +200,9 @@ void main() {
         recurringStats: _recurringStats,
       );
 
-      await tester.pumpWidget(_host(
-        BudgetScreen(authService: auth, budgetService: service),
-      ));
+      await tester.pumpWidget(
+        _host(BudgetScreen(authService: auth, budgetService: service)),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('ميزانيتي'), findsOneWidget);
@@ -158,38 +212,45 @@ void main() {
   });
 
   group('offline with cache', () {
-    testWidgets('shows offline banner and cached data when load fails and cache exists', (
-      tester,
-    ) async {
-      _tallViewport(tester);
-      final auth = _authWithProfile('profile-1');
+    testWidgets(
+      'shows offline banner and cached data when load fails and cache exists',
+      (tester) async {
+        _tallViewport(tester);
+        final auth = _authWithProfile('profile-1');
 
-      // Pre-seed cache
-      final cacheService = BudgetCacheService();
-      await cacheService.save('profile-1', BudgetCachePayload(
-        cachedAt: DateTime(2026, 7, 4, 12, 30),
-        overview: _overview,
-        todayRecurring: const [],
-        recurringItems: const [],
-        recurringStats: _recurringStats,
-      ));
+        // Pre-seed cache
+        final cacheService = BudgetCacheService();
+        await cacheService.save(
+          'profile-1',
+          BudgetCachePayload(
+            cachedAt: DateTime(2026, 7, 4, 12, 30),
+            overview: _overview,
+            todayRecurring: const [],
+            recurringItems: const [],
+            recurringStats: _recurringStats,
+          ),
+        );
 
-      final service = _StubBudgetService(
-        authService: auth,
-        overview: _overview,
-        recurringStats: _recurringStats,
-        error: Exception('network error'),
-      );
+        final service = _StubBudgetService(
+          authService: auth,
+          overview: _overview,
+          recurringStats: _recurringStats,
+          error: Exception('network error'),
+        );
 
-      await tester.pumpWidget(_host(
-        BudgetScreen(authService: auth, budgetService: service),
-      ));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _host(BudgetScreen(authService: auth, budgetService: service)),
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.textContaining('أنت تشاهد آخر نسخة محفوظة'), findsOneWidget);
-      expect(find.text('المبلغ المتبقي'), findsOneWidget);
-      expect(find.text('700.00'), findsOneWidget);
-    });
+        expect(
+          find.textContaining('أنت تشاهد آخر نسخة محفوظة'),
+          findsOneWidget,
+        );
+        expect(find.text('المبلغ المتبقي'), findsOneWidget);
+        expect(find.text('700.00'), findsOneWidget);
+      },
+    );
 
     testWidgets('shows cachedAt timestamp in banner', (tester) async {
       _tallViewport(tester);
@@ -197,13 +258,16 @@ void main() {
 
       final cacheService = BudgetCacheService();
       final cachedAt = DateTime(2026, 7, 4, 12, 30);
-      await cacheService.save('profile-1', BudgetCachePayload(
-        cachedAt: cachedAt,
-        overview: _overview,
-        todayRecurring: const [],
-        recurringItems: const [],
-        recurringStats: _recurringStats,
-      ));
+      await cacheService.save(
+        'profile-1',
+        BudgetCachePayload(
+          cachedAt: cachedAt,
+          overview: _overview,
+          todayRecurring: const [],
+          recurringItems: const [],
+          recurringStats: _recurringStats,
+        ),
+      );
 
       final service = _StubBudgetService(
         authService: auth,
@@ -212,9 +276,9 @@ void main() {
         error: Exception('network error'),
       );
 
-      await tester.pumpWidget(_host(
-        BudgetScreen(authService: auth, budgetService: service),
-      ));
+      await tester.pumpWidget(
+        _host(BudgetScreen(authService: auth, budgetService: service)),
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -228,13 +292,16 @@ void main() {
       final auth = _authWithProfile('profile-1');
 
       final cacheService = BudgetCacheService();
-      await cacheService.save('profile-1', BudgetCachePayload(
-        cachedAt: DateTime(2026, 7, 4),
-        overview: _overview,
-        todayRecurring: const [],
-        recurringItems: const [],
-        recurringStats: _recurringStats,
-      ));
+      await cacheService.save(
+        'profile-1',
+        BudgetCachePayload(
+          cachedAt: DateTime(2026, 7, 4),
+          overview: _overview,
+          todayRecurring: const [],
+          recurringItems: const [],
+          recurringStats: _recurringStats,
+        ),
+      );
 
       final service = _StubBudgetService(
         authService: auth,
@@ -243,9 +310,9 @@ void main() {
         error: Exception('network error'),
       );
 
-      await tester.pumpWidget(_host(
-        BudgetScreen(authService: auth, budgetService: service),
-      ));
+      await tester.pumpWidget(
+        _host(BudgetScreen(authService: auth, budgetService: service)),
+      );
       await tester.pumpAndSettle();
 
       // Tap the quick action icon (InkWell is on the icon circle, not the text label)
@@ -258,56 +325,62 @@ void main() {
       );
     });
 
-    testWidgets('mark recurring buttons call _onOfflineAction when offline cached', (
-      tester,
-    ) async {
-      _tallViewport(tester);
-      final auth = _authWithProfile('profile-1');
-      final today = TodayRecurringPurchase(
-        recurringPurchaseId: 'rp-1',
-        name: 'خبز',
-        price: 25,
-        frequency: 'daily',
-        occurrenceDate: DateTime(2026, 7, 4),
-        status: 'unmarked',
-      );
+    testWidgets(
+      'mark recurring buttons call _onOfflineAction when offline cached',
+      (tester) async {
+        _tallViewport(tester);
+        final auth = _authWithProfile('profile-1');
+        final today = TodayRecurringPurchase(
+          recurringPurchaseId: 'rp-1',
+          name: 'خبز',
+          price: 25,
+          frequency: 'daily',
+          occurrenceDate: DateTime(2026, 7, 4),
+          status: 'unmarked',
+        );
 
-      final cacheService = BudgetCacheService();
-      await cacheService.save('profile-1', BudgetCachePayload(
-        cachedAt: DateTime(2026, 7, 4),
-        overview: _overview,
-        todayRecurring: [today],
-        recurringItems: const [],
-        recurringStats: _recurringStats,
-      ));
+        final cacheService = BudgetCacheService();
+        await cacheService.save(
+          'profile-1',
+          BudgetCachePayload(
+            cachedAt: DateTime(2026, 7, 4),
+            overview: _overview,
+            todayRecurring: [today],
+            recurringItems: const [],
+            recurringStats: _recurringStats,
+          ),
+        );
 
-      final service = _StubBudgetService(
-        authService: auth,
-        overview: _overview,
-        todayRecurring: [today],
-        recurringItems: const [],
-        recurringStats: _recurringStats,
-        error: Exception('network error'),
-      );
+        final service = _StubBudgetService(
+          authService: auth,
+          overview: _overview,
+          todayRecurring: [today],
+          recurringItems: const [],
+          recurringStats: _recurringStats,
+          error: Exception('network error'),
+        );
 
-      await tester.pumpWidget(_host(
-        BudgetScreen(authService: auth, budgetService: service),
-      ));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(
+          _host(BudgetScreen(authService: auth, budgetService: service)),
+        );
+        await tester.pumpAndSettle();
 
-      // Tap "تم الشراء" button
-      await tester.tap(find.text('تم الشراء'));
-      await tester.pump(const Duration(milliseconds: 500));
+        // Tap "تم الشراء" button
+        await tester.tap(find.text('تم الشراء'));
+        await tester.pump(const Duration(milliseconds: 500));
 
-      expect(
-        find.text('هذه العملية تحتاج إلى اتصال بالإنترنت'),
-        findsOneWidget,
-      );
-    });
+        expect(
+          find.text('هذه العملية تحتاج إلى اتصال بالإنترنت'),
+          findsOneWidget,
+        );
+      },
+    );
   });
 
   group('offline without cache', () {
-    testWidgets('shows error when load fails and no cache exists', (tester) async {
+    testWidgets('shows error when load fails and no cache exists', (
+      tester,
+    ) async {
       final auth = _authWithProfile('profile-1');
 
       final service = _StubBudgetService(
@@ -317,30 +390,32 @@ void main() {
         error: Exception('network error'),
       );
 
-      await tester.pumpWidget(_host(
-        BudgetScreen(authService: auth, budgetService: service),
-      ));
+      await tester.pumpWidget(
+        _host(BudgetScreen(authService: auth, budgetService: service)),
+      );
       await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining('حدث خطأ'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('حدث خطأ'), findsOneWidget);
       expect(find.text('أنت تشاهد آخر نسخة محفوظة'), findsNothing);
     });
 
-    testWidgets('different profileId does not leak cached data', (tester) async {
+    testWidgets('different profileId does not leak cached data', (
+      tester,
+    ) async {
       final auth2 = _authWithProfile('profile-2');
 
       // Pre-seed cache for profile-1
       final cacheService = BudgetCacheService();
-      await cacheService.save('profile-1', BudgetCachePayload(
-        cachedAt: DateTime(2026, 7, 4),
-        overview: _overview,
-        todayRecurring: const [],
-        recurringItems: const [],
-        recurringStats: _recurringStats,
-      ));
+      await cacheService.save(
+        'profile-1',
+        BudgetCachePayload(
+          cachedAt: DateTime(2026, 7, 4),
+          overview: _overview,
+          todayRecurring: const [],
+          recurringItems: const [],
+          recurringStats: _recurringStats,
+        ),
+      );
 
       final service = _StubBudgetService(
         authService: auth2,
@@ -349,17 +424,14 @@ void main() {
         error: Exception('network error'),
       );
 
-      await tester.pumpWidget(_host(
-        BudgetScreen(authService: auth2, budgetService: service),
-      ));
+      await tester.pumpWidget(
+        _host(BudgetScreen(authService: auth2, budgetService: service)),
+      );
       await tester.pumpAndSettle();
 
       // profile-2 should NOT see profile-1's cached data
       expect(find.text('أنت تشاهد آخر نسخة محفوظة'), findsNothing);
-      expect(
-        find.textContaining('حدث خطأ'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('حدث خطأ'), findsOneWidget);
     });
   });
 
@@ -371,13 +443,16 @@ void main() {
 
       final auth = _authWithProfile('profile-1');
       final cacheService = BudgetCacheService();
-      await cacheService.save('profile-1', BudgetCachePayload(
-        cachedAt: DateTime(2026, 7, 4),
-        overview: _overview,
-        todayRecurring: const [],
-        recurringItems: const [],
-        recurringStats: _recurringStats,
-      ));
+      await cacheService.save(
+        'profile-1',
+        BudgetCachePayload(
+          cachedAt: DateTime(2026, 7, 4),
+          overview: _overview,
+          todayRecurring: const [],
+          recurringItems: const [],
+          recurringStats: _recurringStats,
+        ),
+      );
 
       // Start with error
       final service = _StubBudgetService(
@@ -387,26 +462,28 @@ void main() {
         error: Exception('network error'),
       );
 
-      await tester.pumpWidget(_host(
-        BudgetScreen(authService: auth, budgetService: service),
-      ));
+      await tester.pumpWidget(
+        _host(BudgetScreen(authService: auth, budgetService: service)),
+      );
       await tester.pumpAndSettle();
 
       expect(find.textContaining('أنت تشاهد آخر نسخة محفوظة'), findsOneWidget);
 
       // Simulate refresh by rebuilding widget without error
-      await tester.pumpWidget(_host(
-        BudgetScreen(
-          authService: auth,
-          budgetService: _StubBudgetService(
+      await tester.pumpWidget(
+        _host(
+          BudgetScreen(
             authService: auth,
-            overview: _overview,
-            todayRecurring: const [],
-            recurringItems: const [],
-            recurringStats: _recurringStats,
+            budgetService: _StubBudgetService(
+              authService: auth,
+              overview: _overview,
+              todayRecurring: const [],
+              recurringItems: const [],
+              recurringStats: _recurringStats,
+            ),
           ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('أنت تشاهد آخر نسخة محفوظة'), findsNothing);
@@ -414,8 +491,217 @@ void main() {
     });
   });
 
+  group('recurring occurrence mutations', () {
+    testWidgets(
+      'bought updates one row locally, guards duplicates, and revalidates',
+      (tester) async {
+        final auth = _authWithProfile('profile-1');
+        final bread = _todayPurchase(id: 'rp-1', name: 'خبز');
+        final milk = _todayPurchase(id: 'rp-2', name: 'حليب');
+        final completion = Completer<List<TodayRecurringPurchase>>();
+        final service = _StubBudgetService(
+          authService: auth,
+          overview: _overview,
+          todayRecurring: [bread, milk],
+          recurringStats: _recurringStats,
+          markCompleter: completion,
+        );
+
+        await _pumpBudget(tester, auth, service);
+        expect(find.text('700.00'), findsOneWidget);
+        await tester.tap(
+          find.widgetWithText(ElevatedButton, 'تم الشراء').first,
+        );
+        await tester.pump();
+
+        expect(service.markCalls, 1);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(
+          tester
+              .widget<ElevatedButton>(
+                find.widgetWithText(ElevatedButton, 'تم الشراء').last,
+              )
+              .onPressed,
+          isNotNull,
+        );
+        expect(find.text('700.00'), findsOneWidget);
+
+        await tester.tap(find.widgetWithText(OutlinedButton, 'لم أشترِ').first);
+        await tester.pump();
+        expect(service.markCalls, 1);
+
+        final purchased = _todayPurchase(
+          id: 'rp-1',
+          name: 'خبز',
+          status: 'purchased',
+        );
+        service.todayRecurring = [purchased, milk];
+        completion.complete([purchased, milk]);
+        await tester.pump();
+        expect(
+          tester
+              .widget<ElevatedButton>(
+                find.widgetWithText(ElevatedButton, 'تم الشراء').first,
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(service.todayCalls, greaterThanOrEqualTo(2));
+        expect(find.text('700.00'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      },
+    );
+
+    testWidgets('skipped updates only the matching occurrence locally', (
+      tester,
+    ) async {
+      final auth = _authWithProfile('profile-1');
+      final bread = _todayPurchase(id: 'rp-1', name: 'خبز');
+      final milk = _todayPurchase(id: 'rp-2', name: 'حليب');
+      final service = _StubBudgetService(
+        authService: auth,
+        overview: _overview,
+        todayRecurring: [bread, milk],
+        recurringStats: _recurringStats,
+        markResult: [
+          _todayPurchase(id: 'rp-1', name: 'خبز', status: 'skipped'),
+          milk,
+        ],
+      );
+
+      await _pumpBudget(tester, auth, service);
+      service.todayRecurring = [
+        _todayPurchase(id: 'rp-1', name: 'خبز', status: 'skipped'),
+        milk,
+      ];
+      await tester.tap(find.widgetWithText(OutlinedButton, 'لم أشترِ').first);
+      await tester.pump();
+
+      expect(service.markCalls, 1);
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.widgetWithText(OutlinedButton, 'لم أشترِ').first,
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(find.text('حليب'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets(
+      'failed mutation preserves the row, clears busy state, and skips revalidation',
+      (tester) async {
+        final auth = _authWithProfile('profile-1');
+        final service = _StubBudgetService(
+          authService: auth,
+          overview: _overview,
+          todayRecurring: [_todayPurchase(id: 'rp-1', name: 'خبز')],
+          recurringStats: _recurringStats,
+          markError: Exception('failed'),
+        );
+
+        await _pumpBudget(tester, auth, service);
+        final initialTodayCalls = service.todayCalls;
+        await tester.tap(find.widgetWithText(ElevatedButton, 'تم الشراء'));
+        await tester.pump();
+
+        expect(service.markCalls, 1);
+        expect(find.text('تم الشراء'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(service.todayCalls, initialTodayCalls);
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.text('تعذر حفظ التغيير. حاول مرة أخرى.'), findsOneWidget);
+      },
+    );
+
+    testWidgets('an older refresh cannot restore the pre-mutation occurrence', (
+      tester,
+    ) async {
+      final auth = _authWithProfile('profile-1');
+      final pending = _todayPurchase(id: 'rp-1', name: 'خبز');
+      final purchased = _todayPurchase(
+        id: 'rp-1',
+        name: 'خبز',
+        status: 'purchased',
+      );
+      final olderRefresh = Completer<List<TodayRecurringPurchase>>();
+      final confirmationRefresh = Completer<List<TodayRecurringPurchase>>();
+      final service = _StubBudgetService(
+        authService: auth,
+        overview: _overview,
+        todayRecurring: [pending],
+        recurringStats: _recurringStats,
+        markResult: [purchased],
+      );
+
+      await _pumpBudget(tester, auth, service);
+      service.todayCompleters.addAll([olderRefresh, confirmationRefresh]);
+      final refresh = tester.state<RefreshIndicatorState>(
+        find.byType(RefreshIndicator),
+      );
+      final refreshFuture = refresh.show();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(service.todayCalls, 2);
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'تم الشراء'));
+      await tester.pump();
+      expect(
+        tester
+            .widget<ElevatedButton>(
+              find.widgetWithText(ElevatedButton, 'تم الشراء'),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(service.todayCalls, 3);
+
+      confirmationRefresh.complete([purchased]);
+      await tester.pump();
+      olderRefresh.complete([pending]);
+      await refreshFuture;
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<ElevatedButton>(
+              find.widgetWithText(ElevatedButton, 'تم الشراء'),
+            )
+            .onPressed,
+        isNull,
+      );
+    });
+  });
+
   group('viewport', () {
-    testWidgets('renders key elements at 320px without overflow', (tester) async {
+    testWidgets('recurring purchase actions fit at 320px', (tester) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final auth = _authWithProfile('profile-1');
+      final service = _StubBudgetService(
+        authService: auth,
+        overview: _overview,
+        todayRecurring: [_todayPurchase(id: 'rp-1', name: 'خبز')],
+        recurringStats: _recurringStats,
+      );
+
+      await tester.pumpWidget(
+        _host(BudgetScreen(authService: auth, budgetService: service)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(ElevatedButton, 'تم الشراء'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'لم أشترِ'), findsOneWidget);
+    });
+
+    testWidgets('renders key elements at 320px without overflow', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(320, 800);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -459,9 +745,9 @@ void main() {
         recurringStats: _recurringStats,
       );
 
-      await tester.pumpWidget(_host(
-        BudgetScreen(authService: auth, budgetService: service),
-      ));
+      await tester.pumpWidget(
+        _host(BudgetScreen(authService: auth, budgetService: service)),
+      );
       await tester.pumpAndSettle();
       // No manual exception handling: an uncaught RenderFlex overflow
       // fails this test automatically via flutter_test's teardown.

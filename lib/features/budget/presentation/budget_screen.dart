@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -41,6 +43,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
   String? _error;
   bool _isOfflineCached = false;
   DateTime? _cachedAt;
+  final Set<String> _updatingRecurring = {};
+  int _loadGeneration = 0;
+  int _recurringMutationGeneration = 0;
 
   @override
   void initState() {
@@ -51,6 +56,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   Future<void> _load({bool? showLoading, bool throwOnError = false}) async {
+    final loadGeneration = ++_loadGeneration;
+    final mutationGeneration = _recurringMutationGeneration;
     final isInitialLoad = showLoading ?? _overview == null;
     setState(() {
       if (isInitialLoad) _isLoading = true;
@@ -61,8 +68,13 @@ class _BudgetScreenState extends State<BudgetScreen> {
       final today = await _budget.getTodayRecurringPurchases();
       final recurringItems = await _budget.getRecurringPurchases();
       final recurringStats = await _budget.getRecurringPurchaseOverview();
+      if (!mounted ||
+          loadGeneration != _loadGeneration ||
+          mutationGeneration != _recurringMutationGeneration) {
+        return;
+      }
       final profileId = widget.authService.profile?.id;
-      if (mounted && profileId != null) {
+      if (profileId != null) {
         await _cacheService.save(
           profileId,
           BudgetCachePayload(
@@ -74,17 +86,20 @@ class _BudgetScreenState extends State<BudgetScreen> {
           ),
         );
       }
-      if (mounted) {
-        setState(() {
-          _overview = ov;
-          _todayRecurring = today;
-          _recurringItems = recurringItems;
-          _recurringStats = recurringStats;
-          _isLoading = false;
-          _isOfflineCached = false;
-          _cachedAt = null;
-        });
+      if (!mounted ||
+          loadGeneration != _loadGeneration ||
+          mutationGeneration != _recurringMutationGeneration) {
+        return;
       }
+      setState(() {
+        _overview = ov;
+        _todayRecurring = today;
+        _recurringItems = recurringItems;
+        _recurringStats = recurringStats;
+        _isLoading = false;
+        _isOfflineCached = false;
+        _cachedAt = null;
+      });
     } catch (e) {
       if (!isInitialLoad) {
         if (throwOnError) rethrow;
@@ -128,17 +143,74 @@ class _BudgetScreenState extends State<BudgetScreen> {
       _onOfflineAction();
       return;
     }
+    final key = _occurrenceKey(item);
+    if (_updatingRecurring.contains(key)) return;
+    setState(() => _updatingRecurring.add(key));
     try {
-      await _budget.markRecurringPurchaseOccurrence(
+      final updatedToday = await _budget.markRecurringPurchaseOccurrence(
         recurringPurchaseId: item.recurringPurchaseId,
         occurrenceDate: item.occurrenceDate,
         status: status,
       );
-      _load();
-    } catch (e) {
-      if (mounted) _showError(_arabicError(e));
+      _recurringMutationGeneration++;
+      if (!mounted) return;
+      final updatedItem = _matchingOccurrence(updatedToday, item);
+      setState(() {
+        _todayRecurring = _todayRecurring
+            .map(
+              (current) => _sameOccurrence(current, item)
+                  ? (updatedItem ?? _withStatus(current, status))
+                  : current,
+            )
+            .toList();
+      });
+      unawaited(_load());
+    } catch (_) {
+      if (mounted) _showError('تعذر حفظ التغيير. حاول مرة أخرى.');
+    } finally {
+      if (mounted) setState(() => _updatingRecurring.remove(key));
     }
   }
+
+  String _occurrenceKey(TodayRecurringPurchase item) =>
+      '${item.recurringPurchaseId}:${_dateKey(item.occurrenceDate)}';
+
+  String _dateKey(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  bool _sameOccurrence(
+    TodayRecurringPurchase first,
+    TodayRecurringPurchase second,
+  ) =>
+      first.recurringPurchaseId == second.recurringPurchaseId &&
+      _dateKey(first.occurrenceDate) == _dateKey(second.occurrenceDate);
+
+  TodayRecurringPurchase? _matchingOccurrence(
+    List<TodayRecurringPurchase> items,
+    TodayRecurringPurchase target,
+  ) {
+    for (final item in items) {
+      if (_sameOccurrence(item, target)) return item;
+    }
+    return null;
+  }
+
+  TodayRecurringPurchase _withStatus(
+    TodayRecurringPurchase item,
+    String status,
+  ) => TodayRecurringPurchase(
+    recurringPurchaseId: item.recurringPurchaseId,
+    occurrenceId: item.occurrenceId,
+    name: item.name,
+    price: item.price,
+    frequency: item.frequency,
+    intervalDays: item.intervalDays,
+    reminderTime: item.reminderTime,
+    note: item.note,
+    occurrenceDate: item.occurrenceDate,
+    status: status,
+    expenseId: item.expenseId,
+  );
 
   Future<void> _deleteExpense(String id) async {
     if (_isOfflineCached) {
@@ -327,83 +399,104 @@ class _BudgetScreenState extends State<BudgetScreen> {
         )
       else
         for (final item in _todayRecurring)
-          ZadCard(
-            margin: const EdgeInsets.only(bottom: ZadTokens.s2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
+          Builder(
+            builder: (context) {
+              final isUpdating = _updatingRecurring.contains(
+                _occurrenceKey(item),
+              );
+              return ZadCard(
+                margin: const EdgeInsets.only(bottom: ZadTokens.s2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Status-tinted icon tile (Stitch: green = purchased,
-                    // gold = pending, muted = skipped).
-                    Container(
-                      width: 40,
-                      height: 40,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: _statusColor(
-                          item.status,
-                        ).withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.shopping_basket_outlined,
-                        size: 22,
-                        color: _statusColor(item.status),
-                      ),
-                    ),
-                    const SizedBox(width: ZadTokens.s3),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.name,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
+                    Row(
+                      children: [
+                        // Status-tinted icon tile (Stitch: green = purchased,
+                        // gold = pending, muted = skipped).
+                        Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: _statusColor(
+                              item.status,
+                            ).withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${_statusText(item.status)}'
-                            '${item.reminderTime == null ? '' : '  •  تذكير: ${item.reminderTime}'}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _statusColor(item.status),
-                            ),
+                          child: Icon(
+                            Icons.shopping_basket_outlined,
+                            size: 22,
+                            color: _statusColor(item.status),
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: ZadTokens.s3),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${_statusText(item.status)}'
+                                '${item.reminderTime == null ? '' : '  •  تذكير: ${item.reminderTime}'}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _statusColor(item.status),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          '${item.price.toStringAsFixed(2)} MRU',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: ZadTokens.primary,
+                          ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      '${item.price.toStringAsFixed(2)} MRU',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: ZadTokens.primary,
-                      ),
+                    const SizedBox(height: ZadTokens.s2),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            style: _chipStyle,
+                            onPressed: item.status == 'purchased' || isUpdating
+                                ? null
+                                : () => _markRecurring(item, 'purchased'),
+                            child: isUpdating
+                                ? const SizedBox(
+                                    height: 16,
+                                    width: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('تم الشراء'),
+                          ),
+                        ),
+                        const SizedBox(width: ZadTokens.s2),
+                        Expanded(
+                          child: OutlinedButton(
+                            style: _chipStyle,
+                            onPressed: item.status == 'skipped' || isUpdating
+                                ? null
+                                : () => _markRecurring(item, 'skipped'),
+                            child: const Text('لم أشترِ'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: ZadTokens.s2),
-                Row(
-                  children: [
-                    ElevatedButton(
-                      style: _chipStyle,
-                      onPressed: item.status == 'purchased'
-                          ? null
-                          : () => _markRecurring(item, 'purchased'),
-                      child: const Text('تم الشراء'),
-                    ),
-                    const SizedBox(width: ZadTokens.s2),
-                    OutlinedButton(
-                      style: _chipStyle,
-                      onPressed: item.status == 'skipped'
-                          ? null
-                          : () => _markRecurring(item, 'skipped'),
-                      child: const Text('لم أشترِ'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+              );
+            },
           ),
       if (ov.activeSubscriptions.isNotEmpty) ...[
         const ZadSectionHeader('الاشتراكات الفعالة'),
