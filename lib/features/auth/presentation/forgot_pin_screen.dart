@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
-import '../../../core/utils/auth_helpers.dart';
+import '../../../core/utils/mauritanian_phone.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_info_banner.dart';
@@ -33,9 +33,9 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
   }
 
   Future<void> _submit() async {
-    final phone = _phoneCtrl.text.trim();
-    if (!AuthHelpers.validatePhone(phone)) {
-      setState(() => _error = 'رقم الهاتف يجب أن يكون 8 أرقام');
+    final phone = normalizeMauritanianPhone(_phoneCtrl.text);
+    if (validateMauritanianPhone(phone) case final error?) {
+      setState(() => _error = error);
       return;
     }
 
@@ -47,12 +47,16 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
 
     try {
       await widget.authService.requestPinReset(phone);
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() => _message = _genericSuccess);
     } on PostgrestException {
       if (mounted) setState(() => _message = _genericSuccess);
     } catch (_) {
-      if (mounted) setState(() => _error = 'حدث خطأ — تحقق من اتصالك بالإنترنت');
+      if (mounted) {
+        setState(() => _error = 'حدث خطأ — تحقق من اتصالك بالإنترنت');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -99,10 +103,13 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                       TextField(
                         controller: _phoneCtrl,
                         keyboardType: TextInputType.phone,
-                        maxLength: 8,
+                        maxLength: 11,
+                        inputFormatters: const [
+                          MauritanianPhoneInputFormatter(),
+                        ],
                         decoration: const InputDecoration(
                           labelText: 'رقم الهاتف',
-                          hintText: 'مثال: 00000000',
+                          hintText: 'مثال: 00 00 00 00',
                           prefixIcon: Icon(Icons.phone_outlined),
                           counterText: '',
                         ),

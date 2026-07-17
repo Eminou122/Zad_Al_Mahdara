@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/auth_helpers.dart';
+import '../../../core/utils/mauritanian_phone.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_info_banner.dart';
@@ -35,13 +36,13 @@ class _ResetPinScreenState extends State<ResetPinScreen> {
   }
 
   Future<void> _submit() async {
-    final phone = _phoneCtrl.text.trim();
+    final phone = normalizeMauritanianPhone(_phoneCtrl.text);
     final code = _codeCtrl.text.trim();
     final pin = _pinCtrl.text.trim();
     final confirm = _confirmCtrl.text.trim();
 
-    if (!AuthHelpers.validatePhone(phone)) {
-      setState(() => _error = 'رقم الهاتف يجب أن يكون 8 أرقام');
+    if (validateMauritanianPhone(phone) case final error?) {
+      setState(() => _error = error);
       return;
     }
     if (!RegExp(r'^\d{8}$').hasMatch(code)) {
@@ -64,21 +65,29 @@ class _ResetPinScreenState extends State<ResetPinScreen> {
 
     try {
       final ok = await widget.authService.completePinReset(phone, code, pin);
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       if (ok) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم تغيير الرمز السري بنجاح')),
         );
         context.go('/login');
       } else {
-        setState(() => _error = 'رمز إعادة التعيين غير صحيح أو منتهي الصلاحية.');
+        setState(
+          () => _error = 'رمز إعادة التعيين غير صحيح أو منتهي الصلاحية.',
+        );
       }
     } on PostgrestException {
       if (mounted) {
-        setState(() => _error = 'رمز إعادة التعيين غير صحيح أو منتهي الصلاحية.');
+        setState(
+          () => _error = 'رمز إعادة التعيين غير صحيح أو منتهي الصلاحية.',
+        );
       }
     } catch (_) {
-      if (mounted) setState(() => _error = 'حدث خطأ — تحقق من اتصالك بالإنترنت');
+      if (mounted) {
+        setState(() => _error = 'حدث خطأ — تحقق من اتصالك بالإنترنت');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -114,7 +123,10 @@ class _ResetPinScreenState extends State<ResetPinScreen> {
                       TextField(
                         controller: _phoneCtrl,
                         keyboardType: TextInputType.phone,
-                        maxLength: 8,
+                        maxLength: 11,
+                        inputFormatters: const [
+                          MauritanianPhoneInputFormatter(),
+                        ],
                         decoration: const InputDecoration(
                           labelText: 'رقم الهاتف',
                           prefixIcon: Icon(Icons.phone_outlined),

@@ -3,23 +3,36 @@ import 'package:zad_al_mahdara/services/auth_service.dart';
 import 'package:zad_al_mahdara/services/session_storage.dart';
 
 Map<String, dynamic> _profileJson({bool isAdmin = false}) => {
-      'id': 'u1',
-      'display_name': 'أحمد',
-      'phone_masked': '12****78',
-      'is_admin': isAdmin,
-      'is_active': true,
-    };
+  'id': 'u1',
+  'display_name': 'أحمد',
+  'phone_masked': '12****78',
+  'is_admin': isAdmin,
+  'is_active': true,
+};
 
 /// Overrides the RPC seam so session-restore outcomes can be simulated
 /// without a real Supabase client — see AuthService.fetchProfileBySessionToken.
 class _FakeAuthService extends AuthService {
   Map<String, dynamic>? Function(String token)? onFetch;
   Object? throwing;
+  final List<Map<String, dynamic>> calls = [];
 
   @override
-  Future<Map<String, dynamic>?> fetchProfileBySessionToken(
-    String token,
+  void requireSupabase() {}
+
+  @override
+  Future<dynamic> callAuthRpc(
+    String function,
+    Map<String, dynamic> params,
   ) async {
+    calls.add({'function': function, 'params': params});
+    return function == 'complete_pin_reset'
+        ? {'ok': true}
+        : {'session_token': 'test-token', 'profile': _profileJson()};
+  }
+
+  @override
+  Future<Map<String, dynamic>?> fetchProfileBySessionToken(String token) async {
     if (throwing != null) throw throwing!;
     return onFetch?.call(token);
   }
@@ -74,34 +87,38 @@ void main() {
       expect(SessionStorage.read(), 'tok-network');
     });
 
-    test('no admin privilege is granted while restore is failed/unverified',
-        () async {
-      SessionStorage.write('tok-network');
-      final auth = _FakeAuthService()..throwing = Exception('timeout');
+    test(
+      'no admin privilege is granted while restore is failed/unverified',
+      () async {
+        SessionStorage.write('tok-network');
+        final auth = _FakeAuthService()..throwing = Exception('timeout');
 
-      await auth.retrySessionRestore();
+        await auth.retrySessionRestore();
 
-      expect(auth.isAuthenticated, isFalse);
-      expect(auth.isAdmin, isFalse);
-    });
+        expect(auth.isAuthenticated, isFalse);
+        expect(auth.isAdmin, isFalse);
+      },
+    );
 
-    test('retry after a network failure succeeds once connectivity returns',
-        () async {
-      SessionStorage.write('tok-network');
-      final auth = _FakeAuthService()..throwing = Exception('offline');
+    test(
+      'retry after a network failure succeeds once connectivity returns',
+      () async {
+        SessionStorage.write('tok-network');
+        final auth = _FakeAuthService()..throwing = Exception('offline');
 
-      await auth.retrySessionRestore();
-      expect(auth.sessionRestoreFailed, isTrue);
-      expect(auth.isAuthenticated, isFalse);
+        await auth.retrySessionRestore();
+        expect(auth.sessionRestoreFailed, isTrue);
+        expect(auth.isAuthenticated, isFalse);
 
-      auth.throwing = null;
-      auth.onFetch = (_) => _profileJson();
-      await auth.retrySessionRestore();
+        auth.throwing = null;
+        auth.onFetch = (_) => _profileJson();
+        await auth.retrySessionRestore();
 
-      expect(auth.isAuthenticated, isTrue);
-      expect(auth.sessionRestoreFailed, isFalse);
-      expect(SessionStorage.read(), 'tok-network');
-    });
+        expect(auth.isAuthenticated, isTrue);
+        expect(auth.sessionRestoreFailed, isFalse);
+        expect(SessionStorage.read(), 'tok-network');
+      },
+    );
   });
 
   group('logout', () {
@@ -116,6 +133,26 @@ void main() {
       expect(auth.sessionRestoreFailed, isFalse);
       expect(auth.isAuthenticated, isFalse);
       expect(SessionStorage.read(), isNull);
+    });
+  });
+
+  group('phone RPC boundaries', () {
+    test('normalizes every auth phone argument before its RPC', () async {
+      final auth = _FakeAuthService();
+      await auth.register('Name', '12 34-56 78', '1234');
+      await auth.login('12 34 56 78', '1234');
+      await auth.requestPinReset('12-34-56-78');
+      await auth.completePinReset('12 34-56 78', '12345678', '4321');
+
+      for (final call in auth.calls) {
+        expect(call['params']['p_phone_number'], '12345678');
+      }
+    });
+
+    test('rejects invalid phone before an RPC call', () async {
+      final auth = _FakeAuthService();
+      await expectLater(auth.login('1234567', '1234'), throwsArgumentError);
+      expect(auth.calls, isEmpty);
     });
   });
 }

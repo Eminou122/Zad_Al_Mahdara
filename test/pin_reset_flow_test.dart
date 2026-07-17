@@ -40,17 +40,18 @@ void main() {
     await tester.tap(find.text('تغيير الرمز السري'));
     await tester.pumpAndSettle();
 
-    expect(find.text('رقم الهاتف يجب أن يكون 8 أرقام'), findsOneWidget);
+    expect(find.text('أدخل رقم هاتف صحيحًا مكونًا من 8 أرقام'), findsOneWidget);
   });
 
   testWidgets('reset PIN shows generic failure and keeps code LTR', (
     tester,
   ) async {
+    final service = _FakeAuthService(completeOk: false);
     await tester.pumpWidget(
       MaterialApp(
         home: Directionality(
           textDirection: TextDirection.rtl,
-          child: ResetPinScreen(authService: _FakeAuthService(completeOk: false)),
+          child: ResetPinScreen(authService: service),
         ),
       ),
     );
@@ -60,10 +61,18 @@ void main() {
     await tester.enterText(fields.at(1), '12345678');
     await tester.enterText(fields.at(2), '2468');
     await tester.enterText(fields.at(3), '2468');
+    expect(
+      tester.widget<TextField>(fields.at(0)).controller!.text,
+      '49 41 34 35',
+    );
     await tester.tap(find.text('تغيير الرمز السري'));
     await tester.pumpAndSettle();
 
-    expect(find.text('رمز إعادة التعيين غير صحيح أو منتهي الصلاحية.'), findsOneWidget);
+    expect(
+      find.text('رمز إعادة التعيين غير صحيح أو منتهي الصلاحية.'),
+      findsOneWidget,
+    );
+    expect(service.completedPhone, '49413435');
     _expectNearestTextDirection(
       tester,
       find.text('12345678'),
@@ -86,6 +95,7 @@ void _expectNearestTextDirection(
 class _FakeAuthService extends AuthService {
   final bool completeOk;
   String? requestedPhone;
+  String? completedPhone;
 
   _FakeAuthService({this.completeOk = true});
 
@@ -95,7 +105,12 @@ class _FakeAuthService extends AuthService {
   }
 
   @override
-  Future<bool> completePinReset(String phone, String code, String newPin) async {
+  Future<bool> completePinReset(
+    String phone,
+    String code,
+    String newPin,
+  ) async {
+    completedPhone = phone;
     return completeOk;
   }
 }

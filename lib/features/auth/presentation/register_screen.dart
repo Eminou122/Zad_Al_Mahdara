@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/auth_helpers.dart';
+import '../../../core/utils/mauritanian_phone.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_info_banner.dart';
@@ -37,7 +38,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _submit() async {
     final name = _nameCtrl.text.trim();
-    final phone = _phoneCtrl.text.trim();
+    final phone = normalizeMauritanianPhone(_phoneCtrl.text);
     final pin = _pinCtrl.text.trim();
     final confirm = _confirmCtrl.text.trim();
 
@@ -45,8 +46,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() => _error = 'أدخل اسمك');
       return;
     }
-    if (!AuthHelpers.validatePhone(phone)) {
-      setState(() => _error = 'رقم الهاتف يجب أن يكون 8 أرقام بالضبط');
+    if (validateMauritanianPhone(phone) case final error?) {
+      setState(() => _error = error);
       return;
     }
     if (!AuthHelpers.validatePin(pin)) {
@@ -134,7 +135,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       TextField(
                         controller: _phoneCtrl,
                         keyboardType: TextInputType.phone,
-                        maxLength: 8,
+                        maxLength: 11,
+                        inputFormatters: const [
+                          MauritanianPhoneInputFormatter(),
+                        ],
                         decoration: const InputDecoration(
                           labelText: 'رقم الهاتف (8 أرقام)',
                           prefixIcon: Icon(Icons.phone_outlined),

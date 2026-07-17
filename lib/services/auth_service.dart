@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config/app_config.dart';
+import '../core/utils/mauritanian_phone.dart';
 import 'session_storage.dart';
 
 class UserProfile {
@@ -19,12 +20,12 @@ class UserProfile {
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> j) => UserProfile(
-        id:          j['id'] as String,
-        displayName: j['display_name'] as String,
-        phoneMasked: j['phone_masked'] as String,
-        isAdmin:     j['is_admin'] as bool? ?? false,
-        isActive:    j['is_active'] as bool? ?? true,
-      );
+    id: j['id'] as String,
+    displayName: j['display_name'] as String,
+    phoneMasked: j['phone_masked'] as String,
+    isAdmin: j['is_admin'] as bool? ?? false,
+    isActive: j['is_active'] as bool? ?? true,
+  );
 }
 
 class AuthService extends ChangeNotifier {
@@ -32,12 +33,12 @@ class AuthService extends ChangeNotifier {
   bool _isLoadingSession = true;
   bool _sessionRestoreFailed = false;
 
-  UserProfile? get profile      => _profile;
-  bool get isAuthenticated      => _profile != null;
-  bool get isAdmin              => _profile?.isAdmin ?? false;
-  bool get isLoadingSession     => _isLoadingSession;
-  String get displayName        => _profile?.displayName ?? '';
-  String? get currentToken      => SessionStorage.read();
+  UserProfile? get profile => _profile;
+  bool get isAuthenticated => _profile != null;
+  bool get isAdmin => _profile?.isAdmin ?? false;
+  bool get isLoadingSession => _isLoadingSession;
+  String get displayName => _profile?.displayName ?? '';
+  String? get currentToken => SessionStorage.read();
 
   /// True when a stored session token exists but the last attempt to
   /// verify it failed for a reason other than the server explicitly
@@ -116,33 +117,39 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> register(String displayName, String phone, String pin) async {
-    _requireSupabase();
-    final result = await _client.rpc('register_student', params: {
+    requireSupabase();
+    final result = await callAuthRpc('register_student', {
       'p_display_name': displayName,
-      'p_phone_number': phone,
-      'p_pin':          pin,
+      'p_phone_number': _validPhone(phone),
+      'p_pin': pin,
     });
     _applyAuthResult(result as Map);
   }
 
   Future<void> login(String phone, String pin) async {
-    _requireSupabase();
-    final result = await _client.rpc('login_student', params: {
-      'p_phone_number': phone,
-      'p_pin':          pin,
+    requireSupabase();
+    final result = await callAuthRpc('login_student', {
+      'p_phone_number': _validPhone(phone),
+      'p_pin': pin,
     });
     _applyAuthResult(result as Map);
   }
 
   Future<void> requestPinReset(String phone) async {
-    _requireSupabase();
-    await _client.rpc('request_pin_reset', params: {'p_phone_number': phone});
+    requireSupabase();
+    await callAuthRpc('request_pin_reset', {
+      'p_phone_number': _validPhone(phone),
+    });
   }
 
-  Future<bool> completePinReset(String phone, String code, String newPin) async {
-    _requireSupabase();
-    final result = await _client.rpc('complete_pin_reset', params: {
-      'p_phone_number': phone,
+  Future<bool> completePinReset(
+    String phone,
+    String code,
+    String newPin,
+  ) async {
+    requireSupabase();
+    final result = await callAuthRpc('complete_pin_reset', {
+      'p_phone_number': _validPhone(phone),
       'p_code': code,
       'p_new_pin': newPin,
     });
@@ -151,28 +158,34 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> updateProfileName(String name) async {
-    _requireSupabase();
+    requireSupabase();
     final token = currentToken;
     if (token == null) throw Exception('not authenticated');
-    final result = await _client.rpc('update_my_profile_name', params: {
-      'p_session_token': token,
-      'p_display_name': name,
-    });
+    final result = await _client.rpc(
+      'update_my_profile_name',
+      params: {'p_session_token': token, 'p_display_name': name},
+    );
     final json = Map<String, dynamic>.from(result as Map);
     final profileJson = Map<String, dynamic>.from(json['profile'] as Map);
     _profile = UserProfile.fromJson(profileJson);
     notifyListeners();
   }
 
-  Future<Map<String, dynamic>> changePin(String currentPin, String newPin) async {
-    _requireSupabase();
+  Future<Map<String, dynamic>> changePin(
+    String currentPin,
+    String newPin,
+  ) async {
+    requireSupabase();
     final token = currentToken;
     if (token == null) throw Exception('not authenticated');
-    final result = await _client.rpc('change_my_pin', params: {
-      'p_session_token': token,
-      'p_current_pin': currentPin,
-      'p_new_pin': newPin,
-    });
+    final result = await _client.rpc(
+      'change_my_pin',
+      params: {
+        'p_session_token': token,
+        'p_current_pin': currentPin,
+        'p_new_pin': newPin,
+      },
+    );
     return Map<String, dynamic>.from(result as Map);
   }
 
@@ -192,7 +205,7 @@ class AuthService extends ChangeNotifier {
   }
 
   void _applyAuthResult(Map raw) {
-    final json  = Map<String, dynamic>.from(raw);
+    final json = Map<String, dynamic>.from(raw);
     final token = json['session_token'] as String;
     SessionStorage.write(token);
     _profile = UserProfile.fromJson(
@@ -202,13 +215,26 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _requireSupabase() {
+  @protected
+  void requireSupabase() {
     if (AppConfig.supabaseUrl.isEmpty) {
       throw Exception(
         'Supabase not configured — pass --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...',
       );
     }
   }
+
+  String _validPhone(String input) {
+    final phone = normalizeMauritanianPhone(input);
+    if (validateMauritanianPhone(phone) != null) {
+      throw ArgumentError('invalid phone');
+    }
+    return phone;
+  }
+
+  @protected
+  Future<dynamic> callAuthRpc(String function, Map<String, dynamic> params) =>
+      _client.rpc(function, params: params);
 
   @visibleForTesting
   void setTestProfile(UserProfile p) {
