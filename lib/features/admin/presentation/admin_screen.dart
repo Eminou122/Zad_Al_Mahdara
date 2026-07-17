@@ -53,9 +53,10 @@ class _AdminScreenState extends State<AdminScreen> {
     super.dispose();
   }
 
-  Future<void> _loadAll() async {
+  Future<void> _loadAll({bool? showLoading, bool throwOnError = false}) async {
+    final isInitialLoad = showLoading ?? _dashboard == null;
     setState(() {
-      _loading = true;
+      if (isInitialLoad) _loading = true;
       _error = null;
       _message = null;
     });
@@ -76,10 +77,15 @@ class _AdminScreenState extends State<AdminScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      if (!isInitialLoad) {
+        if (throwOnError) rethrow;
+        return;
+      }
       setState(() {
         _error = _safeError(e);
         _loading = false;
       });
+      if (throwOnError) rethrow;
     }
   }
 
@@ -201,6 +207,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Widget build(BuildContext context) {
     return ZadScaffold(
       title: 'الإدارة',
+      onRefresh: () => _loadAll(showLoading: false, throwOnError: true),
       actions: [
         IconButton(
           tooltip: 'تحديث',
@@ -210,46 +217,43 @@ class _AdminScreenState extends State<AdminScreen> {
       ],
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadAll,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_error != null)
-                    ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
-                  if (_message != null)
-                    ZadInfoBanner(_message!, kind: ZadBannerKind.success),
-                  if (_dashboard != null) _DashboardGrid(_dashboard!),
-                  const ZadSectionHeader('طلبات إعادة تعيين الرمز'),
-                  if (_pinResetRequests.isEmpty)
-                    const _EmptyCard('لا توجد طلبات نشطة')
-                  else
-                    for (final request in _pinResetRequests)
-                      _PinResetRequestCard(
-                        request: request,
-                        onIssue: () => _issuePinResetCode(request),
-                        onCancel: () => _cancelPinResetRequest(request),
-                      ),
-                  const ZadSectionHeader('المستخدمون'),
-                  _SearchBox(
-                    controller: _search,
-                    loading: _usersLoading,
-                    onChanged: _onSearchChanged,
-                    onRefresh: _loadUsers,
-                  ),
-                  const SizedBox(height: ZadTokens.s3),
-                  if (_users.isEmpty)
-                    const _EmptyCard('لا يوجد مستخدمون')
-                  else
-                    for (final user in _users)
-                      _UserCard(user: user, onTap: () => _showUser(user)),
-                  const ZadSectionHeader('الفرق العامة'),
-                  if (_teams.isEmpty)
-                    const _EmptyCard('لا توجد فرق عامة')
-                  else
-                    for (final team in _teams) _TeamCard(team),
-                ],
-              ),
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_error != null)
+                  ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
+                if (_message != null)
+                  ZadInfoBanner(_message!, kind: ZadBannerKind.success),
+                if (_dashboard != null) _DashboardGrid(_dashboard!),
+                const ZadSectionHeader('طلبات إعادة تعيين الرمز'),
+                if (_pinResetRequests.isEmpty)
+                  const _EmptyCard('لا توجد طلبات نشطة')
+                else
+                  for (final request in _pinResetRequests)
+                    _PinResetRequestCard(
+                      request: request,
+                      onIssue: () => _issuePinResetCode(request),
+                      onCancel: () => _cancelPinResetRequest(request),
+                    ),
+                const ZadSectionHeader('المستخدمون'),
+                _SearchBox(
+                  controller: _search,
+                  loading: _usersLoading,
+                  onChanged: _onSearchChanged,
+                  onRefresh: _loadUsers,
+                ),
+                const SizedBox(height: ZadTokens.s3),
+                if (_users.isEmpty)
+                  const _EmptyCard('لا يوجد مستخدمون')
+                else
+                  for (final user in _users)
+                    _UserCard(user: user, onTap: () => _showUser(user)),
+                const ZadSectionHeader('الفرق العامة'),
+                if (_teams.isEmpty)
+                  const _EmptyCard('لا توجد فرق عامة')
+                else
+                  for (final team in _teams) _TeamCard(team),
+              ],
             ),
     );
   }

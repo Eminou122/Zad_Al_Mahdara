@@ -32,6 +32,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
   List<TeamSummary> _mine = [];
   List<TeamSummary> _public = [];
   bool _loading = true;
+  bool _hasLoadedOnce = false;
   String? _mineError;
   String? _publicError;
 
@@ -65,9 +66,12 @@ class _TeamsScreenState extends State<TeamsScreen> {
     setState(() => _teamPage = page.round());
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool? showLoading}) async {
+    final isInitialLoad = showLoading ?? !_hasLoadedOnce;
     setState(() {
-      _loading = true;
+      if (isInitialLoad) {
+        _loading = true;
+      }
       _mineError = null;
       _publicError = null;
     });
@@ -102,6 +106,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
         _mineError = mineError;
         _publicError = publicError;
         _loading = false;
+        _hasLoadedOnce = true;
       });
     }
   }
@@ -214,13 +219,17 @@ class _TeamsScreenState extends State<TeamsScreen> {
 
   Widget _buildPage({required bool isMine}) {
     final error = isMine ? _mineError : _publicError;
-    if (error == null) return _buildList(isMine: isMine);
+    final items = isMine ? _mine : _public;
+    if (error == null || items.isNotEmpty) {
+      return _buildList(isMine: isMine, error: error);
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final side = ((constraints.maxWidth - ZadTokens.contentMaxWidth) / 2)
             .clamp(ZadTokens.s3, double.infinity);
         return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.symmetric(
             horizontal: side,
             vertical: ZadTokens.s6,
@@ -242,7 +251,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
     );
   }
 
-  Widget _buildList({required bool isMine}) {
+  Widget _buildList({required bool isMine, String? error}) {
     final items = isMine ? _mine : _public;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -250,11 +259,16 @@ class _TeamsScreenState extends State<TeamsScreen> {
             .clamp(ZadTokens.s3, double.infinity);
         if (items.isEmpty) {
           return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.symmetric(
               horizontal: side,
               vertical: ZadTokens.s6,
             ),
             children: [
+              if (error != null) ...[
+                ZadInfoBanner(error, kind: ZadBannerKind.danger),
+                const SizedBox(height: ZadTokens.s3),
+              ],
               ZadAnimatedEntry(
                 child: ZadEmptyState(
                   icon: isMine ? Icons.group_outlined : Icons.public_off,
@@ -265,19 +279,29 @@ class _TeamsScreenState extends State<TeamsScreen> {
           );
         }
         return ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.symmetric(
             horizontal: side,
             vertical: ZadTokens.s3,
           ),
-          itemCount: items.length,
-          itemBuilder: (_, i) => ZadAnimatedEntry(
-            delay: Duration(milliseconds: i < 6 ? 40 * i : 0),
-            child: _TeamCard(
-              team: items[i],
-              onTap: () =>
-                  context.push('/teams/${items[i].id}').then((_) => _load()),
-            ),
-          ),
+          itemCount: items.length + (error == null ? 0 : 1),
+          itemBuilder: (_, i) {
+            if (error != null && i == 0) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: ZadTokens.s3),
+                child: ZadInfoBanner(error, kind: ZadBannerKind.danger),
+              );
+            }
+            final item = items[i - (error == null ? 0 : 1)];
+            return ZadAnimatedEntry(
+              delay: Duration(milliseconds: i < 6 ? 40 * i : 0),
+              child: _TeamCard(
+                team: item,
+                onTap: () =>
+                    context.push('/teams/${item.id}').then((_) => _load()),
+              ),
+            );
+          },
         );
       },
     );

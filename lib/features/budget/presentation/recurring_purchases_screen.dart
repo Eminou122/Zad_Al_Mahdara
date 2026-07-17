@@ -35,9 +35,10 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool? showLoading, bool throwOnError = false}) async {
+    final isInitialLoad = showLoading ?? _stats == null;
     setState(() {
-      _loading = true;
+      if (isInitialLoad) _loading = true;
       _error = null;
     });
     try {
@@ -51,12 +52,17 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
         });
       }
     } catch (e) {
+      if (!isInitialLoad) {
+        if (throwOnError) rethrow;
+        return;
+      }
       if (mounted) {
         setState(() {
           _error = _arabicError(e);
           _loading = false;
         });
       }
+      if (throwOnError) rethrow;
     }
   }
 
@@ -91,6 +97,7 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
   Widget build(BuildContext context) {
     return ZadScaffold(
       title: 'المشتريات المتكررة',
+      onRefresh: () => _load(showLoading: false, throwOnError: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ZadAnimatedEntry(

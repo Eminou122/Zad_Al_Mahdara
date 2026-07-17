@@ -50,9 +50,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool? showLoading, bool throwOnError = false}) async {
+    final isInitialLoad = showLoading ?? _overview == null;
     setState(() {
-      _isLoading = true;
+      if (isInitialLoad) _isLoading = true;
       _error = null;
     });
     try {
@@ -85,6 +86,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
         });
       }
     } catch (e) {
+      if (!isInitialLoad) {
+        if (throwOnError) rethrow;
+        return;
+      }
       final profileId = widget.authService.profile?.id;
       if (mounted && profileId != null) {
         final cached = await _cacheService.load(profileId);
@@ -107,6 +112,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
           _isLoading = false;
         });
       }
+      if (throwOnError) rethrow;
     }
   }
 
@@ -118,7 +124,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
     TodayRecurringPurchase item,
     String status,
   ) async {
-    if (_isOfflineCached) { _onOfflineAction(); return; }
+    if (_isOfflineCached) {
+      _onOfflineAction();
+      return;
+    }
     try {
       await _budget.markRecurringPurchaseOccurrence(
         recurringPurchaseId: item.recurringPurchaseId,
@@ -132,7 +141,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   Future<void> _deleteExpense(String id) async {
-    if (_isOfflineCached) { _onOfflineAction(); return; }
+    if (_isOfflineCached) {
+      _onOfflineAction();
+      return;
+    }
     final ok = await _confirm('حذف المصروف', 'هل تريد حذف هذا المصروف؟');
     if (!ok) return;
     try {
@@ -144,7 +156,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
   }
 
   Future<void> _deactivateSub(String id) async {
-    if (_isOfflineCached) { _onOfflineAction(); return; }
+    if (_isOfflineCached) {
+      _onOfflineAction();
+      return;
+    }
     final ok = await _confirm(
       'إلغاء الاشتراك',
       'هل تريد إلغاء تفعيل هذا الاشتراك؟',
@@ -183,8 +198,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-
-
   void _goSetup() => context
       .push('/budget/setup', extra: _overview?.budgetPlan)
       .then((_) => _load());
@@ -193,6 +206,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
   Widget build(BuildContext context) {
     return ZadScaffold(
       title: 'ميزانيتي',
+      onRefresh: () => _load(showLoading: false, throwOnError: true),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -248,8 +262,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 onTap: _isOfflineCached
                     ? _onOfflineAction
                     : () => context
-                        .push('/budget/expense/new')
-                        .then((_) => _load()),
+                          .push('/budget/expense/new')
+                          .then((_) => _load()),
               ),
             ),
             Expanded(
@@ -268,8 +282,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 onTap: _isOfflineCached
                     ? _onOfflineAction
                     : () => context
-                        .push('/budget/subscription/new')
-                        .then((_) => _load()),
+                          .push('/budget/subscription/new')
+                          .then((_) => _load()),
               ),
             ),
             Expanded(
@@ -279,8 +293,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 enabled: !_isOfflineCached,
                 onTap: _isOfflineCached
                     ? _onOfflineAction
-                    : () =>
-                        context.push('/budget/recurring').then((_) => _load()),
+                    : () => context
+                          .push('/budget/recurring')
+                          .then((_) => _load()),
               ),
             ),
           ],
@@ -485,8 +500,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
         stats: ov.budgetPlan != null ? _recurringStats : null,
         items: _recurringItems,
         todayItems: _todayRecurring,
-        onManage: () =>
-            context.push('/budget/recurring').then((_) => _load()),
+        onManage: () => context.push('/budget/recurring').then((_) => _load()),
       ),
       if (ov.recentExpenses.isNotEmpty) ...[
         // Stitch title. "التقارير" button rejected: no reports feature.

@@ -81,8 +81,7 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
       _error = null;
     });
     try {
-      final r = await _svc.getTeamMemberCandidates(widget.teamId,
-          query: query);
+      final r = await _svc.getTeamMemberCandidates(widget.teamId, query: query);
       if (mounted) {
         setState(() {
           _candidates = r;
@@ -102,6 +101,8 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
       }
     }
   }
+
+  Future<void> _refreshCandidates() => _loadCandidates(_currentQuery);
 
   Future<void> _add(TeamMemberCandidate c) async {
     if (!c.canAdd) return;
@@ -335,42 +336,56 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                     child: ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
                   ),
                 Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: _loading
-                        ? const Center(
-                            key: ValueKey('loading'),
-                            child: CircularProgressIndicator(),
-                          )
-                        : _candidates.isEmpty
-                            ? ListView(
-                                key: const ValueKey('empty'),
-                                padding:
-                                    const EdgeInsets.fromLTRB(20, 20, 20, 96),
-                                children: [
-                                  _CompactEmptyState(
-                                    icon: Icons.person_search_outlined,
-                                    message: (_currentQuery == null ||
-                                            _currentQuery!.isEmpty)
-                                        ? 'لا توجد حسابات متاحة'
-                                        : 'لا توجد نتائج',
-                                  ),
-                                ],
-                              )
-                            : ListView.builder(
-                                key: const ValueKey('candidates'),
-                                padding:
-                                    const EdgeInsets.fromLTRB(20, 20, 20, 96),
-                                itemCount: _candidates.length,
-                                itemBuilder: (_, i) {
-                                  final c = _candidates[i];
-                                  return _CandidateRow(
-                                    candidate: c,
-                                    busy: _adding.contains(c.profileId),
-                                    onAdd: () => _add(c),
-                                  );
-                                },
+                  child: RefreshIndicator(
+                    onRefresh: _refreshCandidates,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: _loading
+                          ? const Center(
+                              key: ValueKey('loading'),
+                              child: CircularProgressIndicator(),
+                            )
+                          : _candidates.isEmpty
+                          ? ListView(
+                              key: const ValueKey('empty'),
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                20,
+                                20,
+                                96,
                               ),
+                              children: [
+                                _CompactEmptyState(
+                                  icon: Icons.person_search_outlined,
+                                  message:
+                                      (_currentQuery == null ||
+                                          _currentQuery!.isEmpty)
+                                      ? 'لا توجد حسابات متاحة'
+                                      : 'لا توجد نتائج',
+                                ),
+                              ],
+                            )
+                          : ListView.builder(
+                              key: const ValueKey('candidates'),
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                20,
+                                20,
+                                20,
+                                96,
+                              ),
+                              itemCount: _candidates.length,
+                              itemBuilder: (_, i) {
+                                final c = _candidates[i];
+                                return _CandidateRow(
+                                  candidate: c,
+                                  busy: _adding.contains(c.profileId),
+                                  onAdd: () => _add(c),
+                                );
+                              },
+                            ),
+                    ),
                   ),
                 ),
               ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zad_al_mahdara/core/widgets/zad_scaffold.dart';
 import 'package:zad_al_mahdara/features/teams/data/team_service.dart';
 import 'package:zad_al_mahdara/features/teams/domain/team_models.dart';
 import 'package:zad_al_mahdara/features/teams/presentation/teams_screen.dart';
@@ -58,6 +59,31 @@ Widget _build(TeamService service) => MaterialApp(
 );
 
 void main() {
+  testWidgets('ZadScaffold refreshes short content once without hiding it', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ZadScaffold(
+          title: 'اختبار',
+          onRefresh: () async => calls++,
+          body: const Text('محتوى موجود'),
+        ),
+      ),
+    );
+
+    await tester.fling(
+      find.byType(SingleChildScrollView),
+      const Offset(0, 300),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(calls, 1);
+    expect(find.text('محتوى موجود'), findsOneWidget);
+  });
+
   testWidgets('shows my teams after loading', (tester) async {
     await tester.pumpWidget(
       _build(
