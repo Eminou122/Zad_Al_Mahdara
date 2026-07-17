@@ -92,6 +92,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   bool _refreshing = false;
   bool _turnLoading = false;
   bool _shoppingLoading = false;
+  bool _submittingShoppingReport = false;
   bool _routeSubscribed = false;
   String? _reviewingStatus;
   String? _error;
@@ -280,6 +281,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
 
     final submitHint = _shoppingSubmitDisabledReason(o);
     final canMark = o.canEditMarks;
+    final hasValidItems = o.hasValidItems;
     return [
       shell([
         if (canMark)
@@ -340,11 +342,30 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
           )
         else
           ...o.items.map((item) => _shoppingItemRow(item, canMark)),
+        if (!hasValidItems)
+          const Padding(
+            padding: EdgeInsets.only(top: ZadTokens.s1),
+            child: Text(
+              'أضف عنصرًا واحدًا على الأقل قبل مشاركة القائمة',
+              style: TextStyle(fontSize: 12, color: ZadTokens.textMuted),
+            ),
+          ),
         if (o.canSubmit) ...[
           const SizedBox(height: ZadTokens.s3),
           FilledButton(
-            onPressed: submitHint == null ? _submitShoppingReport : null,
-            child: const Text('إرسال القائمة للقائد'),
+            onPressed: submitHint == null && !_submittingShoppingReport
+                ? _submitShoppingReport
+                : null,
+            child: _submittingShoppingReport
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text('إرسال القائمة للقائد'),
           ),
           if (submitHint != null)
             Padding(
@@ -365,7 +386,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
             runSpacing: ZadTokens.s1,
             children: [
               FilledButton(
-                onPressed: _reviewingStatus != null
+                onPressed: _reviewingStatus != null || !hasValidItems
                     ? null
                     : () => _reviewShoppingReport('accepted'),
                 child: _reviewingStatus == 'accepted'
@@ -380,7 +401,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                     : const Text('قبول'),
               ),
               OutlinedButton(
-                onPressed: _reviewingStatus != null
+                onPressed: _reviewingStatus != null || !hasValidItems
                     ? null
                     : () => _reviewShoppingReport('rejected'),
                 child: _reviewingStatus == 'rejected'
@@ -671,7 +692,9 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   }
 
   String? _shoppingSubmitDisabledReason(TeamShoppingOverview o) {
+    if (!o.hasValidItems) return 'لا يمكن إرسال تقرير فارغ';
     for (final item in o.items) {
+      if (!item.isValidForShoppingFlow) continue;
       if (item.isRequired && !item.isBought) {
         return 'يجب شراء كل العناصر الأساسية قبل الإرسال';
       }
@@ -724,15 +747,26 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   }
 
   Future<void> _submitShoppingReport() async {
+    if (_submittingShoppingReport) return;
+    if (!(_shoppingOverview?.hasValidItems ?? false)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('لا يمكن إرسال تقرير فارغ')));
+      return;
+    }
     final token = widget.authService.currentToken;
     if (token == null) return;
+    setState(() => _submittingShoppingReport = true);
     try {
       final overview = await _shoppingSvc.submitShoppingReport(
         sessionToken: token,
         teamId: widget.teamId,
       );
       if (mounted) {
-        setState(() => _shoppingOverview = overview);
+        setState(() {
+          _shoppingOverview = overview;
+          _submittingShoppingReport = false;
+        });
         AppRefreshCoordinator.instance.invalidateMany({
           AppRefreshScope.notifications,
           AppRefreshScope.notificationBadge,
@@ -743,6 +777,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _submittingShoppingReport = false);
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
@@ -752,6 +787,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
 
   Future<void> _reviewShoppingReport(String status) async {
     if (_reviewingStatus != null) return;
+    if (!(_shoppingOverview?.hasValidItems ?? false)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('لا يمكن إرسال تقرير فارغ')));
+      return;
+    }
     String? note;
     if (status == 'rejected') {
       note = await showDialog<String>(
@@ -992,6 +1033,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   }
 
   Future<void> _startTurn() async {
+    if (!(_shoppingOverview?.hasValidItems ?? false)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('أضف عنصرًا واحدًا على الأقل قبل مشاركة القائمة'),
+        ),
+      );
+      return;
+    }
     setState(() => _turnLoading = true);
     try {
       final ts = await _turnSvc.ensureTodayTurn(widget.teamId);
@@ -1016,6 +1065,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   }
 
   Future<void> _completeTurn(String turnId) async {
+    if (!(_shoppingOverview?.hasValidItems ?? false)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكن إكمال دور بقائمة تسوق فارغة')),
+      );
+      return;
+    }
     setState(() => _turnLoading = true);
     try {
       final ts = await _turnSvc.completeTurn(turnId);
@@ -1317,8 +1372,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                       state: _turnState,
                       loading: _turnLoading,
                       isMember: d.isMember,
-                      onStart: _startTurn,
-                      onComplete: _completeTurn,
+                      onStart: _shoppingOverview?.hasValidItems == true
+                          ? _startTurn
+                          : null,
+                      onComplete: _shoppingOverview?.hasValidItems == true
+                          ? _completeTurn
+                          : null,
                       onSkipMissedTurn: _skipMissedTurn,
                     ),
                   ),
@@ -1408,8 +1467,8 @@ class _TurnCard extends StatelessWidget {
   final TeamTurnState? state;
   final bool loading;
   final bool isMember;
-  final VoidCallback onStart;
-  final void Function(String) onComplete;
+  final VoidCallback? onStart;
+  final void Function(String)? onComplete;
   final void Function(String, String?) onSkipMissedTurn;
 
   const _TurnCard({
@@ -1579,7 +1638,9 @@ class _TurnCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => onComplete(today.id),
+                onPressed: onComplete == null
+                    ? null
+                    : () => onComplete!(today.id),
                 child: const Text('تم إنجاز الدور'),
               ),
             ),

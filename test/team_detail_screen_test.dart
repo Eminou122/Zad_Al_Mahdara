@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:zad_al_mahdara/core/refresh/app_refresh_coordinator.dart';
 import 'package:zad_al_mahdara/core/routing/route_observer.dart';
 import 'package:zad_al_mahdara/core/utils/ltr_fragment.dart';
 import 'package:zad_al_mahdara/core/widgets/zad_section_header.dart';
@@ -61,6 +62,18 @@ TeamTurnState _sampleTurnState() => TeamTurnState(
   nextMember: null,
   lastCompletedTurn: null,
   history: const [],
+);
+
+TeamTurnState _turnStateWithoutToday() => const TeamTurnState(
+  canManageTurns: true,
+  todayTurn: null,
+  nextMember: TurnMemberRef(
+    memberId: 'mem-1',
+    position: 1,
+    displayName: 'محمد',
+  ),
+  lastCompletedTurn: null,
+  history: [],
 );
 
 TeamTurnState _blockedTurnState({bool canSkip = true}) => TeamTurnState(
@@ -234,6 +247,8 @@ class _FakeTurnService extends TeamTurnService {
   Object? error;
   int getTurnStateCallCount = 0;
   int skipMissedTurnCallCount = 0;
+  int ensureTodayTurnCallCount = 0;
+  int completeTurnCallCount = 0;
   String? lastSkipTeamId;
   String? lastSkipTurnId;
   String? lastSkipReason;
@@ -249,9 +264,17 @@ class _FakeTurnService extends TeamTurnService {
 
   @override
   Future<TeamTurnState> ensureTodayTurn(String teamId) async {
+    ensureTodayTurnCallCount++;
     if (error != null) throw error!;
     state = _sampleTurnState();
     return state!;
+  }
+
+  @override
+  Future<TeamTurnState> completeTurn(String turnId) async {
+    completeTurnCallCount++;
+    if (error != null) throw error!;
+    return state ?? _sampleTurnState();
   }
 
   @override
@@ -301,7 +324,8 @@ class _FakeTeamShoppingService extends TeamShoppingService {
   String? lastMarkedItemId;
   bool? lastMarkedBought;
   String? lastMarkedReason;
-  bool submitCalled = false;
+  int submitCallCount = 0;
+  Completer<TeamShoppingOverview>? pendingSubmit;
   String? lastReviewStatus;
   String? lastReviewNote;
   int reviewCallCount = 0;
@@ -364,7 +388,8 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     required String teamId,
     DateTime? date,
   }) async {
-    submitCalled = true;
+    submitCallCount++;
+    if (pendingSubmit != null) return pendingSubmit!.future;
     overview = _sampleShoppingOverview(
       canMark: false,
       report: TeamShoppingReport(
@@ -729,6 +754,95 @@ void main() {
   testWidgets('empty list renders لم تتم إضافة عناصر بعد', (tester) async {
     await _pump(tester, overview: _sampleShoppingOverview(itemCount: 0));
     expect(find.text('لم تتم إضافة عناصر بعد'), findsOneWidget);
+    expect(
+      find.text('أضف عنصرًا واحدًا على الأقل قبل مشاركة القائمة'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('empty list disables report submission with no service call', (
+    tester,
+  ) async {
+    final coordinator = AppRefreshCoordinator.instance..resetForTesting();
+    var notificationInvalidations = 0;
+    final unsubscribe = coordinator.subscribe(
+      AppRefreshScope.notifications,
+      (_) => notificationInvalidations++,
+    );
+    addTearDown(() {
+      unsubscribe();
+      coordinator.resetForTesting();
+    });
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(
+        itemCount: 0,
+        hasReportObject: true,
+        report: const TeamShoppingReport(
+          canSubmit: true,
+          canReview: false,
+          canEditMarks: true,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'),
+    );
+    expect(button.onPressed, isNull);
+    expect(find.text('لا يمكن إرسال تقرير فارغ'), findsOneWidget);
+    expect(shoppingService.submitCallCount, 0);
+    await tester.pump();
+    expect(notificationInvalidations, 0);
+  });
+
+  testWidgets('blank placeholder and invalid quantity do not make list valid', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: const TeamShoppingReport(
+          canSubmit: true,
+          canReview: false,
+          canEditMarks: true,
+        ),
+        items: const [
+          TeamShoppingItem(
+            id: 'blank',
+            name: '  ',
+            isRequired: true,
+            position: 1,
+            bought: true,
+            status: 'bought',
+          ),
+          TeamShoppingItem(
+            id: 'invalid-quantity',
+            name: 'أرز',
+            quantityValue: 2,
+            isRequired: true,
+            position: 2,
+            bought: true,
+            status: 'bought',
+          ),
+        ],
+      ),
+    );
+
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'إرسال القائمة للقائد'),
+    );
+    expect(button.onPressed, isNull);
+    expect(find.text('لا يمكن إرسال تقرير فارغ'), findsOneWidget);
   });
 
   testWidgets('bought item renders تم الشراء', (tester) async {
@@ -976,8 +1090,98 @@ void main() {
     );
     await tester.pumpAndSettle();
     await _tapVisible(tester, find.text('إرسال القائمة للقائد'));
-    expect(shoppingService.submitCalled, true);
+    expect(shoppingService.submitCallCount, 1);
     expect(find.text('تم إرسال القائمة للقائد'), findsOneWidget);
+  });
+
+  testWidgets('double tap submits one shopping report request', (tester) async {
+    final initial = _sampleShoppingOverview(
+      hasReportObject: true,
+      report: const TeamShoppingReport(
+        canSubmit: true,
+        canReview: false,
+        canEditMarks: true,
+      ),
+      items: const [
+        TeamShoppingItem(
+          id: 'r',
+          name: 'خبز',
+          isRequired: true,
+          position: 1,
+          bought: true,
+          status: 'bought',
+        ),
+      ],
+    );
+    final shoppingService = _FakeTeamShoppingService(overview: initial)
+      ..pendingSubmit = Completer<TeamShoppingOverview>();
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final submit = find.widgetWithText(FilledButton, 'إرسال القائمة للقائد');
+    await tester.scrollUntilVisible(
+      submit,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final onPressed = tester.widget<FilledButton>(submit).onPressed!;
+    onPressed();
+    onPressed();
+    await tester.pump();
+    expect(shoppingService.submitCallCount, 1);
+    expect(find.text('خبز'), findsOneWidget);
+
+    shoppingService.pendingSubmit!.complete(initial);
+    await tester.pumpAndSettle();
+    expect(shoppingService.submitCallCount, 1);
+  });
+
+  testWidgets('empty pending report cannot be accepted or rejected', (
+    tester,
+  ) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(
+        itemCount: 0,
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: true,
+          canEditMarks: false,
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'قبول'))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'رفض'))
+          .onPressed,
+      isNull,
+    );
+    expect(shoppingService.reviewCallCount, 0);
   });
 
   testWidgets('pending report disables marking/submitting', (tester) async {
@@ -1383,19 +1587,18 @@ void main() {
 
   testWidgets('failed rejection does not show success and keeps the report '
       'pending', (tester) async {
-    final shoppingService =
-        _FakeTeamShoppingService(
-          overview: _sampleShoppingOverview(
-            hasReportObject: true,
-            report: TeamShoppingReport(
-              submittedAt: DateTime(2026, 7, 5),
-              leaderStatus: 'pending',
-              canSubmit: false,
-              canReview: true,
-              canEditMarks: false,
-            ),
-          ),
-        )..reviewError = Exception('تعذر تحديث حالة التقرير');
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(
+        hasReportObject: true,
+        report: TeamShoppingReport(
+          submittedAt: DateTime(2026, 7, 5),
+          leaderStatus: 'pending',
+          canSubmit: false,
+          canReview: true,
+          canEditMarks: false,
+        ),
+      ),
+    )..reviewError = Exception('تعذر تحديث حالة التقرير');
     await tester.pumpWidget(
       _buildTest(
         _FakeAuthService(),
@@ -1485,6 +1688,167 @@ void main() {
     expect(find.text('تسوق اليوم'), findsOneWidget);
     expect(find.text('خبز'), findsOneWidget);
     expect(find.text('حليب'), findsOneWidget);
+  });
+
+  testWidgets('empty list disables turn dispatch', (tester) async {
+    final turnService = _FakeTurnService(state: _turnStateWithoutToday());
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: turnService,
+        shoppingService: _FakeTeamShoppingService(
+          overview: _sampleShoppingOverview(itemCount: 0),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToTurnCard(tester);
+
+    final start = tester.widget<ElevatedButton>(
+      find.widgetWithText(ElevatedButton, 'بدء دور اليوم'),
+    );
+    expect(start.onPressed, isNull);
+    expect(turnService.ensureTodayTurnCallCount, 0);
+  });
+
+  testWidgets('empty list disables turn completion', (tester) async {
+    final turnService = _FakeTurnService(state: _sampleTurnState());
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: turnService,
+        shoppingService: _FakeTeamShoppingService(
+          overview: _sampleShoppingOverview(itemCount: 0),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToTurnCard(tester);
+    final complete = tester.widget<ElevatedButton>(
+      find.widgetWithText(ElevatedButton, 'تم إنجاز الدور'),
+    );
+    expect(complete.onPressed, isNull);
+    expect(turnService.completeTurnCallCount, 0);
+  });
+
+  testWidgets('one valid item enables dispatch and dispatches once', (
+    tester,
+  ) async {
+    final turnService = _FakeTurnService(state: _turnStateWithoutToday());
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: turnService,
+        shoppingService: _FakeTeamShoppingService(
+          overview: _sampleShoppingOverview(itemCount: 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToTurnCard(tester);
+
+    final startFinder = find.widgetWithText(ElevatedButton, 'بدء دور اليوم');
+    expect(tester.widget<ElevatedButton>(startFinder).onPressed, isNotNull);
+    await tester.tap(startFinder);
+    await tester.pumpAndSettle();
+    expect(turnService.ensureTodayTurnCallCount, 1);
+  });
+
+  testWidgets('adding first valid item enables dispatch immediately', (
+    tester,
+  ) async {
+    final turnService = _FakeTurnService(state: _turnStateWithoutToday());
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(itemCount: 0, canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: turnService,
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'اسم العنصر'), 'خبز');
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+    await _scrollToTurnCard(tester);
+
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.widgetWithText(ElevatedButton, 'بدء دور اليوم'),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('removing final item disables dispatch again', (tester) async {
+    final turnService = _FakeTurnService(state: _turnStateWithoutToday());
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(itemCount: 1, canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: turnService,
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapVisible(
+      tester,
+      find.widgetWithIcon(IconButton, Icons.delete_outline),
+    );
+    await tester.tap(find.text('إزالة'));
+    await tester.pumpAndSettle();
+    await _scrollToTurnCard(tester);
+
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.widgetWithText(ElevatedButton, 'بدء دور اليوم'),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(find.text('لا يمكن إرسال تقرير فارغ'), findsOneWidget);
+  });
+
+  testWidgets('empty shopping state remains 320px safe', (tester) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        itemCount: 0,
+        hasReportObject: true,
+        report: const TeamShoppingReport(
+          canSubmit: true,
+          canReview: false,
+          canEditMarks: true,
+        ),
+      ),
+    );
+
+    expect(
+      find.text('أضف عنصرًا واحدًا على الأقل قبل مشاركة القائمة'),
+      findsOneWidget,
+    );
+    expect(find.text('لا يمكن إرسال تقرير فارغ'), findsOneWidget);
   });
 
   testWidgets('skippable missed turn shows recovery panel details', (

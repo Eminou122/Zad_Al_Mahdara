@@ -130,6 +130,15 @@ class TeamShoppingReport {
 }
 
 class TeamShoppingItem {
+  static const supportedQuantityUnits = {
+    'kg',
+    'packet',
+    'can',
+    'piece',
+    'mru_value',
+    'other',
+  };
+
   final String id;
   final String name;
   final String? quantityNote;
@@ -165,6 +174,18 @@ class TeamShoppingItem {
   bool get isUntouched => status == 'untouched';
   bool get isBought => status == 'bought' || bought;
   bool get isNotBought => status == 'not_bought';
+  bool get isValidForShoppingFlow {
+    if (name.trim().isEmpty) return false;
+    final hasQuantityValue = quantityValue != null;
+    final hasQuantityUnit = quantityUnit != null;
+    if (hasQuantityValue != hasQuantityUnit) return false;
+    if (quantityValue != null &&
+        (!quantityValue!.isFinite || quantityValue! < 0)) {
+      return false;
+    }
+    return quantityUnit == null ||
+        supportedQuantityUnits.contains(quantityUnit);
+  }
 
   factory TeamShoppingItem.fromJson(Map<String, dynamic> j) {
     final status =
@@ -235,6 +256,7 @@ class TeamShoppingOverview {
   bool get canSubmit => hasReportObject ? report.canSubmit : canMark;
   bool get canReview => report.canReview;
   bool get canEditMarks => hasReportObject ? report.canEditMarks : canMark;
+  bool get hasValidItems => items.any((item) => item.isValidForShoppingFlow);
 
   factory TeamShoppingOverview.fromJson(Map<String, dynamic> j) {
     final reportJson = j['report'] == null

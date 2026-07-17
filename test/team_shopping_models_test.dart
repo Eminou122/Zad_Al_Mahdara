@@ -230,6 +230,69 @@ void main() {
       expect(item.quantityValue, isNull);
       expect(item.quantityUnit, isNull);
     });
+
+    test('valid shopping item accepts omitted or supported quantity', () {
+      const withoutQuantity = TeamShoppingItem(
+        id: 'valid-1',
+        name: 'خبز',
+        isRequired: true,
+        position: 1,
+        bought: false,
+      );
+      const withQuantity = TeamShoppingItem(
+        id: 'valid-2',
+        name: 'أرز',
+        quantityValue: 0,
+        quantityUnit: 'kg',
+        isRequired: true,
+        position: 2,
+        bought: false,
+      );
+
+      expect(withoutQuantity.isValidForShoppingFlow, true);
+      expect(withQuantity.isValidForShoppingFlow, true);
+    });
+
+    test('blank name and malformed quantities are invalid shopping items', () {
+      const blank = TeamShoppingItem(
+        id: 'invalid-1',
+        name: '   ',
+        isRequired: true,
+        position: 1,
+        bought: false,
+      );
+      const missingUnit = TeamShoppingItem(
+        id: 'invalid-2',
+        name: 'أرز',
+        quantityValue: 2,
+        isRequired: true,
+        position: 2,
+        bought: false,
+      );
+      const unsupportedUnit = TeamShoppingItem(
+        id: 'invalid-3',
+        name: 'زيت',
+        quantityValue: 1,
+        quantityUnit: 'litre',
+        isRequired: true,
+        position: 3,
+        bought: false,
+      );
+      const negativeQuantity = TeamShoppingItem(
+        id: 'invalid-4',
+        name: 'سكر',
+        quantityValue: -1,
+        quantityUnit: 'kg',
+        isRequired: true,
+        position: 4,
+        bought: false,
+      );
+
+      expect(blank.isValidForShoppingFlow, false);
+      expect(missingUnit.isValidForShoppingFlow, false);
+      expect(unsupportedUnit.isValidForShoppingFlow, false);
+      expect(negativeQuantity.isValidForShoppingFlow, false);
+    });
   });
 
   group('TeamShoppingReport financial fields', () {
