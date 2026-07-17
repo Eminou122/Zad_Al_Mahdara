@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../../core/refresh/app_refresh_coordinator.dart';
 import 'notification_service.dart';
 
 /// Shell-wide unread-notification count, shared via [ZadNotificationBadgeScope]
@@ -14,10 +15,14 @@ class NotificationBadgeController extends ChangeNotifier {
 
   int get unreadCount => _unreadCount;
 
-  void setCount(int count) {
+  void setCount(int count, {bool markNotificationsDirtyOnIncrease = true}) {
     if (_unreadCount == count) return;
+    final increased = count > _unreadCount;
     _unreadCount = count;
     notifyListeners();
+    if (increased && markNotificationsDirtyOnIncrease) {
+      AppRefreshCoordinator.instance.markDirty(AppRefreshScope.notifications);
+    }
   }
 
   Future<void> refresh() async {

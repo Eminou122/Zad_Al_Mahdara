@@ -196,13 +196,11 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && widget.index >= 0) {
-        AppRefreshCoordinator.instance.notifyRootRouteVisible(
-          widget.routes[widget.index],
-        );
-      }
-    });
+    if (widget.index >= 0) {
+      AppRefreshCoordinator.instance.notifyRootRouteVisible(
+        widget.routes[widget.index],
+      );
+    }
     _settleCtrl =
         AnimationController(
             vsync: this,

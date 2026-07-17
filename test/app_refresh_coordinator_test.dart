@@ -88,6 +88,34 @@ void main() {
     expect(calls, 1);
   });
 
+  test('dirty scope remains dirty until synchronization succeeds', () async {
+    AppRefreshCoordinator.instance.markDirty(
+      AppRefreshScope.notifications,
+      notify: false,
+    );
+
+    expect(
+      AppRefreshCoordinator.instance.isDirty(AppRefreshScope.notifications),
+      isTrue,
+    );
+
+    AppRefreshCoordinator.instance.markSynchronized(
+      AppRefreshScope.notifications,
+    );
+
+    expect(
+      AppRefreshCoordinator.instance.isDirty(AppRefreshScope.notifications),
+      isFalse,
+    );
+  });
+
+  test('root route is authoritative before listeners flush', () async {
+    AppRefreshCoordinator.instance.notifyRootRouteVisible('/notifications');
+
+    expect(AppRefreshCoordinator.instance.currentRootRoute, '/notifications');
+    await _flushCoordinator();
+  });
+
   test('app resume emits notification and message scopes', () async {
     final seen = <AppRefreshScope>[];
     final foreground = <bool>[];

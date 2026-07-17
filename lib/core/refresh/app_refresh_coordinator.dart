@@ -23,9 +23,15 @@ class AppRefreshCoordinator {
   final _routeListeners = <RootRouteVisibleCallback>{};
   final _foregroundListeners = <AppForegroundCallback>{};
   final _pendingScopes = <AppRefreshScope>{};
+  final _dirtyScopes = <AppRefreshScope>{};
+  String? _currentRootRoute;
   String? _pendingRoute;
   bool? _pendingForeground;
   bool _flushScheduled = false;
+
+  String? get currentRootRoute => _currentRootRoute;
+
+  bool isDirty(AppRefreshScope scope) => _dirtyScopes.contains(scope);
 
   VoidCallback subscribe(AppRefreshScope scope, AppRefreshCallback callback) {
     (_listeners[scope] ??= <AppRefreshCallback>{}).add(callback);
@@ -49,13 +55,24 @@ class AppRefreshCoordinator {
     _scheduleFlush();
   }
 
+  void markDirty(AppRefreshScope scope, {bool notify = true}) {
+    _dirtyScopes.add(scope);
+    if (notify) invalidate(scope);
+  }
+
+  void markSynchronized(AppRefreshScope scope) {
+    _dirtyScopes.remove(scope);
+  }
+
   void notifyRootRouteVisible(String route) {
+    _currentRootRoute = route;
     _pendingRoute = route;
     _scheduleFlush();
   }
 
   void notifyAppResumed() {
     _pendingForeground = true;
+    _dirtyScopes.add(AppRefreshScope.notifications);
     invalidateMany({
       AppRefreshScope.notifications,
       AppRefreshScope.notificationBadge,
@@ -85,10 +102,7 @@ class AppRefreshCoordinator {
 
     switch (route) {
       case '/notifications':
-        _pendingScopes.addAll({
-          AppRefreshScope.notifications,
-          AppRefreshScope.notificationBadge,
-        });
+        _pendingScopes.add(AppRefreshScope.notificationBadge);
       case '/messages':
         _pendingScopes.addAll({
           AppRefreshScope.messages,
@@ -130,6 +144,8 @@ class AppRefreshCoordinator {
     _routeListeners.clear();
     _foregroundListeners.clear();
     _pendingScopes.clear();
+    _dirtyScopes.clear();
+    _currentRootRoute = null;
     _pendingRoute = null;
     _pendingForeground = null;
     _flushScheduled = false;

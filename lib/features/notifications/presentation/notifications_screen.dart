@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/refresh/app_refresh_coordinator.dart';
+import '../../../core/routing/route_observer.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/utils/ltr_fragment.dart';
@@ -37,7 +38,8 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> {
+class _NotificationsScreenState extends State<NotificationsScreen>
+    with RouteAware {
   late final NotificationService _svc;
   final ScrollController _scrollController = ScrollController();
 
@@ -53,7 +55,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _markingAllRead = false;
   bool _refreshInFlight = false;
   bool _refreshAgain = false;
-  bool _rootVisible = true;
+  bool _rootVisible = false;
+  bool _ignoreInitialMatchingRouteSignal = false;
   bool _foreground = true;
   bool _routeCovered = false;
   int _requestGeneration = 0;
@@ -62,6 +65,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   VoidCallback? _unsubscribeRefresh;
   VoidCallback? _unsubscribeRoute;
   VoidCallback? _unsubscribeForeground;
+  ModalRoute<dynamic>? _observedRoute;
   final Set<String> _busyIds = {};
   String? _error;
 
@@ -69,6 +73,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void initState() {
     super.initState();
     _svc = widget.service ?? NotificationService(widget.authService);
+    final currentRootRoute = AppRefreshCoordinator.instance.currentRootRoute;
+    _rootVisible =
+        currentRootRoute == null || currentRootRoute == '/notifications';
+    _ignoreInitialMatchingRouteSignal = currentRootRoute == '/notifications';
+    AppRefreshCoordinator.instance.markDirty(
+      AppRefreshScope.notifications,
+      notify: false,
+    );
     _scrollController.addListener(_onScroll);
     _unsubscribeRefresh = AppRefreshCoordinator.instance.subscribe(
       AppRefreshScope.notifications,
@@ -83,10 +95,42 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route == _observedRoute) return;
+    if (_observedRoute != null) {
+      appRouteObserver.unsubscribe(this);
+    }
+    _observedRoute = route;
+    if (route != null) {
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPushNext() {
+    _routeCovered = true;
+    _stopPolling();
+  }
+
+  @override
+  void didPopNext() {
+    if (!_routeCovered) return;
+    final currentRootRoute = AppRefreshCoordinator.instance.currentRootRoute;
+    if (currentRootRoute != null && currentRootRoute != '/notifications') {
+      return;
+    }
+    _routeCovered = false;
+    _activate();
+  }
+
+  @override
   void dispose() {
     _unsubscribeRefresh?.call();
     _unsubscribeRoute?.call();
     _unsubscribeForeground?.call();
+    appRouteObserver.unsubscribe(this);
     _stopPolling();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -95,11 +139,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   void _onRootRouteVisible(String route) {
     final visible = route == '/notifications';
-    if (_rootVisible == visible) return;
     _rootVisible = visible;
     if (visible) {
-      _startPolling();
+      _routeCovered = false;
+      if (_ignoreInitialMatchingRouteSignal) {
+        _ignoreInitialMatchingRouteSignal = false;
+        _startPolling();
+      } else {
+        _activate();
+      }
     } else {
+      _ignoreInitialMatchingRouteSignal = false;
       _stopPolling();
     }
   }
@@ -121,13 +171,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _startPolling(immediate: true);
   }
 
+  void _activate() {
+    AppRefreshCoordinator.instance.markDirty(
+      AppRefreshScope.notifications,
+      notify: false,
+    );
+    _startPolling(immediate: true);
+  }
+
   void _startPolling({bool immediate = false}) {
     if (!_foreground || !_visible) return;
     _pollTimer?.cancel();
-    if (immediate) unawaited(_refresh(silent: true));
-    _pollTimer = Timer.periodic(_pollInterval, (_) {
-      if (_pollFailures >= 3) return;
-      unawaited(_refresh(silent: true));
+    _pollTimer = null;
+    if (immediate) {
+      unawaited(_refresh(silent: true).whenComplete(_scheduleNextPoll));
+    } else {
+      _scheduleNextPoll();
+    }
+  }
+
+  void _scheduleNextPoll() {
+    if (!mounted || !_foreground || !_visible) return;
+    _pollTimer?.cancel();
+    final multiplier = 1 << _pollFailures.clamp(0, 3).toInt();
+    _pollTimer = Timer(_pollInterval * multiplier, () async {
+      await _refresh(silent: true);
+      _scheduleNextPoll();
     });
   }
 
@@ -145,7 +214,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   void _pushBadge(int count) {
-    ZadNotificationBadgeScope.maybeOf(context)?.setCount(count);
+    ZadNotificationBadgeScope.maybeOf(
+      context,
+    )?.setCount(count, markNotificationsDirtyOnIncrease: false);
   }
 
   List<NotificationItem> _dedupe(List<NotificationItem> items) {
@@ -155,6 +226,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (seen.add(it.id)) out.add(it);
     }
     return out;
+  }
+
+  List<NotificationItem> _mergeFirstPage(NotificationsPage page) {
+    final fresh = _dedupe(page.items);
+    if (!_hasLoadedOnce || !page.hasMore || page.nextCursor == null) {
+      return fresh;
+    }
+
+    final freshIds = fresh.map((item) => item.id).toSet();
+    final cursor = page.nextCursor!;
+    bool isOlderThanFirstPage(NotificationItem item) {
+      final timeOrder = item.createdAt.compareTo(cursor.createdAt);
+      return timeOrder < 0 ||
+          (timeOrder == 0 && item.id.compareTo(cursor.id) < 0);
+    }
+
+    return [
+      ...fresh,
+      ..._items.where(
+        (item) => !freshIds.contains(item.id) && isOlderThanFirstPage(item),
+      ),
+    ];
   }
 
   // Cold start (nothing loaded yet) takes over the whole screen with a
@@ -189,7 +282,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return;
       }
       setState(() {
-        _items = _dedupe(page.items);
+        _items = _mergeFirstPage(page);
         _unreadCount = page.unreadCount;
         _hasMore = page.hasMore;
         _nextCursor = page.nextCursor;
@@ -198,6 +291,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _refreshing = false;
       });
       _pushBadge(page.unreadCount);
+      AppRefreshCoordinator.instance.markSynchronized(
+        AppRefreshScope.notifications,
+      );
       _pollFailures = 0;
     } catch (e) {
       if (!mounted) return;
@@ -353,8 +449,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _stopPolling();
     final result = await context.push<T>(route, extra: extra);
     if (!mounted) return result;
-    _routeCovered = false;
-    _startPolling(immediate: true);
+    if (_routeCovered) {
+      _routeCovered = false;
+      _activate();
+    }
     return result;
   }
 

@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:zad_al_mahdara/core/refresh/app_refresh_coordinator.dart';
+import 'package:zad_al_mahdara/core/widgets/zad_bottom_nav.dart';
+import 'package:zad_al_mahdara/core/widgets/zad_notification_badge_scope.dart';
+import 'package:zad_al_mahdara/core/widgets/zad_swipe_nav.dart';
+import 'package:zad_al_mahdara/features/notifications/data/notification_badge_controller.dart';
 import 'package:zad_al_mahdara/features/notifications/data/notification_service.dart';
 import 'package:zad_al_mahdara/features/notifications/domain/notification_models.dart';
 import 'package:zad_al_mahdara/features/notifications/presentation/notifications_screen.dart';
@@ -61,6 +65,8 @@ class _FakeNotificationService extends NotificationService {
   String? lastMarkedReadId;
   DateTime? lastBefore;
   String? lastBeforeId;
+  final List<List<String>> firstPageCallSnapshots = [];
+  final List<Completer<NotificationsPage>> queuedGates = [];
 
   _FakeNotificationService() : super(AuthService());
 
@@ -75,6 +81,14 @@ class _FakeNotificationService extends NotificationService {
     lastBefore = before;
     lastBeforeId = beforeId;
     if (getNotificationsError != null) throw getNotificationsError!;
+    if (before == null && beforeId == null) {
+      firstPageCallSnapshots.add(
+        firstPageItems.map((item) => item.id).toList(),
+      );
+    }
+    if (queuedGates.isNotEmpty) {
+      return queuedGates.removeAt(0).future;
+    }
     if (gate != null) return gate!.future;
     if (before != null || beforeId != null) {
       return NotificationsPage(
@@ -180,6 +194,60 @@ Widget _buildApp({NotificationService? service, AuthService? authService}) {
     routerConfig: router,
     builder: (context, child) =>
         Directionality(textDirection: TextDirection.rtl, child: child!),
+  );
+}
+
+GoRouter _cachedRootRouter({
+  required NotificationService service,
+  required AuthService authService,
+}) {
+  const routes = ['/home', '/notifications'];
+
+  Page<void> rootPage(GoRouterState state) {
+    final index = routes.indexOf(state.uri.path);
+    return NoTransitionPage<void>(
+      key: const ValueKey('cached-root-shell'),
+      child: ZadSwipeNav(
+        routes: routes,
+        index: index,
+        screenBuilder: (route) => switch (route) {
+          '/notifications' => NotificationsScreen(
+            authService: authService,
+            service: service,
+          ),
+          _ => const Scaffold(
+            body: Center(child: Text('home')),
+            bottomNavigationBar: ZadBottomNav(current: ZadTab.home),
+          ),
+        },
+        child: const SizedBox.shrink(),
+      ),
+    );
+  }
+
+  return GoRouter(
+    initialLocation: '/notifications',
+    routes: [
+      GoRoute(path: '/home', pageBuilder: (_, state) => rootPage(state)),
+      GoRoute(
+        path: '/notifications',
+        pageBuilder: (_, state) => rootPage(state),
+      ),
+    ],
+  );
+}
+
+Widget _buildCachedRootApp({
+  required GoRouter router,
+  required NotificationBadgeController badgeController,
+}) {
+  return ZadNotificationBadgeScope(
+    controller: badgeController,
+    child: MaterialApp.router(
+      routerConfig: router,
+      builder: (context, child) =>
+          Directionality(textDirection: TextDirection.rtl, child: child!),
+    ),
   );
 }
 
@@ -563,6 +631,170 @@ void main() {
     expect(find.text('عنوان new'), findsOneWidget);
     expect(find.text('عنوان old'), findsOneWidget);
     expect(svc.getNotificationsCallCount, greaterThanOrEqualTo(2));
+  });
+
+  testWidgets(
+    'badge-first cached root activation fetches and renders the new item',
+    (tester) async {
+      final auth = _FakeAuthService();
+      final svc = _FakeNotificationService();
+      final badgeController = NotificationBadgeController(svc);
+      final router = _cachedRootRouter(service: svc, authService: auth);
+      addTearDown(router.dispose);
+      addTearDown(badgeController.dispose);
+
+      await tester.pumpWidget(
+        _buildCachedRootApp(router: router, badgeController: badgeController),
+      );
+      await tester.pumpAndSettle();
+      expect(svc.getNotificationsCallCount, 1);
+
+      router.go('/home');
+      await tester.pumpAndSettle();
+      svc
+        ..firstPageItems = [_item(id: 'n1')]
+        ..unreadCount = 1;
+      badgeController.setCount(1);
+      await tester.pump();
+      expect(
+        AppRefreshCoordinator.instance.isDirty(AppRefreshScope.notifications),
+        isTrue,
+      );
+
+      await tester.tap(find.text('التنبيهات'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(svc.getNotificationsCallCount, 2);
+      expect(svc.firstPageCallSnapshots, [
+        <String>[],
+        <String>['n1'],
+      ]);
+      expect(find.text('عنوان n1'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(
+        AppRefreshCoordinator.instance.isDirty(AppRefreshScope.notifications),
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets('root swipe activates the same cached notifications screen', (
+    tester,
+  ) async {
+    final auth = _FakeAuthService();
+    final svc = _FakeNotificationService();
+    final badgeController = NotificationBadgeController(svc);
+    final router = _cachedRootRouter(service: svc, authService: auth);
+    addTearDown(router.dispose);
+    addTearDown(badgeController.dispose);
+
+    await tester.pumpWidget(
+      _buildCachedRootApp(router: router, badgeController: badgeController),
+    );
+    await tester.pumpAndSettle();
+    router.go('/home');
+    await tester.pumpAndSettle();
+
+    svc
+      ..firstPageItems = [_item(id: 'swipe-new')]
+      ..unreadCount = 1;
+    badgeController.setCount(1);
+    await tester.pump();
+
+    await tester.drag(find.byType(ZadSwipeNav), const Offset(300, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('عنوان swipe-new'), findsOneWidget);
+    expect(svc.getNotificationsCallCount, 2);
+  });
+
+  testWidgets('refresh requested during an active refresh reruns once', (
+    tester,
+  ) async {
+    final svc = _FakeNotificationService()..firstPageItems = [_item(id: 'old')];
+    await tester.pumpWidget(_buildApp(service: svc));
+    await tester.pumpAndSettle();
+
+    final first = Completer<NotificationsPage>();
+    final second = Completer<NotificationsPage>();
+    svc.queuedGates.addAll([first, second]);
+    AppRefreshCoordinator.instance.invalidate(AppRefreshScope.notifications);
+    await tester.pump();
+    AppRefreshCoordinator.instance.invalidate(AppRefreshScope.notifications);
+    await tester.pump();
+
+    expect(svc.getNotificationsCallCount, 2);
+    first.complete(
+      NotificationsPage(
+        items: [_item(id: 'old')],
+        unreadCount: 0,
+        hasMore: false,
+      ),
+    );
+    await tester.pump();
+    expect(svc.getNotificationsCallCount, 3);
+
+    second.complete(
+      NotificationsPage(
+        items: [
+          _item(id: 'new'),
+          _item(id: 'old'),
+        ],
+        unreadCount: 1,
+        hasMore: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('عنوان new'), findsOneWidget);
+    expect(find.text('عنوان old'), findsOneWidget);
+    expect(svc.getNotificationsCallCount, 3);
+  });
+
+  testWidgets('failed activation stays dirty and re-entry retries', (
+    tester,
+  ) async {
+    final svc = _FakeNotificationService()..firstPageItems = [_item(id: 'old')];
+    await tester.pumpWidget(_buildApp(service: svc));
+    await tester.pumpAndSettle();
+
+    svc.getNotificationsError = Exception('network down');
+    AppRefreshCoordinator.instance.notifyRootRouteVisible('/notifications');
+    await tester.pumpAndSettle();
+
+    expect(
+      AppRefreshCoordinator.instance.isDirty(AppRefreshScope.notifications),
+      isTrue,
+    );
+    expect(find.text('عنوان old'), findsOneWidget);
+
+    svc
+      ..getNotificationsError = null
+      ..firstPageItems = [_item(id: 'new'), _item(id: 'old')];
+    AppRefreshCoordinator.instance.notifyRootRouteVisible('/notifications');
+    await tester.pumpAndSettle();
+
+    expect(find.text('عنوان new'), findsOneWidget);
+    expect(
+      AppRefreshCoordinator.instance.isDirty(AppRefreshScope.notifications),
+      isFalse,
+    );
+  });
+
+  testWidgets('already-selected notifications tab refreshes immediately', (
+    tester,
+  ) async {
+    final svc = _FakeNotificationService()..firstPageItems = [_item(id: 'old')];
+    await tester.pumpWidget(_buildApp(service: svc));
+    await tester.pumpAndSettle();
+
+    svc.firstPageItems = [_item(id: 'new'), _item(id: 'old')];
+    await tester.tap(find.text('التنبيهات'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('عنوان new'), findsOneWidget);
+    expect(svc.getNotificationsCallCount, 2);
   });
 
   testWidgets(
