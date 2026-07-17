@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/refresh/app_refresh_coordinator.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/widgets/zad_info_banner.dart';
@@ -75,6 +76,13 @@ class _ComposeTeamAnnouncementScreenState
         body: body,
         title: title.isEmpty ? null : title,
       );
+      AppRefreshCoordinator.instance.invalidateMany({
+        AppRefreshScope.announcements,
+        AppRefreshScope.messages,
+        AppRefreshScope.messagingBadge,
+        AppRefreshScope.notifications,
+        AppRefreshScope.notificationBadge,
+      });
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,

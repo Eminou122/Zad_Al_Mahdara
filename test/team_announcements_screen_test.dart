@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:zad_al_mahdara/core/refresh/app_refresh_coordinator.dart';
 import 'package:zad_al_mahdara/features/messaging/data/team_messaging_service.dart';
 import 'package:zad_al_mahdara/features/messaging/domain/team_messaging_models.dart';
 import 'package:zad_al_mahdara/features/messaging/presentation/compose_team_announcement_screen.dart';
@@ -49,6 +50,7 @@ class _FakeMessagingService extends TeamMessagingService {
   TeamAnnouncementCursor? firstCursor;
   Object? loadError;
   Object? sendError;
+  int announcementCalls = 0;
   int readCalls = 0;
   int createCalls = 0;
   int sendCalls = 0;
@@ -69,6 +71,7 @@ class _FakeMessagingService extends TeamMessagingService {
     TeamAnnouncementCursor? before,
     bool unreadOnly = false,
   }) async {
+    announcementCalls++;
     lastTeamId = teamId;
     lastBefore = before;
     if (loadError != null) throw loadError!;
@@ -224,6 +227,9 @@ Widget _composeApp(_FakeMessagingService service) => MaterialApp(
 );
 
 void main() {
+  setUp(AppRefreshCoordinator.instance.resetForTesting);
+  tearDown(AppRefreshCoordinator.instance.resetForTesting);
+
   testWidgets('empty state renders', (tester) async {
     await tester.pumpWidget(_listApp(_FakeMessagingService()));
     await tester.pumpAndSettle();
@@ -499,6 +505,53 @@ void main() {
     expect(service.lastBefore, cursor);
     expect(find.text('إعلان 19'), findsOneWidget);
     expect(find.text('إعلان 20'), findsOneWidget);
+  });
+
+  testWidgets('announcement invalidation refreshes visible list silently', (
+    tester,
+  ) async {
+    final service = _FakeMessagingService()..first = [_announcement('old')];
+    await tester.pumpWidget(_listApp(service));
+    await tester.pumpAndSettle();
+
+    service.first = [_announcement('new'), _announcement('old')];
+    AppRefreshCoordinator.instance.invalidate(AppRefreshScope.announcements);
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('إعلان new'), findsOneWidget);
+    expect(find.text('إعلان old'), findsOneWidget);
+    expect(service.announcementCalls, greaterThanOrEqualTo(2));
+  });
+
+  testWidgets('announcement foreground polling refreshes while visible', (
+    tester,
+  ) async {
+    final service = _FakeMessagingService()..first = [_announcement('old')];
+    await tester.pumpWidget(_listApp(service));
+    await tester.pumpAndSettle();
+
+    service.first = [_announcement('new')];
+    await tester.pump(const Duration(seconds: 12));
+    await tester.pump();
+
+    expect(find.text('إعلان new'), findsOneWidget);
+  });
+
+  testWidgets('silent announcement refresh failure preserves content', (
+    tester,
+  ) async {
+    final service = _FakeMessagingService()..first = [_announcement('old')];
+    await tester.pumpWidget(_listApp(service));
+    await tester.pumpAndSettle();
+
+    service.loadError = Exception('network down');
+    AppRefreshCoordinator.instance.invalidate(AppRefreshScope.announcements);
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('إعلان old'), findsOneWidget);
+    expect(find.text('إعادة المحاولة'), findsNothing);
   });
 
   testWidgets('renders at 320px without overflow', (tester) async {

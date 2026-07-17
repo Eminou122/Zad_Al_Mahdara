@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:zad_al_mahdara/core/refresh/app_refresh_coordinator.dart';
 import 'package:zad_al_mahdara/features/notifications/data/notification_service.dart';
 import 'package:zad_al_mahdara/features/notifications/domain/notification_models.dart';
 import 'package:zad_al_mahdara/features/notifications/presentation/notifications_screen.dart';
@@ -98,17 +99,53 @@ class _FakeNotificationService extends NotificationService {
     markReadCallCount++;
     lastMarkedReadId = notificationId;
     if (markReadError != null) throw markReadError!;
+    firstPageItems = [
+      for (final item in firstPageItems)
+        item.id == notificationId
+            ? NotificationItem(
+                id: item.id,
+                type: item.type,
+                title: item.title,
+                body: item.body,
+                teamId: item.teamId,
+                actionType: item.actionType,
+                actionPayload: item.actionPayload,
+                isRead: true,
+                createdAt: item.createdAt,
+              )
+            : item,
+    ];
+    unreadCount = firstPageItems.where((item) => !item.isRead).length;
   }
 
   @override
   Future<void> markAllRead() async {
     markAllReadCallCount++;
+    firstPageItems = [
+      for (final item in firstPageItems)
+        NotificationItem(
+          id: item.id,
+          type: item.type,
+          title: item.title,
+          body: item.body,
+          teamId: item.teamId,
+          actionType: item.actionType,
+          actionPayload: item.actionPayload,
+          isRead: true,
+          createdAt: item.createdAt,
+        ),
+    ];
+    unreadCount = 0;
   }
 
   @override
   Future<void> archiveNotification(String notificationId) async {
     archiveCallCount++;
     lastArchivedId = notificationId;
+    firstPageItems = firstPageItems
+        .where((item) => item.id != notificationId)
+        .toList();
+    unreadCount = firstPageItems.where((item) => !item.isRead).length;
   }
 }
 
@@ -147,6 +184,9 @@ Widget _buildApp({NotificationService? service, AuthService? authService}) {
 }
 
 void main() {
+  setUp(AppRefreshCoordinator.instance.resetForTesting);
+  tearDown(AppRefreshCoordinator.instance.resetForTesting);
+
   testWidgets('placeholder wording is gone', (tester) async {
     await tester.pumpWidget(_buildApp());
     await tester.pumpAndSettle();
@@ -506,6 +546,76 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(svc.getNotificationsCallCount, greaterThanOrEqualTo(2));
+  });
+
+  testWidgets('cached root entry refreshes the existing notifications list', (
+    tester,
+  ) async {
+    final svc = _FakeNotificationService()..firstPageItems = [_item(id: 'old')];
+    await tester.pumpWidget(_buildApp(service: svc));
+    await tester.pumpAndSettle();
+
+    svc.firstPageItems = [_item(id: 'new'), _item(id: 'old')];
+    AppRefreshCoordinator.instance.notifyRootRouteVisible('/notifications');
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('عنوان new'), findsOneWidget);
+    expect(find.text('عنوان old'), findsOneWidget);
+    expect(svc.getNotificationsCallCount, greaterThanOrEqualTo(2));
+  });
+
+  testWidgets(
+    'polling stops in background and resumes without removing cards',
+    (tester) async {
+      final svc = _FakeNotificationService()
+        ..firstPageItems = [_item(id: 'old')];
+      await tester.pumpWidget(_buildApp(service: svc));
+      await tester.pumpAndSettle();
+
+      AppRefreshCoordinator.instance.notifyAppBackgrounded();
+      await tester.pump();
+      final callsWhileForeground = svc.getNotificationsCallCount;
+      svc.firstPageItems = [_item(id: 'new'), _item(id: 'old')];
+      await tester.pump(const Duration(seconds: 20));
+
+      expect(svc.getNotificationsCallCount, callsWhileForeground);
+      expect(find.text('عنوان new'), findsNothing);
+
+      AppRefreshCoordinator.instance.notifyAppResumed();
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('عنوان new'), findsOneWidget);
+      expect(find.text('عنوان old'), findsOneWidget);
+    },
+  );
+
+  testWidgets('silent refresh failure preserves existing notifications', (
+    tester,
+  ) async {
+    final svc = _FakeNotificationService()..firstPageItems = [_item(id: 'old')];
+    await tester.pumpWidget(_buildApp(service: svc));
+    await tester.pumpAndSettle();
+
+    svc.getNotificationsError = Exception('network down');
+    AppRefreshCoordinator.instance.invalidate(AppRefreshScope.notifications);
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('عنوان old'), findsOneWidget);
+    expect(find.text('إعادة المحاولة'), findsNothing);
+  });
+
+  testWidgets('first-page refresh deduplicates notification IDs', (
+    tester,
+  ) async {
+    final svc = _FakeNotificationService()
+      ..firstPageItems = [_item(id: 'n1'), _item(id: 'n1')];
+    await tester.pumpWidget(_buildApp(service: svc));
+    await tester.pumpAndSettle();
+
+    expect(find.text('عنوان n1'), findsOneWidget);
   });
 
   testWidgets('renders at 320px without overflow', (tester) async {

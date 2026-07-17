@@ -2,6 +2,7 @@ import 'dart:async' show Timer, unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/refresh/app_refresh_coordinator.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/utils/ltr_fragment.dart';
@@ -139,11 +140,13 @@ class _MessagingHomeScreenState extends State<MessagingHomeScreen> {
                     service: _svc,
                     teamService: _teamSvc,
                     refreshInterval: widget.inboxRefreshInterval,
+                    active: _messagesPage == 0,
                   ),
                   TeamAnnouncementsScreen(
                     authService: widget.authService,
                     service: _svc,
                     showAppBar: false,
+                    active: _messagesPage == 1,
                   ),
                 ],
               ),
@@ -185,20 +188,21 @@ class _ConversationsTab extends StatefulWidget {
   final TeamMessagingService service;
   final TeamService teamService;
   final Duration refreshInterval;
+  final bool active;
 
   const _ConversationsTab({
     required this.authService,
     required this.service,
     required this.teamService,
     required this.refreshInterval,
+    required this.active,
   });
 
   @override
   State<_ConversationsTab> createState() => _ConversationsTabState();
 }
 
-class _ConversationsTabState extends State<_ConversationsTab>
-    with WidgetsBindingObserver {
+class _ConversationsTabState extends State<_ConversationsTab> {
   final ScrollController _scrollController = ScrollController();
 
   List<TeamConversationSummary> _items = [];
@@ -209,10 +213,17 @@ class _ConversationsTabState extends State<_ConversationsTab>
   bool _loading = true;
   bool _refreshing = false;
   bool _loadingMore = false;
-  bool _silentRefreshing = false;
   bool _foreground = true;
+  bool _rootVisible = true;
+  bool _routeCovered = false;
+  bool _refreshInFlight = false;
+  bool _refreshAgain = false;
+  int _requestGeneration = 0;
   String? _error;
   Timer? _refreshTimer;
+  VoidCallback? _unsubscribeRefresh;
+  VoidCallback? _unsubscribeRoute;
+  VoidCallback? _unsubscribeForeground;
 
   // Only used to pick between the member/leader empty-state copy when the
   // conversation list itself is empty (an empty page carries no
@@ -223,10 +234,28 @@ class _ConversationsTabState extends State<_ConversationsTab>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
+    _unsubscribeRefresh = AppRefreshCoordinator.instance.subscribe(
+      AppRefreshScope.messages,
+      (_) => _refreshNow(),
+    );
+    _unsubscribeRoute = AppRefreshCoordinator.instance
+        .subscribeRootRouteVisible(_onRootRouteVisible);
+    _unsubscribeForeground = AppRefreshCoordinator.instance
+        .subscribeAppForeground(_onForegroundChanged);
     _load();
     _loadLeadershipHint();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ConversationsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active == widget.active) return;
+    if (_visible) {
+      _refreshNow();
+    } else {
+      _stopAutoRefresh();
+    }
   }
 
   Future<void> _loadLeadershipHint() async {
@@ -244,22 +273,40 @@ class _ConversationsTabState extends State<_ConversationsTab>
   @override
   void dispose() {
     _stopAutoRefresh();
-    WidgetsBinding.instance.removeObserver(this);
+    _unsubscribeRefresh?.call();
+    _unsubscribeRoute?.call();
+    _unsubscribeForeground?.call();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    final foreground = state == AppLifecycleState.resumed;
+  void _onForegroundChanged(bool foreground) {
     if (foreground == _foreground) return;
     _foreground = foreground;
     if (foreground) {
-      _startAutoRefresh(immediate: true);
+      _startAutoRefresh();
     } else {
       _stopAutoRefresh();
     }
+  }
+
+  void _onRootRouteVisible(String route) {
+    final visible = route == '/messages';
+    if (_rootVisible == visible) return;
+    _rootVisible = visible;
+    if (visible) {
+      _startAutoRefresh();
+    } else {
+      _stopAutoRefresh();
+    }
+  }
+
+  bool get _visible => widget.active && _rootVisible && !_routeCovered;
+
+  void _refreshNow() {
+    if (!_foreground || !_visible) return;
+    _startAutoRefresh(immediate: true);
   }
 
   void _onScroll() {
@@ -280,11 +327,15 @@ class _ConversationsTabState extends State<_ConversationsTab>
   }
 
   Future<void> _load({bool silent = false}) async {
-    if (silent && (_silentRefreshing || !_hasLoadedOnce)) return;
+    if (_refreshInFlight) {
+      _refreshAgain = true;
+      return;
+    }
+    if (silent && !_hasLoadedOnce) return;
+    _refreshInFlight = true;
+    final generation = ++_requestGeneration;
     final isInitialLoad = !_hasLoadedOnce;
-    if (silent) {
-      _silentRefreshing = true;
-    } else {
+    if (!silent) {
       setState(() {
         if (isInitialLoad) {
           _loading = true;
@@ -298,7 +349,7 @@ class _ConversationsTabState extends State<_ConversationsTab>
       final page = await widget.service.getMyTeamConversations(
         limit: _pageSize,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _items = silent
             ? _dedupe([
@@ -313,14 +364,12 @@ class _ConversationsTabState extends State<_ConversationsTab>
         _hasLoadedOnce = true;
         _loading = false;
         _refreshing = false;
-        _silentRefreshing = false;
       });
       ZadMessagingBadgeScope.maybeOf(context)?.refresh();
       _startAutoRefresh();
     } catch (e) {
       if (!mounted) return;
       if (silent) {
-        _silentRefreshing = false;
         return;
       }
       if (isInitialLoad) {
@@ -331,11 +380,17 @@ class _ConversationsTabState extends State<_ConversationsTab>
       } else {
         setState(() => _refreshing = false);
       }
+    } finally {
+      _refreshInFlight = false;
+      if (_refreshAgain && mounted) {
+        _refreshAgain = false;
+        unawaited(_load(silent: _hasLoadedOnce));
+      }
     }
   }
 
   void _startAutoRefresh({bool immediate = false}) {
-    if (!_foreground || !_hasLoadedOnce) return;
+    if (!_foreground || !_visible || !_hasLoadedOnce) return;
     _refreshTimer?.cancel();
     if (immediate) unawaited(_load(silent: true));
     _refreshTimer = Timer(widget.refreshInterval, () {
@@ -350,16 +405,20 @@ class _ConversationsTabState extends State<_ConversationsTab>
   }
 
   Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore) return;
+    if (_loadingMore || _refreshInFlight || !_hasMore) return;
     final cursor = _nextCursor;
     if (cursor == null) return;
+    final generation = ++_requestGeneration;
     setState(() => _loadingMore = true);
     try {
       final page = await widget.service.getMyTeamConversations(
         limit: _pageSize,
         before: cursor,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) {
+        if (mounted) setState(() => _loadingMore = false);
+        return;
+      }
       final existingIds = _items.map((e) => e.id).toSet();
       setState(() {
         _items = [
@@ -380,6 +439,8 @@ class _ConversationsTabState extends State<_ConversationsTab>
   }
 
   void _openConversation(TeamConversationSummary c) {
+    _routeCovered = true;
+    _stopAutoRefresh();
     context
         .push(
           '/messages/conversation/${c.id}',
@@ -392,8 +453,8 @@ class _ConversationsTabState extends State<_ConversationsTab>
         )
         .then((_) {
           if (mounted) {
-            _load(silent: true);
-            ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+            _routeCovered = false;
+            _refreshNow();
           }
         });
   }

@@ -1,6 +1,7 @@
 import 'dart:async' show Timer, unawaited;
 
 import 'package:flutter/material.dart';
+import '../../../core/refresh/app_refresh_coordinator.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/utils/ltr_fragment.dart';
@@ -122,6 +123,10 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
 
   @override
   void dispose() {
+    AppRefreshCoordinator.instance.invalidateMany({
+      AppRefreshScope.messages,
+      AppRefreshScope.messagingBadge,
+    });
     _stopSync();
     _stopLiveStateTimer();
     _clearTypingBestEffort();
@@ -282,6 +287,10 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
     }
     if (!mounted) return;
     ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+    AppRefreshCoordinator.instance.invalidateMany({
+      AppRefreshScope.messages,
+      AppRefreshScope.messagingBadge,
+    });
   }
 
   void _scheduleSync({bool immediate = false}) {
@@ -471,6 +480,10 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
       _clearTypingBestEffort();
       _scrollToNewest();
       ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+      AppRefreshCoordinator.instance.invalidateMany({
+        AppRefreshScope.messages,
+        AppRefreshScope.messagingBadge,
+      });
       _scheduleSync(immediate: true);
     } catch (e) {
       if (!mounted) return;

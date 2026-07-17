@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'zad_bottom_nav.dart';
 import 'zad_nested_swipe_scope.dart';
+import '../refresh/app_refresh_coordinator.dart';
 import '../theme/zad_tokens.dart';
 
 /// Wraps a bottom-nav root-tab screen with horizontal swipe-to-switch-tab.
@@ -195,27 +196,35 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
   @override
   void initState() {
     super.initState();
-    _settleCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    )
-      ..addListener(() {
-        if (!mounted) return;
-        setState(() {
-          _dragOffset =
-              _settleFrom + (_settleTo - _settleFrom) * _settleCtrl.value;
-        });
-      })
-      ..addStatusListener((status) {
-        if (status != AnimationStatus.completed) return;
-        _overrideNeighbor = null;
-        final route = _commitRoute;
-        _commitRoute = null;
-        if (route != null && mounted) {
-          _selfCommit = true;
-          context.go(route, extra: ZadSwipeNav.swipeCommitExtra);
-        }
-      });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.index >= 0) {
+        AppRefreshCoordinator.instance.notifyRootRouteVisible(
+          widget.routes[widget.index],
+        );
+      }
+    });
+    _settleCtrl =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 250),
+          )
+          ..addListener(() {
+            if (!mounted) return;
+            setState(() {
+              _dragOffset =
+                  _settleFrom + (_settleTo - _settleFrom) * _settleCtrl.value;
+            });
+          })
+          ..addStatusListener((status) {
+            if (status != AnimationStatus.completed) return;
+            _overrideNeighbor = null;
+            final route = _commitRoute;
+            _commitRoute = null;
+            if (route != null && mounted) {
+              _selfCommit = true;
+              context.go(route, extra: ZadSwipeNav.swipeCommitExtra);
+            }
+          });
   }
 
   @override
@@ -232,6 +241,11 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
       _childPcs.removeWhere((r, _) => !widget.routes.contains(r));
     }
     if (widget.index == old.index && !routesChanged) return;
+    if (widget.index >= 0) {
+      AppRefreshCoordinator.instance.notifyRootRouteVisible(
+        widget.routes[widget.index],
+      );
+    }
 
     _settleCtrl.stop();
     _commitRoute = null;
@@ -242,7 +256,8 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
     // index change just swaps roles at identical pixels. External changes
     // (bottom-nav tap, browser back/forward) play the same filmstrip
     // slide programmatically so every tab change feels like the gallery.
-    final canSlide = !wasSelfCommit &&
+    final canSlide =
+        !wasSelfCommit &&
         !routesChanged &&
         widget.screenBuilder != null &&
         old.index >= 0 &&
@@ -513,9 +528,7 @@ class _ZadSwipeNavState extends State<ZadSwipeNav>
                 ignoring: !isCurrent,
                 child: Transform.translate(
                   offset: Offset(
-                    isCurrent
-                        ? _dragOffset
-                        : (isNeighbor ? neighborOffset : 0),
+                    isCurrent ? _dragOffset : (isNeighbor ? neighborOffset : 0),
                     0,
                   ),
                   child: NotificationListener<PageControllerRegistration>(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/refresh/app_refresh_coordinator.dart';
 import '../../../core/routing/route_observer.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
@@ -732,6 +733,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
       );
       if (mounted) {
         setState(() => _shoppingOverview = overview);
+        AppRefreshCoordinator.instance.invalidateMany({
+          AppRefreshScope.notifications,
+          AppRefreshScope.notificationBadge,
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تم إرسال القائمة للقائد')),
         );
@@ -779,6 +784,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
         setState(() {
           _shoppingOverview = overview;
           _reviewingStatus = null;
+        });
+        AppRefreshCoordinator.instance.invalidateMany({
+          AppRefreshScope.notifications,
+          AppRefreshScope.notificationBadge,
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -991,6 +1000,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
           _turnState = ts;
           _turnLoading = false;
         });
+        AppRefreshCoordinator.instance.invalidateMany({
+          AppRefreshScope.notifications,
+          AppRefreshScope.notificationBadge,
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -1034,6 +1047,10 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
         setState(() {
           _turnState = ts;
           _turnLoading = false;
+        });
+        AppRefreshCoordinator.instance.invalidateMany({
+          AppRefreshScope.notifications,
+          AppRefreshScope.notificationBadge,
         });
         ScaffoldMessenger.of(
           context,

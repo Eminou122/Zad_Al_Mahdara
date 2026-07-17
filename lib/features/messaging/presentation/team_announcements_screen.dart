@@ -1,5 +1,8 @@
+import 'dart:async' show Timer, unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/refresh/app_refresh_coordinator.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/utils/ltr_fragment.dart';
@@ -15,6 +18,7 @@ import '../domain/team_messaging_models.dart';
 import 'message_team_leader_dialog.dart';
 
 const int _pageSize = 30;
+const Duration _pollInterval = Duration(seconds: 12);
 
 /// Team announcements list. [teamId] null = the aggregate "all my teams"
 /// view used by the messaging home الإعلانات tab; a concrete [teamId] =
@@ -30,6 +34,7 @@ class TeamAnnouncementsScreen extends StatefulWidget {
   final TeamMessagingService? service;
   final TeamService? teamService;
   final bool showAppBar;
+  final bool active;
 
   const TeamAnnouncementsScreen({
     super.key,
@@ -41,6 +46,7 @@ class TeamAnnouncementsScreen extends StatefulWidget {
     this.service,
     this.teamService,
     this.showAppBar = true,
+    this.active = true,
   });
 
   @override
@@ -61,9 +67,19 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
   bool _loading = true;
   bool _refreshing = false;
   bool _loadingMore = false;
+  bool _refreshInFlight = false;
+  bool _refreshAgain = false;
+  bool _foreground = true;
+  bool _rootVisible = true;
+  bool _routeCovered = false;
+  int _requestGeneration = 0;
   String? _error;
   final Set<String> _markingRead = {};
   bool _canMessageLeader = false;
+  Timer? _pollTimer;
+  VoidCallback? _unsubscribeRefresh;
+  VoidCallback? _unsubscribeRoute;
+  VoidCallback? _unsubscribeForeground;
 
   @override
   void initState() {
@@ -71,12 +87,25 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
     _svc = widget.service ?? TeamMessagingService(widget.authService);
     _teamSvc = widget.teamService ?? TeamService(widget.authService);
     _scrollController.addListener(_onScroll);
+    _unsubscribeRefresh = AppRefreshCoordinator.instance.subscribe(
+      AppRefreshScope.announcements,
+      (_) => _refreshNow(),
+    );
+    _unsubscribeRoute = AppRefreshCoordinator.instance
+        .subscribeRootRouteVisible(_onRootRouteVisible);
+    _unsubscribeForeground = AppRefreshCoordinator.instance
+        .subscribeAppForeground(_onForegroundChanged);
     _load();
     _loadEligibility();
+    _startPolling();
   }
 
   @override
   void dispose() {
+    _stopPolling();
+    _unsubscribeRefresh?.call();
+    _unsubscribeRoute?.call();
+    _unsubscribeForeground?.call();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
@@ -85,9 +114,62 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
   @override
   void didUpdateWidget(covariant TeamAnnouncementsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) {
+      if (_visible) {
+        _refreshNow();
+      } else {
+        _stopPolling();
+      }
+    }
     if (oldWidget.teamId == widget.teamId) return;
     _canMessageLeader = false;
     _loadEligibility();
+  }
+
+  bool get _usesRootVisibility => !widget.showAppBar && widget.teamId == null;
+
+  bool get _visible =>
+      widget.active && (!_usesRootVisibility || _rootVisible) && !_routeCovered;
+
+  void _onForegroundChanged(bool foreground) {
+    if (foreground == _foreground) return;
+    _foreground = foreground;
+    if (foreground) {
+      _startPolling();
+    } else {
+      _stopPolling();
+    }
+  }
+
+  void _onRootRouteVisible(String route) {
+    if (!_usesRootVisibility) return;
+    final visible = route == '/messages';
+    if (_rootVisible == visible) return;
+    _rootVisible = visible;
+    if (visible) {
+      _startPolling();
+    } else {
+      _stopPolling();
+    }
+  }
+
+  void _refreshNow() {
+    if (!_foreground || !_visible) return;
+    _startPolling(immediate: true);
+  }
+
+  void _startPolling({bool immediate = false}) {
+    if (!_foreground || !_visible) return;
+    _pollTimer?.cancel();
+    if (immediate) unawaited(_load(silent: true));
+    _pollTimer = Timer.periodic(_pollInterval, (_) {
+      unawaited(_load(silent: true));
+    });
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
   }
 
   bool _eligibleToMessageLeader(TeamDetail detail) {
@@ -130,22 +212,32 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
     return out;
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool silent = false, bool showErrors = false}) async {
+    if (_refreshInFlight) {
+      _refreshAgain = true;
+      return;
+    }
+    _refreshInFlight = true;
+    final generation = ++_requestGeneration;
     final isInitialLoad = !_hasLoadedOnce;
-    setState(() {
-      if (isInitialLoad) {
-        _loading = true;
-      } else {
-        _refreshing = true;
-      }
-      _error = null;
-    });
+    if (!silent || isInitialLoad) {
+      setState(() {
+        if (isInitialLoad) {
+          _loading = true;
+        } else {
+          _refreshing = true;
+        }
+        _error = null;
+      });
+    } else if (_hasLoadedOnce) {
+      setState(() => _refreshing = true);
+    }
     try {
       final page = await _svc.getMyTeamAnnouncements(
         teamId: widget.teamId,
         limit: _pageSize,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _items = _dedupe(page.items);
         _hasMore = page.hasMore;
@@ -171,17 +263,26 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
         });
       } else {
         setState(() => _refreshing = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+        if (showErrors) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+        }
+      }
+    } finally {
+      _refreshInFlight = false;
+      if (_refreshAgain && mounted) {
+        _refreshAgain = false;
+        unawaited(_load(silent: true));
       }
     }
   }
 
   Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore) return;
+    if (_loadingMore || _refreshInFlight || !_hasMore) return;
     final cursor = _nextCursor;
     if (cursor == null) return;
+    final generation = ++_requestGeneration;
     setState(() => _loadingMore = true);
     try {
       final page = await _svc.getMyTeamAnnouncements(
@@ -189,7 +290,10 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
         limit: _pageSize,
         before: cursor,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) {
+        if (mounted) setState(() => _loadingMore = false);
+        return;
+      }
       final existingIds = _items.map((e) => e.id).toSet();
       setState(() {
         _items = [
@@ -235,6 +339,7 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
         _markingRead.remove(item.id);
       });
       ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+      AppRefreshCoordinator.instance.invalidate(AppRefreshScope.messagingBadge);
     } catch (_) {
       if (!mounted) return;
       setState(() => _markingRead.remove(item.id));
@@ -245,12 +350,26 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
   Future<void> _openCompose() async {
     final teamId = widget.teamId;
     if (teamId == null) return;
+    _routeCovered = true;
+    _stopPolling();
     final created = await context.push<bool>(
       '/teams/$teamId/announcements/new',
       extra: widget.teamName,
     );
-    if (!mounted || created != true) return;
-    _load();
+    if (!mounted) return;
+    _routeCovered = false;
+    if (created != true) {
+      _startPolling();
+      return;
+    }
+    AppRefreshCoordinator.instance.invalidateMany({
+      AppRefreshScope.announcements,
+      AppRefreshScope.messages,
+      AppRefreshScope.messagingBadge,
+      AppRefreshScope.notifications,
+      AppRefreshScope.notificationBadge,
+    });
+    _refreshNow();
     ZadMessagingBadgeScope.maybeOf(context)?.refresh();
   }
 
@@ -262,8 +381,14 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
           MessageTeamLeaderDialog(service: _svc, teamId: item.teamId),
     );
     if (result == null || !mounted) return;
+    AppRefreshCoordinator.instance.invalidateMany({
+      AppRefreshScope.messages,
+      AppRefreshScope.messagingBadge,
+    });
     ZadMessagingBadgeScope.maybeOf(context)?.refresh();
-    context.push(
+    _routeCovered = true;
+    _stopPolling();
+    await context.push(
       '/messages/conversation/${result.conversation.id}',
       extra: {
         'teamId': result.conversation.teamId,
@@ -271,6 +396,9 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
         'currentUserRole': 'member',
       },
     );
+    if (!mounted) return;
+    _routeCovered = false;
+    _refreshNow();
   }
 
   @override
@@ -315,7 +443,7 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
               ),
               const SizedBox(height: ZadTokens.s3),
               OutlinedButton.icon(
-                onPressed: _load,
+                onPressed: () => _load(showErrors: true),
                 icon: const Icon(Icons.refresh),
                 label: const Text('إعادة المحاولة'),
               ),
@@ -374,7 +502,10 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
       );
     }
 
-    return RefreshIndicator(onRefresh: _load, child: content);
+    return RefreshIndicator(
+      onRefresh: () => _load(showErrors: true),
+      child: content,
+    );
   }
 }
 

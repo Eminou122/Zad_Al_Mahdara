@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zad_al_mahdara/core/refresh/app_refresh_coordinator.dart';
 import 'package:zad_al_mahdara/core/theme/zad_tokens.dart';
 import 'package:zad_al_mahdara/features/messaging/data/team_messaging_service.dart';
 import 'package:zad_al_mahdara/features/messaging/domain/team_messaging_models.dart';
@@ -17,14 +18,16 @@ TeamConversationSummary _conversation(
   String id, {
   int unread = 0,
   String role = 'member',
+  String? preview,
+  DateTime? latestAt,
 }) => TeamConversationSummary(
   id: id,
   teamId: 'team-$id',
   teamName: 'فريق $id',
   memberProfileId: 'member-$id',
   memberName: 'أحمد $id',
-  latestMessagePreview: 'رسالة $id',
-  latestMessageAt: DateTime(2026, 7, 13, 10),
+  latestMessagePreview: preview ?? 'رسالة $id',
+  latestMessageAt: latestAt ?? DateTime(2026, 7, 13, 10),
   unreadCount: unread,
   currentUserRole: role,
 );
@@ -104,20 +107,22 @@ Widget _wrap(
   _FakeMessagingService service, {
   bool leader = false,
   Duration inboxRefreshInterval = const Duration(seconds: 10),
-}) =>
-    MaterialApp(
-      home: Directionality(
-        textDirection: TextDirection.rtl,
-        child: MessagingHomeScreen(
-          authService: _FakeAuthService(),
-          service: service,
-          teamService: _FakeTeamService(leader: leader),
-          inboxRefreshInterval: inboxRefreshInterval,
-        ),
-      ),
-    );
+}) => MaterialApp(
+  home: Directionality(
+    textDirection: TextDirection.rtl,
+    child: MessagingHomeScreen(
+      authService: _FakeAuthService(),
+      service: service,
+      teamService: _FakeTeamService(leader: leader),
+      inboxRefreshInterval: inboxRefreshInterval,
+    ),
+  ),
+);
 
 void main() {
+  setUp(AppRefreshCoordinator.instance.resetForTesting);
+  tearDown(AppRefreshCoordinator.instance.resetForTesting);
+
   testWidgets('shows tabs and member empty state', (tester) async {
     await tester.pumpWidget(_wrap(_FakeMessagingService()));
     await tester.pumpAndSettle();
@@ -271,5 +276,49 @@ void main() {
 
     expect(find.text('4'), findsOneWidget);
     expect(find.text('المحادثات'), findsOneWidget);
+  });
+
+  testWidgets(
+    'cached messages root entry refreshes conversations immediately',
+    (tester) async {
+      final service = _FakeMessagingService()
+        ..first = [_conversation('1', unread: 0, preview: 'قديم')];
+      await tester.pumpWidget(_wrap(service));
+      await tester.pumpAndSettle();
+
+      service.first = [
+        _conversation(
+          '1',
+          unread: 5,
+          preview: 'جديد',
+          latestAt: DateTime(2026, 7, 13, 11),
+        ),
+      ];
+      AppRefreshCoordinator.instance.notifyRootRouteVisible('/messages');
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('جديد'), findsOneWidget);
+      expect(find.text('5'), findsOneWidget);
+      expect(find.text('قديم'), findsNothing);
+    },
+  );
+
+  testWidgets('messages invalidation keeps selected announcements tab', (
+    tester,
+  ) async {
+    final service = _FakeMessagingService()
+      ..first = [_conversation('1', unread: 0)];
+    await tester.pumpWidget(_wrap(service));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الإعلانات').first);
+    await tester.pumpAndSettle();
+
+    AppRefreshCoordinator.instance.notifyRootRouteVisible('/messages');
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('نص الإعلان 1'), findsOneWidget);
+    expect(find.text('لا توجد محادثات حتى الآن'), findsNothing);
   });
 }

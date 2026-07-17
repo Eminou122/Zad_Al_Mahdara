@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/refresh/app_refresh_coordinator.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/utils/ltr_fragment.dart';
@@ -15,6 +18,7 @@ import '../data/notification_service.dart';
 import '../domain/notification_models.dart';
 
 const int _pageSize = 25;
+const Duration _pollInterval = Duration(seconds: 10);
 
 class NotificationsScreen extends StatefulWidget {
   final AuthService authService;
@@ -47,6 +51,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _refreshing = false;
   bool _loadingMore = false;
   bool _markingAllRead = false;
+  bool _refreshInFlight = false;
+  bool _refreshAgain = false;
+  bool _rootVisible = true;
+  bool _foreground = true;
+  bool _routeCovered = false;
+  int _requestGeneration = 0;
+  int _pollFailures = 0;
+  Timer? _pollTimer;
+  VoidCallback? _unsubscribeRefresh;
+  VoidCallback? _unsubscribeRoute;
+  VoidCallback? _unsubscribeForeground;
   final Set<String> _busyIds = {};
   String? _error;
 
@@ -55,14 +70,70 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     super.initState();
     _svc = widget.service ?? NotificationService(widget.authService);
     _scrollController.addListener(_onScroll);
-    _load();
+    _unsubscribeRefresh = AppRefreshCoordinator.instance.subscribe(
+      AppRefreshScope.notifications,
+      (_) => _onInvalidated(),
+    );
+    _unsubscribeRoute = AppRefreshCoordinator.instance
+        .subscribeRootRouteVisible(_onRootRouteVisible);
+    _unsubscribeForeground = AppRefreshCoordinator.instance
+        .subscribeAppForeground(_onForegroundChanged);
+    _refresh(showErrors: true);
+    _startPolling();
   }
 
   @override
   void dispose() {
+    _unsubscribeRefresh?.call();
+    _unsubscribeRoute?.call();
+    _unsubscribeForeground?.call();
+    _stopPolling();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onRootRouteVisible(String route) {
+    final visible = route == '/notifications';
+    if (_rootVisible == visible) return;
+    _rootVisible = visible;
+    if (visible) {
+      _startPolling();
+    } else {
+      _stopPolling();
+    }
+  }
+
+  void _onForegroundChanged(bool foreground) {
+    if (_foreground == foreground) return;
+    _foreground = foreground;
+    if (foreground) {
+      _startPolling();
+    } else {
+      _stopPolling();
+    }
+  }
+
+  bool get _visible => _rootVisible && !_routeCovered;
+
+  void _onInvalidated() {
+    if (!_foreground || !_visible) return;
+    _startPolling(immediate: true);
+  }
+
+  void _startPolling({bool immediate = false}) {
+    if (!_foreground || !_visible) return;
+    _pollTimer?.cancel();
+    if (immediate) unawaited(_refresh(silent: true));
+    _pollTimer = Timer.periodic(_pollInterval, (_) {
+      if (_pollFailures >= 3) return;
+      unawaited(_refresh(silent: true));
+    });
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
   }
 
   void _onScroll() {
@@ -91,19 +162,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   // return-to-tab run as a silent background refresh instead (_refreshing),
   // so existing content never disappears mid-refresh — same split as
   // TeamDetailScreen.
-  Future<void> _load() async {
+  Future<void> _refresh({bool silent = false, bool showErrors = false}) async {
+    if (_refreshInFlight) {
+      _refreshAgain = true;
+      return;
+    }
+    _refreshInFlight = true;
+    final generation = ++_requestGeneration;
     final isInitialLoad = !_hasLoadedOnce;
-    setState(() {
-      if (isInitialLoad) {
-        _loading = true;
-      } else {
-        _refreshing = true;
-      }
-      _error = null;
-    });
+    if (!silent || isInitialLoad) {
+      setState(() {
+        if (isInitialLoad) {
+          _loading = true;
+        } else {
+          _refreshing = true;
+        }
+        _error = null;
+      });
+    } else if (_hasLoadedOnce) {
+      setState(() => _refreshing = true);
+    }
     try {
       final page = await _svc.getNotifications(limit: _pageSize);
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) {
+        if (mounted) setState(() => _loadingMore = false);
+        return;
+      }
       setState(() {
         _items = _dedupe(page.items);
         _unreadCount = page.unreadCount;
@@ -114,6 +198,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _refreshing = false;
       });
       _pushBadge(page.unreadCount);
+      _pollFailures = 0;
     } catch (e) {
       if (!mounted) return;
       if (isInitialLoad) {
@@ -123,17 +208,27 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         });
       } else {
         setState(() => _refreshing = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+        _pollFailures++;
+        if (showErrors) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+        }
+      }
+    } finally {
+      _refreshInFlight = false;
+      if (_refreshAgain && mounted) {
+        _refreshAgain = false;
+        unawaited(_refresh(silent: true));
       }
     }
   }
 
   Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore) return;
+    if (_loadingMore || _refreshInFlight || !_hasMore) return;
     final cursor = _nextCursor;
     if (cursor == null) return;
+    final generation = ++_requestGeneration;
     setState(() => _loadingMore = true);
     try {
       final page = await _svc.getNotifications(
@@ -141,7 +236,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         before: cursor.createdAt,
         beforeId: cursor.id,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) {
+        if (mounted) setState(() => _loadingMore = false);
+        return;
+      }
       final existingIds = _items.map((e) => e.id).toSet();
       setState(() {
         _items = [
@@ -175,6 +273,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _unreadCount = _unreadCount > 0 ? _unreadCount - 1 : 0;
       });
       _pushBadge(_unreadCount);
+      AppRefreshCoordinator.instance.invalidate(
+        AppRefreshScope.notificationBadge,
+      );
+      unawaited(_refresh(silent: true));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -195,6 +297,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _markingAllRead = false;
       });
       _pushBadge(0);
+      AppRefreshCoordinator.instance.invalidate(
+        AppRefreshScope.notificationBadge,
+      );
+      unawaited(_refresh(silent: true));
     } catch (e) {
       if (!mounted) return;
       setState(() => _markingAllRead = false);
@@ -218,6 +324,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         }
       });
       _pushBadge(_unreadCount);
+      AppRefreshCoordinator.instance.invalidate(
+        AppRefreshScope.notificationBadge,
+      );
+      unawaited(_refresh(silent: true));
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('تم أرشفة الإشعار')));
@@ -235,10 +345,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       await _markRead(item);
     }
     if (!mounted) return;
-    _navigateForAction(item);
+    await _navigateForAction(item);
   }
 
-  void _navigateForAction(NotificationItem item) {
+  Future<T?> _pushActionRoute<T>(String route, {Object? extra}) async {
+    _routeCovered = true;
+    _stopPolling();
+    final result = await context.push<T>(route, extra: extra);
+    if (!mounted) return result;
+    _routeCovered = false;
+    _startPolling(immediate: true);
+    return result;
+  }
+
+  Future<void> _navigateForAction(NotificationItem item) async {
     switch (item.actionType) {
       case 'open_team':
       case 'open_team_shopping':
@@ -253,7 +373,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           );
           return;
         }
-        context.push('/teams/$teamId');
+        await _pushActionRoute<void>('/teams/$teamId');
       case 'open_team_conversation':
         final payload = item.actionPayload;
         final teamId = payload?['team_id'] is String
@@ -265,7 +385,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             conversationId is! String ||
             conversationId.isEmpty) {
           if (teamId != null && teamId.isNotEmpty) {
-            context.push('/teams/$teamId');
+            await _pushActionRoute<void>('/teams/$teamId');
             return;
           }
           ScaffoldMessenger.of(context).showSnackBar(
@@ -275,16 +395,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           );
           return;
         }
-        context
-            .push(
-              '/messages/conversation/$conversationId',
-              extra: {'teamId': teamId},
-            )
-            .then((_) {
-              if (mounted) {
-                ZadMessagingBadgeScope.maybeOf(context)?.refresh();
-              }
-            });
+        await _pushActionRoute<void>(
+          '/messages/conversation/$conversationId',
+          extra: {'teamId': teamId},
+        );
+        if (mounted) {
+          ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+          AppRefreshCoordinator.instance.invalidateMany({
+            AppRefreshScope.messages,
+            AppRefreshScope.messagingBadge,
+          });
+        }
       case 'open_team_announcements':
         final payload = item.actionPayload;
         final teamId = payload?['team_id'] is String
@@ -299,18 +420,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           return;
         }
         final announcementId = payload?['announcement_id'];
-        context
-            .push(
-              '/teams/$teamId/announcements',
-              extra: {
-                if (announcementId is String) 'announcementId': announcementId,
-              },
-            )
-            .then((_) {
-              if (mounted) {
-                ZadMessagingBadgeScope.maybeOf(context)?.refresh();
-              }
-            });
+        await _pushActionRoute<void>(
+          '/teams/$teamId/announcements',
+          extra: {
+            if (announcementId is String) 'announcementId': announcementId,
+          },
+        );
+        if (mounted) {
+          ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+          AppRefreshCoordinator.instance.invalidateMany({
+            AppRefreshScope.announcements,
+            AppRefreshScope.messagingBadge,
+          });
+        }
       default:
         // Unknown or missing action_type: nothing to do, already marked
         // read above — stay on the notifications screen.
@@ -334,7 +456,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
                 const SizedBox(height: ZadTokens.s3),
                 OutlinedButton.icon(
-                  onPressed: _load,
+                  onPressed: () => _refresh(showErrors: true),
                   icon: const Icon(Icons.refresh),
                   label: const Text('إعادة المحاولة'),
                 ),
@@ -392,7 +514,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
 
     return _shell(
-      body: RefreshIndicator(onRefresh: _load, child: body),
+      body: RefreshIndicator(
+        onRefresh: () => _refresh(showErrors: true),
+        child: body,
+      ),
     );
   }
 

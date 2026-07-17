@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/zad_tokens.dart';
+import '../refresh/app_refresh_coordinator.dart';
 import 'zad_messaging_badge_scope.dart';
 import 'zad_notification_badge_scope.dart';
 import 'zad_session_scope.dart';
@@ -152,7 +153,10 @@ class ZadBottomNav extends StatelessWidget {
                       ZadTab.messages => messagingUnreadCount,
                       _ => 0,
                     },
-                    onTap: tab == current ? null : () => context.go(route),
+                    onTap: tab == current
+                        ? () => AppRefreshCoordinator.instance
+                              .notifyRootRouteVisible(route)
+                        : () => context.go(route),
                   ),
                 ),
             ],

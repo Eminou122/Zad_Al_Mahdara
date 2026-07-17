@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'core/routing/app_router.dart';
+import 'core/refresh/app_refresh_coordinator.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/zad_messaging_badge_scope.dart';
 import 'core/widgets/zad_notification_badge_scope.dart';
@@ -25,6 +26,8 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
   late final NotificationBadgeController _badgeController;
   late final MessagingBadgeController _messagingBadgeController;
   late final MessagingPresenceController _presenceController;
+  late final VoidCallback _unsubscribeNotificationBadgeRefresh;
+  late final VoidCallback _unsubscribeMessagingBadgeRefresh;
 
   @override
   void initState() {
@@ -40,6 +43,16 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
       widget.authService,
       TeamMessagingService(widget.authService),
     );
+    _unsubscribeNotificationBadgeRefresh = AppRefreshCoordinator.instance
+        .subscribe(AppRefreshScope.notificationBadge, (_) {
+          if (widget.authService.isAuthenticated) _badgeController.refresh();
+        });
+    _unsubscribeMessagingBadgeRefresh = AppRefreshCoordinator.instance
+        .subscribe(AppRefreshScope.messagingBadge, (_) {
+          if (widget.authService.isAuthenticated) {
+            _messagingBadgeController.refresh();
+          }
+        });
     widget.authService.addListener(_onAuthChanged);
     WidgetsBinding.instance.addObserver(this);
     if (widget.authService.isAuthenticated) {
@@ -65,13 +78,13 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed &&
         widget.authService.isAuthenticated) {
-      _badgeController.refresh();
-      _messagingBadgeController.refresh();
+      AppRefreshCoordinator.instance.notifyAppResumed();
       _presenceController.resume();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached ||
         state == AppLifecycleState.hidden) {
+      AppRefreshCoordinator.instance.notifyAppBackgrounded();
       _presenceController.stop();
     }
   }
@@ -80,6 +93,8 @@ class _ZadAppState extends State<ZadApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.authService.removeListener(_onAuthChanged);
+    _unsubscribeNotificationBadgeRefresh();
+    _unsubscribeMessagingBadgeRefresh();
     _presenceController.dispose();
     _router.dispose();
     super.dispose();
