@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mahdara Browser QA"
+  short_description: "Run real-user browser QA for Mahdara Gates"
+  default_prompt: "Use $mahdara-browser-qa to exercise the current Gate in a real browser and report visible results."

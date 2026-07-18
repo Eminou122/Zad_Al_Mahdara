@@ -127,6 +127,7 @@ For every gate:
    - flutter test
    - flutter build web --release
 5. Do manual QA if browser/credentials available.
+   For user-visible behavior, use the `mahdara-browser-qa` skill and Playwright Interactive after automated tests; full product PASS requires the browser flows or an explicit NOT TESTED/BLOCKED result.
 6. Report clearly.
 7. Do not commit/deploy unless the gate explicitly asks for commit/deploy.
 
