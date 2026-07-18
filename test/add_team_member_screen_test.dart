@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zad_al_mahdara/core/utils/ltr_fragment.dart';
+import 'package:zad_al_mahdara/core/widgets/mauritanian_phone_field.dart';
 import 'package:zad_al_mahdara/features/teams/data/team_service.dart';
 import 'package:zad_al_mahdara/features/teams/domain/team_models.dart';
 import 'package:zad_al_mahdara/features/teams/presentation/add_team_member_screen.dart';
@@ -56,6 +57,10 @@ class _FakeTeamService extends TeamService {
 
   String? lastAddedProfileId;
   Object? addError;
+  String? lastExternalName;
+  String? lastExternalPhone;
+  Object? externalError;
+  int externalAddCallCount = 0;
 
   _FakeTeamService({this.candidates = const []}) : super(AuthService());
 
@@ -100,6 +105,19 @@ class _FakeTeamService extends TeamService {
         .toList();
     return _dummyTeamDetail();
   }
+
+  @override
+  Future<TeamDetail> upsertExternalStudentAndAddToTeam({
+    required String teamId,
+    required String displayName,
+    required String phoneNumber,
+  }) async {
+    externalAddCallCount++;
+    lastExternalName = displayName;
+    lastExternalPhone = phoneNumber;
+    if (externalError != null) throw externalError!;
+    return _dummyTeamDetail();
+  }
 }
 
 class _FakeAuthService extends AuthService {
@@ -118,6 +136,11 @@ Widget _buildTest(TeamService teamService) {
       ),
     ),
   );
+}
+
+Future<void> _openExternalForm(WidgetTester tester) async {
+  await tester.tap(find.text('إضافة طالب بدون حساب').first);
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -306,6 +329,152 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('طالب باسم طويل للفحص'), findsOneWidget);
+  });
+
+  testWidgets('external phone uses the shared LTR phone field', (tester) async {
+    final svc = _FakeTeamService();
+    await tester.pumpWidget(_buildTest(svc));
+    await tester.pumpAndSettle();
+    await _openExternalForm(tester);
+
+    final phone = find.descendant(
+      of: find.byType(MauritanianPhoneField),
+      matching: find.byType(TextField),
+    );
+    expect(phone, findsOneWidget);
+    expect(tester.widget<TextField>(phone).textDirection, TextDirection.ltr);
+    expect(
+      tester
+          .widget<Directionality>(find.byType(Directionality).last)
+          .textDirection,
+      TextDirection.rtl,
+    );
+  });
+
+  testWidgets('external phone formats raw, spaced, and hyphenated input', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService();
+    await tester.pumpWidget(_buildTest(svc));
+    await tester.pumpAndSettle();
+    await _openExternalForm(tester);
+    final phone = find.descendant(
+      of: find.byType(MauritanianPhoneField),
+      matching: find.byType(TextField),
+    );
+
+    await tester.enterText(phone, '123456789');
+    expect(tester.widget<TextField>(phone).controller!.text, '12 34 56 78');
+    await tester.enterText(phone, '12 34 56 78');
+    expect(tester.widget<TextField>(phone).controller!.text, '12 34 56 78');
+    await tester.enterText(phone, '12-34-56-78');
+    expect(tester.widget<TextField>(phone).controller!.text, '12 34 56 78');
+  });
+
+  testWidgets('invalid external phone blocks submission with shared message', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService();
+    await tester.pumpWidget(_buildTest(svc));
+    await tester.pumpAndSettle();
+    await _openExternalForm(tester);
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(1), 'طالب');
+    await tester.enterText(fields.at(2), '1234567');
+    await tester.tap(
+      find.widgetWithText(ElevatedButton, 'إضافة طالب بدون حساب'),
+    );
+    await tester.pump();
+
+    expect(svc.externalAddCallCount, 0);
+    expect(find.text('أدخل رقم هاتف صحيحًا مكونًا من 8 أرقام'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(fields.at(2)).controller!.text,
+      '12 34 56 7',
+    );
+  });
+
+  testWidgets(
+    'external add sends normalized digits and keeps form on failure',
+    (tester) async {
+      final svc = _FakeTeamService()..externalError = Exception('failed');
+      await tester.pumpWidget(_buildTest(svc));
+      await tester.pumpAndSettle();
+      await _openExternalForm(tester);
+      final fields = find.byType(TextField);
+      await tester.enterText(fields.at(1), 'طالب');
+      await tester.enterText(fields.at(2), '12-34-56-78');
+      await tester.tap(
+        find.widgetWithText(ElevatedButton, 'إضافة طالب بدون حساب'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(svc.lastExternalPhone, '12345678');
+      expect(svc.lastExternalName, 'طالب');
+      expect(tester.widget<TextField>(fields.at(1)).controller!.text, 'طالب');
+      expect(
+        tester.widget<TextField>(fields.at(2)).controller!.text,
+        '12 34 56 78',
+      );
+    },
+  );
+
+  testWidgets('successful external add clears the existing form', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService();
+    await tester.pumpWidget(_buildTest(svc));
+    await tester.pumpAndSettle();
+    await _openExternalForm(tester);
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(1), 'طالب');
+    await tester.enterText(fields.at(2), '12345678');
+    await tester.tap(
+      find.widgetWithText(ElevatedButton, 'إضافة طالب بدون حساب'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(svc.externalAddCallCount, 1);
+    expect(tester.widget<TextField>(fields.at(1)).controller!.text, isEmpty);
+    expect(tester.widget<TextField>(fields.at(2)).controller!.text, isEmpty);
+  });
+
+  testWidgets('candidate refresh preserves entered external phone', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService();
+    await tester.pumpWidget(_buildTest(svc));
+    await tester.pumpAndSettle();
+    await _openExternalForm(tester);
+    final phone = find.descendant(
+      of: find.byType(MauritanianPhoneField),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(phone, '12345678');
+
+    await tester.fling(find.byType(ListView), const Offset(0, 300), 1000);
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextField>(phone).controller!.text, '12 34 56 78');
+  });
+
+  testWidgets('duplicate external submit creates one service call', (
+    tester,
+  ) async {
+    final svc = _FakeTeamService();
+    await tester.pumpWidget(_buildTest(svc));
+    await tester.pumpAndSettle();
+    await _openExternalForm(tester);
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(1), 'طالب');
+    await tester.enterText(fields.at(2), '12345678');
+    final button = find.widgetWithText(ElevatedButton, 'إضافة طالب بدون حساب');
+    await tester.tap(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(svc.externalAddCallCount, 1);
   });
 
   testWidgets(

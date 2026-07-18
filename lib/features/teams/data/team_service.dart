@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/utils/mauritanian_phone.dart';
 import '../../../services/auth_service.dart';
 import '../domain/team_models.dart';
 
@@ -108,8 +110,10 @@ class TeamService {
       },
     );
     return (res as List)
-        .map((e) =>
-            TeamMemberCandidate.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map(
+          (e) =>
+              TeamMemberCandidate.fromJson(Map<String, dynamic>.from(e as Map)),
+        )
         .toList();
   }
 
@@ -133,17 +137,22 @@ class TeamService {
     required String displayName,
     required String phoneNumber,
   }) async {
-    final res = await _c.rpc(
-      'upsert_external_student_and_add_to_team',
-      params: {
-        'p_session_token': _token,
-        'p_team_id': teamId,
-        'p_display_name': displayName,
-        'p_phone_number': phoneNumber,
-      },
-    );
+    final normalizedPhone = normalizeMauritanianPhone(phoneNumber);
+    if (validateMauritanianPhone(normalizedPhone) != null) {
+      throw Exception(mauritanianPhoneValidationMessage);
+    }
+    final res = await rpc('upsert_external_student_and_add_to_team', {
+      'p_session_token': _token,
+      'p_team_id': teamId,
+      'p_display_name': displayName,
+      'p_phone_number': normalizedPhone,
+    });
     return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
   }
+
+  @protected
+  Future<dynamic> rpc(String name, Map<String, dynamic> params) =>
+      _c.rpc(name, params: params);
 
   Future<TeamDetail> deactivateTeamMember({
     required String teamId,

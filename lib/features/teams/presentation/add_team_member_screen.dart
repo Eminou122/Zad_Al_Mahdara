@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/error_text.dart';
 import '../../../core/utils/ltr_fragment.dart';
+import '../../../core/utils/mauritanian_phone.dart';
 import '../../../core/widgets/zad_info_banner.dart';
+import '../../../core/widgets/mauritanian_phone_field.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_service.dart';
 import '../domain/team_models.dart';
@@ -127,14 +129,16 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
   }
 
   Future<void> _addExternal() async {
+    if (_addingExternal) return;
     final name = _nameCtrl.text.trim();
-    final phone = _phoneCtrl.text.trim();
+    final phone = normalizeMauritanianPhone(_phoneCtrl.text);
     if (name.isEmpty || name.length > 80) {
       setState(() => _externalError = 'اسم الطالب مطلوب');
       return;
     }
-    if (!RegExp(r'^\d{8}$').hasMatch(phone)) {
-      setState(() => _externalError = 'رقم الهاتف يجب أن يكون 8 أرقام');
+    final phoneError = validateMauritanianPhone(phone);
+    if (phoneError != null) {
+      setState(() => _externalError = phoneError);
       return;
     }
     setState(() {
@@ -291,13 +295,9 @@ class _AddTeamMemberScreenState extends State<AddTeamMemberScreen> {
                           ),
                         ),
                         const SizedBox(height: ZadTokens.s2),
-                        TextField(
+                        MauritanianPhoneField(
                           controller: _phoneCtrl,
-                          keyboardType: TextInputType.phone,
-                          maxLength: 8,
-                          decoration: const InputDecoration(
-                            labelText: 'رقم الهاتف',
-                          ),
+                          labelText: 'رقم الهاتف',
                         ),
                         if (_externalError != null)
                           ZadInfoBanner(
