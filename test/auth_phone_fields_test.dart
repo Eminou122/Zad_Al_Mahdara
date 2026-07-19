@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zad_al_mahdara/core/widgets/mauritanian_phone_field.dart';
@@ -29,6 +31,72 @@ void main() {
     await tester.pump();
     expect(service.loginPhone, '12345678');
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('invalid login stays generic and preserves fields at 320x800', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 800);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final service = _PhoneAuthService(
+      loginError: const InvalidCredentialsException(),
+    );
+    await _pump(tester, LoginScreen(authService: service));
+    final fields = find.byType(TextField);
+
+    await tester.enterText(fields.at(0), '12-34-56-78');
+    await tester.enterText(fields.at(1), '1357');
+    await tester.tap(find.text('دخول'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('الرقم أو الرمز السري غير صحيح'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(fields.at(0)).controller!.text,
+      '12 34 56 78',
+    );
+    expect(tester.widget<TextField>(fields.at(1)).controller!.text, '1357');
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.text('دخول'), findsOneWidget);
+    _expectPhoneFieldLtr(tester);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('pending login blocks duplicate submission', (tester) async {
+    final pending = Completer<void>();
+    final service = _PhoneAuthService(loginPending: pending);
+    await _pump(tester, LoginScreen(authService: service));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), '12-34-56-78');
+    await tester.enterText(fields.at(1), '2468');
+
+    await tester.tap(find.text('دخول'));
+    await tester.tap(find.text('دخول'));
+    await tester.pump();
+
+    expect(service.loginCalls, 1);
+    pending.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('دخول'), findsOneWidget);
+  });
+
+  testWidgets('unexpected login failure shows the general error', (
+    tester,
+  ) async {
+    final service = _PhoneAuthService(loginError: Exception('backend down'));
+    await _pump(tester, LoginScreen(authService: service));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), '12-34-56-78');
+    await tester.enterText(fields.at(1), '2468');
+
+    await tester.tap(find.text('دخول'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('حدث خطأ — تحقق من اتصالك بالإنترنت'), findsOneWidget);
+    expect(find.text('الرقم أو الرمز السري غير صحيح'), findsNothing);
   });
 
   testWidgets('registration formats pasted phone and submits digits', (
@@ -105,12 +173,22 @@ Future<void> _pump(WidgetTester tester, Widget screen) => tester
     );
 
 class _PhoneAuthService extends AuthService {
+  final Object? loginError;
+  final Completer<void>? loginPending;
   String? loginPhone;
   String? registerPhone;
   String? resetPhone;
+  int loginCalls = 0;
+
+  _PhoneAuthService({this.loginError, this.loginPending});
 
   @override
-  Future<void> login(String phone, String pin) async => loginPhone = phone;
+  Future<void> login(String phone, String pin) async {
+    loginCalls++;
+    loginPhone = phone;
+    if (loginError != null) throw loginError!;
+    await loginPending?.future;
+  }
 
   @override
   Future<void> register(String name, String phone, String pin) async =>

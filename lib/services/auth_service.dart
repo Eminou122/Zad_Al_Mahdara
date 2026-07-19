@@ -4,6 +4,13 @@ import '../core/config/app_config.dart';
 import '../core/utils/mauritanian_phone.dart';
 import 'session_storage.dart';
 
+class InvalidCredentialsException implements Exception {
+  const InvalidCredentialsException();
+
+  @override
+  String toString() => 'InvalidCredentialsException';
+}
+
 class UserProfile {
   final String id;
   final String displayName;
@@ -132,7 +139,11 @@ class AuthService extends ChangeNotifier {
       'p_phone_number': _validPhone(phone),
       'p_pin': pin,
     });
-    _applyAuthResult(result as Map);
+    final json = Map<String, dynamic>.from(result as Map);
+    if (json['ok'] == false && json['error'] == 'INVALID_CREDENTIALS') {
+      throw const InvalidCredentialsException();
+    }
+    _applyAuthResult(json);
   }
 
   Future<void> requestPinReset(String phone) async {

@@ -15,6 +15,8 @@ Map<String, dynamic> _profileJson({bool isAdmin = false}) => {
 class _FakeAuthService extends AuthService {
   Map<String, dynamic>? Function(String token)? onFetch;
   Object? throwing;
+  Map<String, dynamic>? loginResult;
+  Object? loginThrowing;
   final List<Map<String, dynamic>> calls = [];
 
   @override
@@ -26,6 +28,11 @@ class _FakeAuthService extends AuthService {
     Map<String, dynamic> params,
   ) async {
     calls.add({'function': function, 'params': params});
+    if (function == 'login_student') {
+      if (loginThrowing != null) throw loginThrowing!;
+      return loginResult ??
+          {'session_token': 'test-token', 'profile': _profileJson()};
+    }
     return function == 'complete_pin_reset'
         ? {'ok': true}
         : {'session_token': 'test-token', 'profile': _profileJson()};
@@ -153,6 +160,60 @@ void main() {
       final auth = _FakeAuthService();
       await expectLater(auth.login('1234567', '1234'), throwsArgumentError);
       expect(auth.calls, isEmpty);
+    });
+  });
+
+  group('login response contract', () {
+    test(
+      'structured failure throws only InvalidCredentialsException',
+      () async {
+        final auth = _FakeAuthService()
+          ..loginResult = {'ok': false, 'error': 'INVALID_CREDENTIALS'};
+
+        Object? error;
+        try {
+          await auth.login('12345678', '1357');
+        } catch (caught) {
+          error = caught;
+        }
+
+        expect(error, isA<InvalidCredentialsException>());
+        expect(error.toString(), 'InvalidCredentialsException');
+        expect(error.toString(), isNot(contains('12345678')));
+        expect(error.toString(), isNot(contains('1357')));
+        expect(auth.isAuthenticated, isFalse);
+        expect(SessionStorage.read(), isNull);
+      },
+    );
+
+    test('existing success response remains compatible', () async {
+      final auth = _FakeAuthService();
+
+      await auth.login('12345678', '2468');
+
+      expect(auth.isAuthenticated, isTrue);
+      expect(SessionStorage.read(), 'test-token');
+    });
+
+    test('malformed failure response is not invalid credentials', () async {
+      final auth = _FakeAuthService()
+        ..loginResult = {'ok': false, 'error': 'UNEXPECTED'};
+
+      await expectLater(
+        auth.login('12345678', '2468'),
+        throwsA(isNot(isA<InvalidCredentialsException>())),
+      );
+      expect(auth.isAuthenticated, isFalse);
+      expect(SessionStorage.read(), isNull);
+    });
+
+    test('backend exception remains an unexpected failure', () async {
+      final failure = Exception('backend unavailable');
+      final auth = _FakeAuthService()..loginThrowing = failure;
+
+      await expectLater(auth.login('12345678', '2468'), throwsA(same(failure)));
+      expect(auth.isAuthenticated, isFalse);
+      expect(SessionStorage.read(), isNull);
     });
   });
 }

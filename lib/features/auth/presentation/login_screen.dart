@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/utils/auth_helpers.dart';
 import '../../../core/utils/mauritanian_phone.dart';
@@ -41,6 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit() async {
+    if (_loading) return;
     final phone = normalizeMauritanianPhone(_phoneCtrl.text);
     final pin = _pinCtrl.text.trim();
 
@@ -60,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await widget.authService.login(phone, pin);
       // router redirect handles navigation after auth state updates
-    } on PostgrestException {
+    } on InvalidCredentialsException {
       if (mounted) {
         setState(() => _error = 'الرقم أو الرمز السري غير صحيح');
       }
@@ -209,8 +209,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           Expanded(child: Divider()),
                         ],
                       ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           const Text(
                             'ليس لديك حساب؟',
