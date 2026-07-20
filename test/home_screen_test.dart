@@ -29,7 +29,7 @@ Widget _wrap() {
       ),
       GoRoute(
         path: '/directory',
-        builder: (_, _) => const Scaffold(body: Text('دليل الطلاب route')),
+        builder: (_, _) => const Scaffold(body: Text('الفرق المتاحة route')),
       ),
       GoRoute(
         path: '/account',
@@ -45,11 +45,11 @@ void main() {
     await tester.pumpWidget(_wrap());
     await tester.pumpAndSettle();
 
-    expect(find.text('دليل الطلاب'), findsOneWidget);
+    expect(find.text('الفرق المتاحة'), findsOneWidget);
     expect(find.text('تصفح الطلاب والفرق العامة'), findsOneWidget);
-    await tester.tap(find.text('دليل الطلاب'));
+    await tester.tap(find.text('الفرق المتاحة'));
     await tester.pumpAndSettle();
 
-    expect(find.text('دليل الطلاب route'), findsOneWidget);
+    expect(find.text('الفرق المتاحة route'), findsOneWidget);
   });
 }

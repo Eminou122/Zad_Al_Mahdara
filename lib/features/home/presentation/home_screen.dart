@@ -127,7 +127,7 @@ class HomeScreen extends StatelessWidget {
         Icons.school_outlined,
         ZadTokens.primary,
         ZadTokens.primary.withValues(alpha: 0.10),
-        'دليل الطلاب',
+        'الفرق المتاحة',
         'تصفح الطلاب والفرق العامة',
         const <String>[],
       ),
@@ -171,7 +171,7 @@ class HomeScreen extends StatelessWidget {
             tint: tint,
             title: title,
             body: body,
-            onTap: title == 'دليل الطلاب'
+            onTap: title == 'الفرق المتاحة'
                 ? () => context.push('/directory')
                 : () => _showGuide(
                     context,
@@ -347,7 +347,7 @@ class _TipRow extends StatelessWidget {
                 ),
               ),
               Icon(
-                title == 'دليل الطلاب'
+                title == 'الفرق المتاحة'
                     ? Icons.arrow_forward_ios
                     : Icons.info_outline,
                 size: 20,

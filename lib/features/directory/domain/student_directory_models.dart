@@ -1,164 +1,70 @@
-String _str(dynamic value, [String fallback = '']) =>
-    value is String ? value : fallback;
-
-bool _bool(dynamic value, [bool fallback = false]) =>
-    value is bool ? value : fallback;
-
-Map<String, dynamic>? _map(dynamic value) =>
-    value is Map ? Map<String, dynamic>.from(value) : null;
-
-List<T> _list<T>(dynamic value, T? Function(Map<String, dynamic>) parse) {
-  if (value is! List) return const [];
-  final items = <T>[];
-  for (final raw in value) {
-    final map = _map(raw);
-    if (map == null) continue;
-    final parsed = parse(map);
-    if (parsed != null) items.add(parsed);
-  }
-  return items;
-}
-
-class PublicDirectoryTeam {
+class AvailablePublicTeam {
   final String teamId;
-  final String teamName;
+  final String name;
   final String teamType;
-  final bool isCurrentLeader;
-  final String role;
+  final String? note;
+  final String? leaderDisplayName;
+  final int memberCount;
+  final bool isCurrentMember;
 
-  const PublicDirectoryTeam({
+  const AvailablePublicTeam({
     required this.teamId,
-    required this.teamName,
+    required this.name,
     required this.teamType,
-    required this.isCurrentLeader,
-    required this.role,
+    required this.note,
+    required this.leaderDisplayName,
+    required this.memberCount,
+    required this.isCurrentMember,
   });
 
-  factory PublicDirectoryTeam.fromJson(Map<String, dynamic> json) {
-    final teamId = _str(json['team_id']);
-    final teamName = _str(json['team_name']);
-    if (teamId.isEmpty || teamName.isEmpty) {
-      throw const FormatException('invalid public team');
+  factory AvailablePublicTeam.fromJson(Map<String, dynamic> json) {
+    final teamId = json['team_id'];
+    final name = json['name'];
+    if (teamId is! String ||
+        teamId.isEmpty ||
+        name is! String ||
+        name.isEmpty) {
+      throw const FormatException('invalid available team');
     }
-    return PublicDirectoryTeam(
+    final count = json['member_count'];
+    return AvailablePublicTeam(
       teamId: teamId,
-      teamName: teamName,
-      teamType: _str(json['team_type']),
-      isCurrentLeader: _bool(json['is_current_leader']),
-      role: _str(json['role'], 'member'),
+      name: name,
+      teamType: json['team_type'] is String ? json['team_type'] as String : '',
+      note: json['note'] is String && (json['note'] as String).trim().isNotEmpty
+          ? (json['note'] as String).trim()
+          : null,
+      leaderDisplayName:
+          json['leader_display_name'] is String &&
+              (json['leader_display_name'] as String).trim().isNotEmpty
+          ? (json['leader_display_name'] as String).trim()
+          : null,
+      memberCount: count is num && count >= 0 ? count.toInt() : 0,
+      isCurrentMember: json['is_current_member'] is bool
+          ? json['is_current_member'] as bool
+          : false,
     );
   }
 }
 
-class DirectoryContactTarget {
-  final String teamId;
-  final String teamName;
-  final String teamType;
-  final String label;
+class AvailablePublicTeamsResult {
+  final List<AvailablePublicTeam> items;
+  const AvailablePublicTeamsResult(this.items);
 
-  const DirectoryContactTarget({
-    required this.teamId,
-    required this.teamName,
-    required this.teamType,
-    required this.label,
-  });
-
-  factory DirectoryContactTarget.fromJson(Map<String, dynamic> json) {
-    final teamId = _str(json['team_id']);
-    final teamName = _str(json['team_name']);
-    if (teamId.isEmpty || teamName.isEmpty) {
-      throw const FormatException('invalid contact target');
+  factory AvailablePublicTeamsResult.fromJson(Map<String, dynamic> json) {
+    final raw = json['items'];
+    if (raw is! List) return const AvailablePublicTeamsResult([]);
+    final items = <AvailablePublicTeam>[];
+    for (final value in raw) {
+      if (value is! Map) continue;
+      try {
+        items.add(
+          AvailablePublicTeam.fromJson(Map<String, dynamic>.from(value)),
+        );
+      } on FormatException {
+        // A malformed item must not break the available-teams screen.
+      }
     }
-    return DirectoryContactTarget(
-      teamId: teamId,
-      teamName: teamName,
-      teamType: _str(json['team_type']),
-      label: _str(json['label'], 'مراسلة قائد الفريق'),
-    );
+    return AvailablePublicTeamsResult(items);
   }
-}
-
-class StudentDirectoryEntry {
-  final String profileId;
-  final String displayName;
-  final List<PublicDirectoryTeam> publicTeams;
-  final List<DirectoryContactTarget> contactTargets;
-
-  const StudentDirectoryEntry({
-    required this.profileId,
-    required this.displayName,
-    required this.publicTeams,
-    required this.contactTargets,
-  });
-
-  factory StudentDirectoryEntry.fromJson(Map<String, dynamic> json) {
-    final profileId = _str(json['profile_id']);
-    if (profileId.isEmpty) {
-      throw const FormatException('invalid directory profile');
-    }
-    return StudentDirectoryEntry(
-      profileId: profileId,
-      displayName: _str(json['display_name']),
-      publicTeams: _list(json['public_teams'], (item) {
-        try {
-          return PublicDirectoryTeam.fromJson(item);
-        } catch (_) {
-          return null;
-        }
-      }),
-      contactTargets: _list(json['contact_targets'], (item) {
-        try {
-          return DirectoryContactTarget.fromJson(item);
-        } catch (_) {
-          return null;
-        }
-      }),
-    );
-  }
-}
-
-class StudentDirectoryCursor {
-  final String sortName;
-  final String profileId;
-
-  const StudentDirectoryCursor({
-    required this.sortName,
-    required this.profileId,
-  });
-
-  factory StudentDirectoryCursor.fromJson(Map<String, dynamic> json) {
-    final sortName = _str(json['sort_name']);
-    final profileId = _str(json['profile_id']);
-    if (sortName.isEmpty || profileId.isEmpty) {
-      throw const FormatException('invalid directory cursor');
-    }
-    return StudentDirectoryCursor(sortName: sortName, profileId: profileId);
-  }
-}
-
-class StudentDirectoryPage {
-  final List<StudentDirectoryEntry> items;
-  final bool hasMore;
-  final StudentDirectoryCursor? nextCursor;
-
-  const StudentDirectoryPage({
-    required this.items,
-    required this.hasMore,
-    this.nextCursor,
-  });
-
-  factory StudentDirectoryPage.fromJson(Map<String, dynamic> json) =>
-      StudentDirectoryPage(
-        items: _list(json['items'], (item) {
-          try {
-            return StudentDirectoryEntry.fromJson(item);
-          } catch (_) {
-            return null;
-          }
-        }),
-        hasMore: _bool(json['has_more']),
-        nextCursor: _map(json['next_cursor']) == null
-            ? null
-            : StudentDirectoryCursor.fromJson(_map(json['next_cursor'])!),
-      );
 }
