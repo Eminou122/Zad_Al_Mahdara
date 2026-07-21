@@ -17,6 +17,12 @@ class _StubBudgetService extends BudgetService {
   RecurringPurchaseOverview? recurringStats;
   Object? error;
   Object? markError;
+  Object? voidError;
+  bool voidResult;
+  Completer<bool>? voidCompleter;
+  String? voidReason;
+  int voidCalls = 0;
+  int overviewCalls = 0;
   List<TodayRecurringPurchase>? markResult;
   Completer<List<TodayRecurringPurchase>>? markCompleter;
   final List<Completer<List<TodayRecurringPurchase>>> todayCompleters = [];
@@ -31,6 +37,9 @@ class _StubBudgetService extends BudgetService {
     this.recurringStats,
     this.error,
     this.markError,
+    this.voidError,
+    this.voidResult = true,
+    this.voidCompleter,
     this.markResult,
     this.markCompleter,
   }) : super(authService);
@@ -38,7 +47,17 @@ class _StubBudgetService extends BudgetService {
   @override
   Future<BudgetOverview> getOverview() async {
     if (error != null) throw error!;
+    overviewCalls++;
     return overview!;
+  }
+
+  @override
+  Future<bool> voidExpense(String expenseId, String reason) async {
+    voidCalls++;
+    voidReason = reason;
+    if (voidError != null) throw voidError!;
+    if (voidCompleter != null) return voidCompleter!.future;
+    return voidResult;
   }
 
   @override
@@ -672,6 +691,164 @@ void main() {
             .onPressed,
         isNull,
       );
+    });
+  });
+
+  group('expense void', () {
+    final expense = Expense(
+      id: 'expense-1',
+      itemName: 'دفتر',
+      amount: 20,
+      expenseDate: DateTime(2026, 7, 4),
+      source: 'manual',
+    );
+
+    BudgetOverview overviewWithExpenses(List<Expense> expenses) =>
+        BudgetOverview(
+          budgetPlan: _overview.budgetPlan,
+          summary: _overview.summary,
+          activeSubscriptions: const [],
+          recentExpenses: expenses,
+        );
+
+    Future<_StubBudgetService> pumpExpense(
+      WidgetTester tester, {
+      Object? voidError,
+      Completer<bool>? voidCompleter,
+      bool voidResult = true,
+    }) async {
+      final auth = _authWithProfile('profile-1');
+      final service = _StubBudgetService(
+        authService: auth,
+        overview: overviewWithExpenses([expense]),
+        recurringStats: _recurringStats,
+        voidError: voidError,
+        voidCompleter: voidCompleter,
+        voidResult: voidResult,
+      );
+      await _pumpBudget(tester, auth, service);
+      await tester.tap(find.byTooltip('إلغاء المصروف'));
+      await tester.pumpAndSettle();
+      return service;
+    }
+
+    testWidgets('uses retained-history void wording in an RTL dialog', (
+      tester,
+    ) async {
+      await pumpExpense(tester);
+
+      expect(find.text('إلغاء المصروف'), findsNWidgets(2));
+      expect(find.text('دفتر'), findsNWidgets(2));
+      expect(
+        find.text(
+          'سيتم إلغاء هذا المصروف واستبعاده من الحسابات، مع الاحتفاظ بسجله المالي.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('حذف المصروف'), findsNothing);
+      expect(
+        Directionality.of(tester.element(find.byType(AlertDialog))),
+        TextDirection.rtl,
+      );
+    });
+
+    testWidgets('rejects blank and overlong reasons and trims 300 characters', (
+      tester,
+    ) async {
+      final service = await pumpExpense(tester);
+      final confirm = find.widgetWithText(FilledButton, 'إلغاء المصروف');
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+
+      final maxReason = List.filled(300, 'a').join();
+      await tester.enterText(
+        find.byKey(const Key('void-expense-reason')),
+        ' $maxReason ',
+      );
+      await tester.pump();
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+      expect(service.voidReason, maxReason);
+
+      final second = await pumpExpense(tester);
+      await tester.enterText(
+        find.byKey(const Key('void-expense-reason')),
+        List.filled(301, 'a').join(),
+      );
+      await tester.pump();
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+      expect(second.voidCalls, 0);
+    });
+
+    testWidgets('blocks duplicates and preserves the reason after failure', (
+      tester,
+    ) async {
+      final pending = Completer<bool>();
+      final service = await pumpExpense(tester, voidCompleter: pending);
+      final reason = find.byKey(const Key('void-expense-reason'));
+      final confirm = find.widgetWithText(FilledButton, 'إلغاء المصروف');
+      await tester.enterText(reason, 'سبب واضح');
+      await tester.pump();
+      await tester.tap(confirm);
+      await tester.pump();
+      expect(service.voidCalls, 1);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      pending.completeError(Exception('network'));
+      await tester.pumpAndSettle();
+      expect(find.text('تعذر إلغاء المصروف. حاول مرة أخرى.'), findsOneWidget);
+      expect(tester.widget<TextField>(reason).controller!.text, 'سبب واضح');
+    });
+
+    testWidgets(
+      'refreshes active expenses and totals after a successful void',
+      (tester) async {
+        final service = await pumpExpense(tester);
+        await tester.enterText(
+          find.byKey(const Key('void-expense-reason')),
+          'مكرر',
+        );
+        await tester.pump();
+        service.overview = BudgetOverview(
+          budgetPlan: _overview.budgetPlan,
+          summary: const BudgetSummary(
+            daysTotal: 30,
+            daysRemaining: 10,
+            totalSpent: 180,
+            subscriptionTotal: 100,
+            remainingMoney: 720,
+            safeDailyLimit: 72,
+            todaySpending: 0,
+            isOverDailyLimit: false,
+            plannedRecurringTotal: 350,
+            actualRecurringTotal: 25,
+            skippedRecurringTotal: 50,
+            skippedRecurringCount: 2,
+            todayRecurringExpectedTotal: 25,
+            todayRecurringPurchasedTotal: 25,
+            todayRecurringSkippedCount: 0,
+          ),
+          activeSubscriptions: const [],
+          recentExpenses: const [],
+        );
+        await tester.tap(find.widgetWithText(FilledButton, 'إلغاء المصروف'));
+        await tester.pumpAndSettle();
+
+        expect(service.voidCalls, 1);
+        expect(service.overviewCalls, greaterThanOrEqualTo(2));
+        expect(find.text('دفتر'), findsNothing);
+        expect(
+          find.text('تم إلغاء المصروف مع الاحتفاظ بسجله المالي'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('void dialog fits at 320px without overflow', (tester) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpExpense(tester);
+      expect(find.byType(AlertDialog), findsOneWidget);
     });
   });
 

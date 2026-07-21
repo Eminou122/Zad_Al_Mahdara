@@ -109,11 +109,26 @@ class BudgetService {
     return _overview(r);
   }
 
-  Future<void> deleteExpense(String expenseId) async {
-    await _client.rpc(
-      'delete_expense',
-      params: {'p_session_token': _token, 'p_expense_id': expenseId},
+  Future<bool> voidExpense(String expenseId, String reason) async {
+    final trimmed = reason.trim();
+    if (trimmed.isEmpty || trimmed.length > 300) {
+      throw ArgumentError('invalid void reason');
+    }
+    final result = Map<String, dynamic>.from(
+      await _client.rpc(
+            'void_expense',
+            params: {
+              'p_session_token': _token,
+              'p_expense_id': expenseId,
+              'p_reason': trimmed,
+            },
+          )
+          as Map,
     );
+    if (result['ok'] != true || result['voided'] is! bool) {
+      throw StateError('invalid void response');
+    }
+    return result['voided'] as bool;
   }
 
   Future<BudgetOverview> addSubscription({

@@ -982,17 +982,92 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   }
 
   Future<void> _remove(TeamMember m) async {
-    final ok = await zadConfirm(
-      context,
-      title: 'إزالة العضو',
-      body: 'سيختفي العضو من قائمة الفريق، مع بقاء السجل القديم محفوظاً.',
-      confirmLabel: 'إزالة',
+    if (_busyMembers.contains(m.memberId)) return;
+    final c = TextEditingController();
+    var submitting = false;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final valid = c.text.trim().isNotEmpty && c.text.trim().length <= 300;
+          return AlertDialog(
+            title: Text('إخراج ${m.displayName}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'سيتم إخراج العضو من الفريق مع الاحتفاظ بالسجل السابق للمشاركة والدور.',
+                ),
+                TextField(
+                  controller: c,
+                  key: const Key('remove-member-reason'),
+                  maxLength: 300,
+                  maxLengthEnforcement: MaxLengthEnforcement.none,
+                  maxLines: 3,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(labelText: 'سبب الإخراج'),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: submitting
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('إلغاء'),
+              ),
+              FilledButton(
+                onPressed: !valid || submitting
+                    ? null
+                    : () async {
+                        if (submitting) return;
+                        setDialogState(() => submitting = true);
+                        _setMemberBusy(m.memberId, true);
+                        try {
+                          final result = await _svc.removeTeamMember(
+                            memberId: m.memberId,
+                            reason: c.text,
+                          );
+                          if (!mounted) return;
+                          setState(() {
+                            _detail = result.detail;
+                            _busyMembers.remove(m.memberId);
+                          });
+                          await _refreshTurnState();
+                          if (!mounted || !dialogContext.mounted) return;
+                          Navigator.pop(dialogContext);
+                          if (result.removed) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('تم إخراج العضو من الفريق'),
+                              ),
+                            );
+                          }
+                        } catch (_) {
+                          if (!mounted) return;
+                          _setMemberBusy(m.memberId, false);
+                          setDialogState(() => submitting = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('تعذر إخراج العضو. حاول مرة أخرى.'),
+                            ),
+                          );
+                        }
+                      },
+                child: submitting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('إخراج العضو'),
+              ),
+            ],
+          );
+        },
+      ),
     );
-    if (!ok) return;
-    await _applyMemberUpdate(
-      m,
-      () => _svc.removeTeamMember(teamId: widget.teamId, memberId: m.memberId),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => c.dispose());
   }
 
   Future<void> _reactivate(TeamMember m) async {
@@ -2087,7 +2162,7 @@ class _MemberTile extends StatelessWidget {
                 onPressed: onReactivate,
               ),
             IconButton(
-              tooltip: 'إزالة',
+              tooltip: 'إخراج العضو',
               visualDensity: VisualDensity.compact,
               icon: const Icon(
                 Icons.person_remove_outlined,

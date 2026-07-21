@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
@@ -212,19 +213,108 @@ class _BudgetScreenState extends State<BudgetScreen> {
     expenseId: item.expenseId,
   );
 
-  Future<void> _deleteExpense(String id) async {
+  Future<void> _voidExpense(Expense expense) async {
     if (_isOfflineCached) {
       _onOfflineAction();
       return;
     }
-    final ok = await _confirm('حذف المصروف', 'هل تريد حذف هذا المصروف؟');
-    if (!ok) return;
-    try {
-      await _budget.deleteExpense(id);
-      _load();
-    } catch (e) {
-      if (mounted) _showError(_arabicError(e));
+    final voided = await _showVoidExpenseDialog(expense);
+    if (voided == null) return;
+    await _load(showLoading: false);
+    if (voided && mounted) {
+      _showError('تم إلغاء المصروف مع الاحتفاظ بسجله المالي');
     }
+  }
+
+  Future<bool?> _showVoidExpenseDialog(Expense expense) async {
+    final controller = TextEditingController();
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        var submitting = false;
+        String? error;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final reason = controller.text.trim();
+            final valid = reason.isNotEmpty && reason.length <= 300;
+            Future<void> submit() async {
+              if (submitting || !valid) return;
+              setDialogState(() => submitting = true);
+              try {
+                final voided = await _budget.voidExpense(expense.id, reason);
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop(voided);
+                }
+              } catch (_) {
+                if (dialogContext.mounted) {
+                  setDialogState(() {
+                    submitting = false;
+                    error = 'تعذر إلغاء المصروف. حاول مرة أخرى.';
+                  });
+                }
+              }
+            }
+
+            return Directionality(
+              textDirection: TextDirection.rtl,
+              child: AlertDialog(
+                title: const Text('إلغاء المصروف'),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(expense.itemName),
+                      const SizedBox(height: ZadTokens.s2),
+                      const Text(
+                        'سيتم إلغاء هذا المصروف واستبعاده من الحسابات، مع الاحتفاظ بسجله المالي.',
+                      ),
+                      const SizedBox(height: ZadTokens.s3),
+                      TextField(
+                        key: const Key('void-expense-reason'),
+                        controller: controller,
+                        enabled: !submitting,
+                        maxLines: 3,
+                        maxLength: 300,
+                        maxLengthEnforcement: MaxLengthEnforcement.none,
+                        onChanged: (_) => setDialogState(() => error = null),
+                        decoration: const InputDecoration(
+                          labelText: 'سبب الإلغاء',
+                        ),
+                      ),
+                      if (error != null)
+                        Text(
+                          error!,
+                          style: const TextStyle(color: ZadTokens.danger),
+                        ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: submitting
+                        ? null
+                        : () => Navigator.of(dialogContext).pop(),
+                    child: const Text('رجوع'),
+                  ),
+                  FilledButton(
+                    onPressed: submitting || !valid ? null : submit,
+                    child: submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('إلغاء المصروف'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _deactivateSub(String id) async {
@@ -665,12 +755,12 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   ),
                   IconButton(
                     icon: const Icon(
-                      Icons.delete_outline,
+                      Icons.cancel_outlined,
                       size: 20,
                       color: ZadTokens.danger,
                     ),
-                    tooltip: 'حذف',
-                    onPressed: () => _deleteExpense(exp.id),
+                    tooltip: 'إلغاء المصروف',
+                    onPressed: () => _voidExpense(exp),
                   ),
                 ],
               ],

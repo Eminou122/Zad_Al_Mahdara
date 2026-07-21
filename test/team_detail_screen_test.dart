@@ -188,6 +188,25 @@ TeamDetail _teamDetailWithManageableMember({bool memberActive = true}) =>
       isMember: true,
     );
 
+TeamDetail _teamDetailAfterRemoval() => TeamDetail(
+  team: TeamInfo(
+    id: 'team-1',
+    name: 'فريق الغداء',
+    teamType: 'lunch',
+    isPublic: true,
+    status: 'open',
+    leaderId: 'leader-1',
+    leaderName: 'أحمد',
+    memberCount: 1,
+    activeMemberCount: 1,
+    inactiveMemberCount: 0,
+    createdAt: DateTime(2026, 7, 1),
+  ),
+  members: [_teamDetailWithManageableMember().members.first],
+  canEdit: true,
+  isMember: true,
+);
+
 TeamDetail _ordinaryMemberDetail({bool isMember = true}) => TeamDetail(
   team: TeamInfo(
     id: 'team-1',
@@ -221,6 +240,12 @@ class _FakeTeamService extends TeamService {
   // exercised by this fake.
   TeamDetail? deactivateResult;
   String? lastDeactivatedMemberId;
+  TeamMemberRemoval? removalResult;
+  Object? removalError;
+  Completer<TeamMemberRemoval>? pendingRemoval;
+  int removeCallCount = 0;
+  String? lastRemovedMemberId;
+  String? lastRemovalReason;
 
   _FakeTeamService({this.detail}) : super(AuthService());
 
@@ -239,6 +264,20 @@ class _FakeTeamService extends TeamService {
   }) async {
     lastDeactivatedMemberId = memberId;
     return deactivateResult ?? detail ?? _sampleTeamDetail();
+  }
+
+  @override
+  Future<TeamMemberRemoval> removeTeamMember({
+    required String memberId,
+    required String reason,
+  }) async {
+    removeCallCount++;
+    lastRemovedMemberId = memberId;
+    lastRemovalReason = reason;
+    if (removalError != null) throw removalError!;
+    if (pendingRemoval != null) return pendingRemoval!.future;
+    return removalResult ??
+        TeamMemberRemoval(removed: true, detail: detail ?? _sampleTeamDetail());
   }
 }
 
@@ -2822,10 +2861,201 @@ void main() {
     expect(turnService.getTurnStateCallCount, turnStateCalls + 1);
   });
 
-  // removeTeamMember/reactivateTeamMember share the exact same
-  // _applyMemberUpdate code path exercised above (verified by reading
-  // team_detail_screen.dart), so this one test covers the pattern for all
-  // three member actions without duplicating near-identical fakes/tests.
+  testWidgets('member removal protects leaders and reconciles once', (
+    tester,
+  ) async {
+    final teamService =
+        _FakeTeamService(detail: _teamDetailWithManageableMember())
+          ..removalResult = TeamMemberRemoval(
+            removed: true,
+            detail: _teamDetailAfterRemoval(),
+          );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: teamService,
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: _FakeTeamShoppingService(
+          overview: _sampleShoppingOverview(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('إخراج العضو'), findsOneWidget);
+    await _tapVisible(tester, find.byTooltip('إخراج العضو'));
+    expect(find.text('إخراج سالم'), findsOneWidget);
+    expect(
+      find.text(
+        'سيتم إخراج العضو من الفريق مع الاحتفاظ بالسجل السابق للمشاركة والدور.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('remove-member-reason')), findsOneWidget);
+    expect(find.text('محمد'), findsWidgets);
+    await tester.enterText(
+      find.byKey(const Key('remove-member-reason')),
+      '  انتقل  ',
+    );
+    await _tapVisible(tester, find.widgetWithText(FilledButton, 'إخراج العضو'));
+    await tester.pumpAndSettle();
+
+    expect(teamService.removeCallCount, 1);
+    expect(teamService.lastRemovedMemberId, 'mem-2');
+    expect(teamService.lastRemovalReason, '  انتقل  ');
+    expect(find.text('سالم'), findsNothing);
+    expect(find.text('تم إخراج العضو من الفريق'), findsOneWidget);
+    expect(find.byTooltip('إخراج العضو'), findsNothing);
+  });
+
+  testWidgets('member removal blocks invalid input and duplicate submit', (
+    tester,
+  ) async {
+    final pending = Completer<TeamMemberRemoval>();
+    final teamService = _FakeTeamService(
+      detail: _teamDetailWithManageableMember(),
+    )..pendingRemoval = pending;
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: teamService,
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: _FakeTeamShoppingService(
+          overview: _sampleShoppingOverview(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byTooltip('إخراج العضو'));
+
+    final confirm = find.widgetWithText(FilledButton, 'إخراج العضو');
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.enterText(
+      find.byKey(const Key('remove-member-reason')),
+      List.filled(301, 'ا').join(),
+    );
+    await tester.pump();
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.enterText(
+      find.byKey(const Key('remove-member-reason')),
+      'سبب',
+    );
+    await tester.pump();
+    await tester.tap(confirm);
+    await tester.tap(confirm);
+    await tester.pump();
+    expect(teamService.removeCallCount, 1);
+    pending.completeError(Exception('network'));
+    await tester.pumpAndSettle();
+    expect(find.text('تعذر إخراج العضو. حاول مرة أخرى.'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('remove-member-reason')))
+          .controller!
+          .text,
+      'سبب',
+    );
+  });
+
+  testWidgets('member removal dialog fits at 320px in RTL', (tester) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (_, child) =>
+            Directionality(textDirection: TextDirection.rtl, child: child!),
+        home: TeamDetailScreen(
+          authService: _FakeAuthService(),
+          teamId: 'team-1',
+          teamService: _FakeTeamService(
+            detail: _teamDetailWithManageableMember(),
+          ),
+          turnService: _FakeTurnService(state: _sampleTurnState()),
+          shoppingService: _FakeTeamShoppingService(
+            overview: _sampleShoppingOverview(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
+    await tester.pumpAndSettle();
+    await _tapVisible(tester, find.byTooltip('إخراج العضو'));
+
+    await tester.enterText(
+      find.byKey(const Key('remove-member-reason')),
+      'سبب واضح',
+    );
+    await tester.pump();
+    expect(find.text('إخراج سالم'), findsOneWidget);
+    expect(find.byKey(const Key('remove-member-reason')), findsOneWidget);
+    expect(find.textContaining('300'), findsOneWidget);
+    expect(find.text('إلغاء'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'إخراج العضو'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(find.byType(AlertDialog))),
+      TextDirection.rtl,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'external member has removal action and idempotent response does not remove twice',
+    (tester) async {
+      final detail = _teamDetailWithManageableMember();
+      final external = TeamMember(
+        memberId: 'mem-2',
+        displayName: 'سالم',
+        memberKind: 'external',
+        hasAccount: false,
+        role: 'member',
+        position: 2,
+        isActive: true,
+        joinedAt: DateTime(2026, 7, 1),
+      );
+      final teamService = _FakeTeamService(
+        detail: TeamDetail(
+          team: detail.team,
+          members: [detail.members.first, external],
+          canEdit: true,
+          isMember: true,
+        ),
+      )..removalResult = TeamMemberRemoval(removed: false, detail: detail);
+      await tester.pumpWidget(
+        _buildTest(
+          _FakeAuthService(),
+          teamService: teamService,
+          turnService: _FakeTurnService(state: _sampleTurnState()),
+          shoppingService: _FakeTeamShoppingService(
+            overview: _sampleShoppingOverview(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView), const Offset(0, -1200));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('إخراج العضو'), findsOneWidget);
+      await _tapVisible(tester, find.byTooltip('إخراج العضو'));
+      await tester.enterText(
+        find.byKey(const Key('remove-member-reason')),
+        'سبب',
+      );
+      await _tapVisible(
+        tester,
+        find.widgetWithText(FilledButton, 'إخراج العضو'),
+      );
+      await tester.pumpAndSettle();
+      expect(teamService.removeCallCount, 1);
+      expect(find.text('سالم'), findsWidgets);
+      expect(find.text('تم إخراج العضو من الفريق'), findsNothing);
+    },
+  );
 
   // Gate 41.2: once data is on screen, a re-load (pull-to-refresh,
   // didPopNext) must not tear down and replace the visible content with

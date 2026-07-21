@@ -1,0 +1,85 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+set local search_path = 'public', 'extensions';
+select plan(55);
+
+insert into profiles(display_name,phone_number,phone_masked,pin_hash,is_admin,is_active) values
+ ('040 owner','00000401','00****01',crypt('2468',gen_salt('bf',8)),false,true),
+ ('040 other','00000402','00****02',crypt('2468',gen_salt('bf',8)),false,true),
+ ('040 inactive','00000403','00****03',crypt('2468',gen_salt('bf',8)),false,false),
+ ('040 member','00000404','00****04',crypt('2468',gen_salt('bf',8)),false,true);
+insert into app_sessions(profile_id,token_hash,expires_at) select id,encode(digest('040-owner','sha256'),'hex'),now()+interval '1 day' from profiles where display_name='040 owner';
+insert into app_sessions(profile_id,token_hash,expires_at) select id,encode(digest('040-other','sha256'),'hex'),now()+interval '1 day' from profiles where display_name='040 other';
+insert into app_sessions(profile_id,token_hash,expires_at) select id,encode(digest('040-inactive','sha256'),'hex'),now()+interval '1 day' from profiles where display_name='040 inactive';
+insert into budget_plans(profile_id,total_money,start_date,end_date,is_active) select id,1000,current_date-1,current_date+1,true from profiles where display_name='040 owner';
+insert into expenses(profile_id,budget_plan_id,source,item_name,amount,expense_date) select p.id,b.id,'manual','040 manual',100,current_date from profiles p join budget_plans b on b.profile_id=p.id where p.display_name='040 owner';
+insert into expenses(profile_id,budget_plan_id,source,item_name,amount,expense_date) select p.id,b.id,'recurring_purchase','040 recurring',25,current_date from profiles p join budget_plans b on b.profile_id=p.id where p.display_name='040 owner';
+
+create temporary table void_audit on commit drop as select voided_at,voided_by,void_reason from expenses where false;
+select is(public.void_expense('040-owner',(select id from expenses where item_name='040 manual'),'reason'),jsonb_build_object('ok',true,'voided',true),'owner voids manual expense');
+insert into void_audit select voided_at,voided_by,void_reason from expenses where item_name='040 manual';
+select is((select count(*) from expenses where item_name='040 manual'),1::bigint,'voided row remains');
+select ok((select voided_at is not null and voided_by=(select id from profiles where display_name='040 owner') and void_reason='reason' from expenses where item_name='040 manual'),'void audit is retained');
+select is((public.get_budget_overview('040-owner')->'summary'->>'total_spent')::numeric,25::numeric,'active total excludes voided expense');
+select ok(not (public.get_budget_overview('040-owner')->'recent_expenses' @> jsonb_build_array(jsonb_build_object('id',(select id from expenses where item_name='040 manual')))),'active list excludes voided expense');
+select is(public.void_expense('040-owner',(select id from expenses where item_name='040 manual'),'changed'),jsonb_build_object('ok',true,'voided',false),'repeat void is idempotent');
+select is((select voided_at from expenses where item_name='040 manual'),(select voided_at from void_audit),'repeat preserves timestamp');
+select is((select voided_by from expenses where item_name='040 manual'),(select voided_by from void_audit),'repeat preserves actor');
+select is((select void_reason from expenses where item_name='040 manual'),(select void_reason from void_audit),'repeat preserves reason');
+select throws_like($$select public.void_expense('040-other',(select id from expenses where item_name='040 manual'),'reason')$$,'expense not available','non-owner is rejected');
+select throws_like($$select public.void_expense('bad',gen_random_uuid(),'reason')$$,'invalid session','invalid session is rejected');
+select throws_like($$select public.void_expense('040-inactive',gen_random_uuid(),'reason')$$,'invalid session','inactive caller is rejected');
+select throws_like($$select public.void_expense('040-owner',(select id from expenses where item_name='040 recurring'),'reason')$$,'expense not available','generated expense is immutable');
+select throws_like($$select public.void_expense('040-owner',gen_random_uuid(),'reason')$$,'expense not available','missing expense is generic');
+select throws_like($$select public.void_expense('040-owner',(select id from expenses where item_name='040 recurring'),' ')$$,'invalid void reason','blank void reason is rejected');
+select throws_like($$select public.void_expense('040-owner',(select id from expenses where item_name='040 recurring'),repeat('x',301))$$,'invalid void reason','oversized void reason is rejected');
+insert into expenses(profile_id,budget_plan_id,source,item_name,amount,expense_date) select p.id,b.id,'manual','040 boundary',1,current_date from profiles p join budget_plans b on b.profile_id=p.id where p.display_name='040 owner';
+select is(public.void_expense('040-owner',(select id from expenses where item_name='040 boundary'),repeat('x',300)),jsonb_build_object('ok',true,'voided',true),'exact maximum void reason is accepted');
+select is(length((select void_reason from expenses where item_name='040 boundary')),300,'maximum void reason is retained');
+select ok(not has_function_privilege('anon','public.delete_expense(text,uuid)','EXECUTE'),'anon cannot execute retired delete RPC');
+select ok(has_function_privilege('anon','public.void_expense(text,uuid,text)','EXECUTE'),'anon can execute void RPC');
+select ok(not has_function_privilege('authenticated','public.void_expense(text,uuid,text)','EXECUTE'),'authenticated cannot execute void RPC');
+
+insert into external_students(display_name,phone_number,phone_masked,created_by) select '040 external','00000405','00****05',id from profiles where display_name='040 owner';
+insert into teams(name,team_type,leader_id,is_public,status,is_active,current_position) select '040 team','other',id,true,'open',true,2 from profiles where display_name='040 owner';
+insert into team_members(team_id,profile_id,position,role,is_active) select t.id,p.id,1,'leader',true from teams t join profiles p on p.display_name='040 owner' where t.name='040 team';
+insert into team_members(team_id,profile_id,position,role,is_active) select t.id,p.id,2,'member',true from teams t join profiles p on p.display_name='040 member' where t.name='040 team';
+insert into team_members(team_id,external_student_id,position,role,is_active) select t.id,e.id,3,'member',true from teams t join external_students e on e.display_name='040 external' where t.name='040 team';
+create temporary table removal_audit on commit drop as select removed_at,removed_by,removal_reason from team_members where false;
+select is((public.remove_team_member('040-owner',(select id from team_members where team_id=(select id from teams where name='040 team') and profile_id=(select id from profiles where display_name='040 member')),'left'))->>'removed','true','leader removes registered member');
+insert into removal_audit select removed_at,removed_by,removal_reason from team_members where profile_id=(select id from profiles where display_name='040 member');
+select ok((select not is_active and removed_at is not null and removed_by=(select id from profiles where display_name='040 owner') and removal_reason='left' from team_members where profile_id=(select id from profiles where display_name='040 member')),'registered removal retains audit');
+select is((select count(*) from team_members where team_id=(select id from teams where name='040 team') and is_active and removed_at is null),2::bigint,'active member count decreases once');
+select is((select current_position from teams where name='040 team'),3,'current position advances once');
+select is((public.remove_team_member('040-owner',(select id from team_members where profile_id=(select id from profiles where display_name='040 member')),'changed'))->>'removed','false','repeat removal is idempotent');
+select is((select removal_reason from team_members where profile_id=(select id from profiles where display_name='040 member')),(select removal_reason from removal_audit),'repeat preserves removal audit');
+select is((select current_position from teams where name='040 team'),3,'repeat does not adjust position');
+select throws_like($$select public.remove_team_member('040-owner',(select id from team_members where team_id=(select id from teams where name='040 team') and role='leader'),'no')$$,'leader cannot be removed','leader removal is blocked');
+select throws_like($$select public.remove_team_member('040-other',(select id from team_members where team_id=(select id from teams where name='040 team') and external_student_id is not null),'no')$$,'member not available','non-leader is rejected generically');
+select throws_like($$select public.remove_team_member('040-owner',gen_random_uuid(),'no')$$,'member not available','missing membership is generic');
+select throws_like($$select public.remove_team_member('040-owner',(select id from team_members where team_id=(select id from teams where name='040 team') and external_student_id is not null),' ')$$,'invalid removal reason','blank removal reason is rejected');
+select is((public.remove_team_member('040-owner',(select id from team_members where team_id=(select id from teams where name='040 team') and external_student_id is not null),'external left'))->>'removed','true','leader removes external member');
+select is((select count(*) from external_students where display_name='040 external'),1::bigint,'external student history remains');
+select ok(not has_function_privilege('anon','public.remove_team_member(text,uuid,uuid)','EXECUTE'),'anon cannot execute retired removal RPC');
+select ok(has_function_privilege('anon','public.remove_team_member(text,uuid,text)','EXECUTE'),'anon can execute audited removal RPC');
+select ok((select prosecdef from pg_proc where oid='public.remove_team_member(text,uuid,text)'::regprocedure),'removal RPC is security definer');
+select ok((select 'search_path=public, extensions'=any(proconfig) from pg_proc where oid='public.remove_team_member(text,uuid,text)'::regprocedure),'removal RPC has fixed search path');
+select is((select count(*) from team_members where profile_id=(select id from profiles where display_name='040 member')),1::bigint,'removed membership row remains');
+select ok((select not is_active and removed_at is not null and removed_by is not null and removal_reason='external left' from team_members where external_student_id=(select id from external_students where display_name='040 external')),'external removal retains audit');
+select is((select count(*) from team_members where team_id=(select id from teams where name='040 team') and is_active and removed_at is null),1::bigint,'external removal updates active count');
+select ok((select prosecdef from pg_proc where oid='public.void_expense(text,uuid,text)'::regprocedure),'void RPC is security definer');
+select ok((select 'search_path=public, extensions'=any(proconfig) from pg_proc where oid='public.void_expense(text,uuid,text)'::regprocedure),'void RPC has fixed search path');
+select ok(position('auth.uid' in (select pg_get_functiondef('public.void_expense(text,uuid,text)'::regprocedure)))=0,'void RPC has no auth uid dependency');
+select ok(position('auth.uid' in (select pg_get_functiondef('public.remove_team_member(text,uuid,text)'::regprocedure)))=0,'removal RPC has no auth uid dependency');
+select ok(not has_function_privilege('authenticated','public.remove_team_member(text,uuid,text)','EXECUTE'),'authenticated cannot execute removal RPC');
+select is((select count(*) from pg_proc p,lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where p.oid='public.void_expense(text,uuid,text)'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE'),0::bigint,'PUBLIC cannot execute void RPC');
+select is((select count(*) from pg_proc p,lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where p.oid='public.remove_team_member(text,uuid,text)'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE'),0::bigint,'PUBLIC cannot execute removal RPC');
+select ok((select relrowsecurity from pg_class where oid='public.expenses'::regclass),'expenses RLS remains enabled');
+select ok((select relrowsecurity from pg_class where oid='public.team_members'::regclass),'team members RLS remains enabled');
+select ok(not has_table_privilege('anon','public.expenses','SELECT'),'anon has no direct expense read');
+select ok(not has_table_privilege('anon','public.team_members','UPDATE'),'anon has no direct membership update');
+select is((public.add_team_member('040-owner',(select id from teams where name='040 team'),(select id from profiles where display_name='040 member'))->'team'->>'id'),(select id::text from teams where name='040 team'),'removed registered member can be safely re-added');
+select is((select count(*) from team_members where profile_id=(select id from profiles where display_name='040 member')),2::bigint,'re-add creates a new membership history row');
+select throws_like($$select public.remove_team_member('040-inactive',gen_random_uuid(),'reason')$$,'invalid session','inactive caller cannot remove');
+select * from finish();
+rollback;
