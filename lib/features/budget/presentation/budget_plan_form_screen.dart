@@ -11,11 +11,13 @@ import '../domain/budget_models.dart';
 class BudgetPlanFormScreen extends StatefulWidget {
   final AuthService authService;
   final BudgetPlan? existingPlan;
+  final BudgetService? budgetService;
 
   const BudgetPlanFormScreen({
     super.key,
     required this.authService,
     this.existingPlan,
+    this.budgetService,
   });
 
   @override
@@ -25,7 +27,7 @@ class BudgetPlanFormScreen extends StatefulWidget {
 class _BudgetPlanFormScreenState extends State<BudgetPlanFormScreen> {
   late final BudgetService _budget;
   final _moneyCtrl = TextEditingController();
-  final _noteCtrl  = TextEditingController();
+  final _noteCtrl = TextEditingController();
   DateTime? _startDate;
   DateTime? _endDate;
   bool _loading = false;
@@ -34,13 +36,13 @@ class _BudgetPlanFormScreenState extends State<BudgetPlanFormScreen> {
   @override
   void initState() {
     super.initState();
-    _budget = BudgetService(widget.authService);
+    _budget = widget.budgetService ?? BudgetService(widget.authService);
     final p = widget.existingPlan;
     if (p != null) {
       _moneyCtrl.text = p.totalMoney.toStringAsFixed(2);
-      _noteCtrl.text  = p.note ?? '';
+      _noteCtrl.text = p.note ?? '';
       _startDate = p.startDate;
-      _endDate   = p.endDate;
+      _endDate = p.endDate;
     }
   }
 
@@ -52,17 +54,23 @@ class _BudgetPlanFormScreenState extends State<BudgetPlanFormScreen> {
   }
 
   Future<void> _pickDate(bool isStart) async {
-    final now    = DateTime.now();
-    final init   = isStart ? (_startDate ?? now) : (_endDate ?? _startDate ?? now);
+    final now = DateTime.now();
+    final init = isStart
+        ? (_startDate ?? now)
+        : (_endDate ?? _startDate ?? now);
     final picked = await showDatePicker(
       context: context,
       initialDate: init,
       firstDate: DateTime(now.year - 1),
-      lastDate:  DateTime(now.year + 5),
+      lastDate: DateTime(now.year + 5),
     );
     if (picked == null) return;
     setState(() {
-      if (isStart) { _startDate = picked; } else { _endDate = picked; }
+      if (isStart) {
+        _startDate = picked;
+      } else {
+        _endDate = picked;
+      }
     });
   }
 
@@ -90,28 +98,45 @@ class _BudgetPlanFormScreenState extends State<BudgetPlanFormScreen> {
       return;
     }
 
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      await _budget.upsertBudgetPlan(
+      final overview = await _budget.upsertBudgetPlan(
         totalMoney: money,
-        startDate:  _startDate!,
-        endDate:    _endDate!,
-        note:       note.isEmpty ? null : note,
+        startDate: _startDate!,
+        endDate: _endDate!,
+        note: note.isEmpty ? null : note,
       );
-      if (mounted) context.pop();
+      if (mounted) context.pop(overview);
     } on PostgrestException catch (e) {
-      if (mounted) setState(() { _error = _arabicError(e.message); _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = _arabicError(e.message);
+          _loading = false;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() { _error = 'حدث خطأ — تحقق من اتصالك'; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = 'حدث خطأ — تحقق من اتصالك';
+          _loading = false;
+        });
+      }
     }
   }
 
   static String _arabicError(String msg) {
     final m = msg.toLowerCase();
-    if (m.contains('end_date')) return 'تاريخ النهاية يجب أن يكون بعد تاريخ البداية';
+    if (m.contains('end_date')) {
+      return 'تاريخ النهاية يجب أن يكون بعد تاريخ البداية';
+    }
     if (m.contains('total_money')) return 'المبلغ يجب أن يكون صفر أو أكثر';
     if (m.contains('note')) return 'الملاحظة طويلة جداً';
-    if (m.contains('invalid session')) return 'انتهت جلستك — يرجى إعادة تسجيل الدخول';
+    if (m.contains('invalid session')) {
+      return 'انتهت جلستك — يرجى إعادة تسجيل الدخول';
+    }
     return 'حدث خطأ: $msg';
   }
 
@@ -129,7 +154,9 @@ class _BudgetPlanFormScreenState extends State<BudgetPlanFormScreen> {
           TextField(
             controller: _moneyCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'المبلغ الإجمالي (MRU)'),
+            decoration: const InputDecoration(
+              labelText: 'المبلغ الإجمالي (MRU)',
+            ),
           ),
           const SizedBox(height: 12),
           _DateField(
@@ -158,8 +185,12 @@ class _BudgetPlanFormScreenState extends State<BudgetPlanFormScreen> {
             onPressed: _loading ? null : _submit,
             child: _loading
                 ? const SizedBox(
-                    height: 22, width: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
                 : Text(isEdit ? 'تحديث الميزانية' : 'حفظ الميزانية'),
           ),
@@ -173,7 +204,11 @@ class _DateField extends StatelessWidget {
   final String label;
   final DateTime? date;
   final VoidCallback onTap;
-  const _DateField({required this.label, required this.date, required this.onTap});
+  const _DateField({
+    required this.label,
+    required this.date,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -45,8 +45,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
   bool _isOfflineCached = false;
   DateTime? _cachedAt;
   final Set<String> _updatingRecurring = {};
+  final Set<String> _deactivatingSubscriptions = {};
   int _loadGeneration = 0;
-  int _recurringMutationGeneration = 0;
+  int _mutationGeneration = 0;
 
   @override
   void initState() {
@@ -58,7 +59,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   Future<void> _load({bool? showLoading, bool throwOnError = false}) async {
     final loadGeneration = ++_loadGeneration;
-    final mutationGeneration = _recurringMutationGeneration;
+    final mutationGeneration = _mutationGeneration;
     final isInitialLoad = showLoading ?? _overview == null;
     setState(() {
       if (isInitialLoad) _isLoading = true;
@@ -71,7 +72,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
       final recurringStats = await _budget.getRecurringPurchaseOverview();
       if (!mounted ||
           loadGeneration != _loadGeneration ||
-          mutationGeneration != _recurringMutationGeneration) {
+          mutationGeneration != _mutationGeneration) {
         return;
       }
       final profileId = widget.authService.profile?.id;
@@ -89,7 +90,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
       }
       if (!mounted ||
           loadGeneration != _loadGeneration ||
-          mutationGeneration != _recurringMutationGeneration) {
+          mutationGeneration != _mutationGeneration) {
         return;
       }
       setState(() {
@@ -132,6 +133,36 @@ class _BudgetScreenState extends State<BudgetScreen> {
     }
   }
 
+  void _applyBudgetOverview(BudgetOverview overview, int mutationVersion) {
+    if (!mounted || mutationVersion != _mutationGeneration) return;
+    ++_loadGeneration;
+    setState(() {
+      _overview = overview;
+      _isLoading = false;
+      _isOfflineCached = false;
+      _cachedAt = null;
+    });
+  }
+
+  Future<void> _refreshOverview(int mutationVersion) async {
+    try {
+      final overview = await _budget.getOverview();
+      _applyBudgetOverview(overview, mutationVersion);
+    } catch (e) {
+      if (mounted && mutationVersion == _mutationGeneration) {
+        _showError(_arabicError(e));
+      }
+    }
+  }
+
+  Future<void> _openOverviewRoute(String route, {Object? extra}) async {
+    final mutationVersion = ++_mutationGeneration;
+    final result = await context.push<Object?>(route, extra: extra);
+    if (result is BudgetOverview) {
+      _applyBudgetOverview(result, mutationVersion);
+    }
+  }
+
   void _onOfflineAction() {
     _showError('هذه العملية تحتاج إلى اتصال بالإنترنت');
   }
@@ -153,7 +184,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
         occurrenceDate: item.occurrenceDate,
         status: status,
       );
-      _recurringMutationGeneration++;
+      _mutationGeneration++;
       if (!mounted) return;
       final updatedItem = _matchingOccurrence(updatedToday, item);
       setState(() {
@@ -220,7 +251,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     }
     final voided = await _showVoidExpenseDialog(expense);
     if (voided == null) return;
-    await _load(showLoading: false);
+    if (voided) await _refreshOverview(++_mutationGeneration);
     if (voided && mounted) {
       _showError('تم إلغاء المصروف مع الاحتفاظ بسجله المالي');
     }
@@ -322,16 +353,23 @@ class _BudgetScreenState extends State<BudgetScreen> {
       _onOfflineAction();
       return;
     }
+    if (_deactivatingSubscriptions.contains(id)) return;
+    setState(() => _deactivatingSubscriptions.add(id));
     final ok = await _confirm(
       'إلغاء الاشتراك',
       'هل تريد إلغاء تفعيل هذا الاشتراك؟',
     );
-    if (!ok) return;
+    if (!ok) {
+      if (mounted) setState(() => _deactivatingSubscriptions.remove(id));
+      return;
+    }
     try {
       await _budget.deactivateSubscription(id);
-      _load();
+      await _refreshOverview(++_mutationGeneration);
     } catch (e) {
       if (mounted) _showError(_arabicError(e));
+    } finally {
+      if (mounted) setState(() => _deactivatingSubscriptions.remove(id));
     }
   }
 
@@ -360,9 +398,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  void _goSetup() => context
-      .push('/budget/setup', extra: _overview?.budgetPlan)
-      .then((_) => _load());
+  void _goSetup() =>
+      _openOverviewRoute('/budget/setup', extra: _overview?.budgetPlan);
 
   @override
   Widget build(BuildContext context) {
@@ -423,9 +460,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 enabled: !_isOfflineCached,
                 onTap: _isOfflineCached
                     ? _onOfflineAction
-                    : () => context
-                          .push('/budget/expense/new')
-                          .then((_) => _load()),
+                    : () => _openOverviewRoute('/budget/expense/new'),
               ),
             ),
             Expanded(
@@ -443,9 +478,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 enabled: !_isOfflineCached,
                 onTap: _isOfflineCached
                     ? _onOfflineAction
-                    : () => context
-                          .push('/budget/subscription/new')
-                          .then((_) => _load()),
+                    : () => _openOverviewRoute('/budget/subscription/new'),
               ),
             ),
             Expanded(
@@ -645,9 +678,12 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 IconButton(
                   icon: const Icon(Icons.edit_outlined, size: 20),
                   tooltip: 'تعديل',
-                  onPressed: () => context
-                      .push('/budget/subscription/new', extra: sub)
-                      .then((_) => _load()),
+                  onPressed: _deactivatingSubscriptions.contains(sub.id)
+                      ? null
+                      : () => _openOverviewRoute(
+                          '/budget/subscription/new',
+                          extra: sub,
+                        ),
                 ),
                 IconButton(
                   icon: const Icon(
@@ -656,7 +692,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     color: ZadTokens.danger,
                   ),
                   tooltip: 'إلغاء',
-                  onPressed: () => _deactivateSub(sub.id),
+                  onPressed: _deactivatingSubscriptions.contains(sub.id)
+                      ? null
+                      : () => _deactivateSub(sub.id),
                 ),
               ],
             ),
@@ -749,9 +787,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   IconButton(
                     icon: const Icon(Icons.edit_outlined, size: 20),
                     tooltip: 'تعديل',
-                    onPressed: () => context
-                        .push('/budget/expense/new', extra: exp)
-                        .then((_) => _load()),
+                    onPressed: () =>
+                        _openOverviewRoute('/budget/expense/new', extra: exp),
                   ),
                   IconButton(
                     icon: const Icon(

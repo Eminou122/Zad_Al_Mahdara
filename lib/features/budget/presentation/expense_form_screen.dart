@@ -11,11 +11,13 @@ import '../domain/budget_models.dart';
 class ExpenseFormScreen extends StatefulWidget {
   final AuthService authService;
   final Expense? existingExpense;
+  final BudgetService? budgetService;
 
   const ExpenseFormScreen({
     super.key,
     required this.authService,
     this.existingExpense,
+    this.budgetService,
   });
 
   @override
@@ -24,10 +26,10 @@ class ExpenseFormScreen extends StatefulWidget {
 
 class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   late final BudgetService _budget;
-  final _nameCtrl     = TextEditingController();
-  final _amountCtrl   = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _amountCtrl = TextEditingController();
   final _categoryCtrl = TextEditingController();
-  final _noteCtrl     = TextEditingController();
+  final _noteCtrl = TextEditingController();
   DateTime? _date;
   bool _loading = false;
   String? _error;
@@ -35,14 +37,14 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   @override
   void initState() {
     super.initState();
-    _budget = BudgetService(widget.authService);
+    _budget = widget.budgetService ?? BudgetService(widget.authService);
     final e = widget.existingExpense;
     if (e != null) {
-      _nameCtrl.text     = e.itemName;
-      _amountCtrl.text   = e.amount.toStringAsFixed(2);
+      _nameCtrl.text = e.itemName;
+      _amountCtrl.text = e.amount.toStringAsFixed(2);
       _categoryCtrl.text = e.category ?? '';
-      _noteCtrl.text     = e.note ?? '';
-      _date              = e.expenseDate;
+      _noteCtrl.text = e.note ?? '';
+      _date = e.expenseDate;
     } else {
       _date = DateTime.now();
     }
@@ -58,21 +60,21 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   }
 
   Future<void> _pickDate() async {
-    final now    = DateTime.now();
+    final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: _date ?? now,
       firstDate: DateTime(now.year - 2),
-      lastDate:  DateTime(now.year + 2),
+      lastDate: DateTime(now.year + 2),
     );
     if (picked != null) setState(() => _date = picked);
   }
 
   Future<void> _submit() async {
-    final name   = _nameCtrl.text.trim();
+    final name = _nameCtrl.text.trim();
     final amount = double.tryParse(_amountCtrl.text.trim());
-    final cat    = _categoryCtrl.text.trim();
-    final note   = _noteCtrl.text.trim();
+    final cat = _categoryCtrl.text.trim();
+    final note = _noteCtrl.text.trim();
 
     if (name.isEmpty || name.length > 80) {
       setState(() => _error = 'اسم المصروف مطلوب (1–80 حرف)');
@@ -95,42 +97,60 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       return;
     }
 
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
+      final BudgetOverview overview;
       final ex = widget.existingExpense;
       if (ex != null) {
-        await _budget.updateExpense(
-          expenseId:   ex.id,
-          itemName:    name,
-          amount:      amount,
-          category:    cat.isEmpty ? null : cat,
-          note:        note.isEmpty ? null : note,
+        overview = await _budget.updateExpense(
+          expenseId: ex.id,
+          itemName: name,
+          amount: amount,
+          category: cat.isEmpty ? null : cat,
+          note: note.isEmpty ? null : note,
           expenseDate: _date!,
         );
       } else {
-        await _budget.addExpense(
-          itemName:    name,
-          amount:      amount,
-          category:    cat.isEmpty ? null : cat,
-          note:        note.isEmpty ? null : note,
+        overview = await _budget.addExpense(
+          itemName: name,
+          amount: amount,
+          category: cat.isEmpty ? null : cat,
+          note: note.isEmpty ? null : note,
           expenseDate: _date!,
         );
       }
-      if (mounted) context.pop();
+      if (mounted) context.pop(overview);
     } on PostgrestException catch (e) {
-      if (mounted) setState(() { _error = _arabicError(e.message); _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = _arabicError(e.message);
+          _loading = false;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() { _error = 'حدث خطأ — تحقق من اتصالك'; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = 'حدث خطأ — تحقق من اتصالك';
+          _loading = false;
+        });
+      }
     }
   }
 
   static String _arabicError(String msg) {
     final m = msg.toLowerCase();
-    if (m.contains('expense_date outside')) return 'التاريخ خارج نطاق الميزانية الحالية';
+    if (m.contains('expense_date outside')) {
+      return 'التاريخ خارج نطاق الميزانية الحالية';
+    }
     if (m.contains('item_name')) return 'اسم المصروف غير صالح';
     if (m.contains('amount')) return 'المبلغ يجب أن يكون صفر أو أكثر';
     if (m.contains('category')) return 'الفئة طويلة جداً';
-    if (m.contains('invalid session')) return 'انتهت جلستك — يرجى إعادة تسجيل الدخول';
+    if (m.contains('invalid session')) {
+      return 'انتهت جلستك — يرجى إعادة تسجيل الدخول';
+    }
     return 'حدث خطأ: $msg';
   }
 
@@ -152,7 +172,10 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           TextField(
             controller: _nameCtrl,
             maxLength: 80,
-            decoration: const InputDecoration(labelText: 'اسم المصروف', counterText: ''),
+            decoration: const InputDecoration(
+              labelText: 'اسم المصروف',
+              counterText: '',
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -164,14 +187,20 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           TextField(
             controller: _categoryCtrl,
             maxLength: 40,
-            decoration: const InputDecoration(labelText: 'الفئة (اختياري)', counterText: ''),
+            decoration: const InputDecoration(
+              labelText: 'الفئة (اختياري)',
+              counterText: '',
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _noteCtrl,
             maxLength: 300,
             maxLines: 2,
-            decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)', counterText: ''),
+            decoration: const InputDecoration(
+              labelText: 'ملاحظة (اختياري)',
+              counterText: '',
+            ),
           ),
           const SizedBox(height: 12),
           InkWell(
@@ -189,8 +218,12 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             onPressed: _loading ? null : _submit,
             child: _loading
                 ? const SizedBox(
-                    height: 22, width: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
                 : Text(isEdit ? 'تحديث المصروف' : 'حفظ المصروف'),
           ),

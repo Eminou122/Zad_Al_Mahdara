@@ -23,6 +23,9 @@ class _StubBudgetService extends BudgetService {
   String? voidReason;
   int voidCalls = 0;
   int overviewCalls = 0;
+  int deactivateSubscriptionCalls = 0;
+  Object? deactivateSubscriptionError;
+  Completer<void>? deactivateSubscriptionCompleter;
   List<TodayRecurringPurchase>? markResult;
   Completer<List<TodayRecurringPurchase>>? markCompleter;
   final List<Completer<List<TodayRecurringPurchase>>> todayCompleters = [];
@@ -40,6 +43,7 @@ class _StubBudgetService extends BudgetService {
     this.voidError,
     this.voidResult = true,
     this.voidCompleter,
+    this.deactivateSubscriptionCompleter,
     this.markResult,
     this.markCompleter,
   }) : super(authService);
@@ -58,6 +62,17 @@ class _StubBudgetService extends BudgetService {
     if (voidError != null) throw voidError!;
     if (voidCompleter != null) return voidCompleter!.future;
     return voidResult;
+  }
+
+  @override
+  Future<void> deactivateSubscription(String subscriptionId) async {
+    deactivateSubscriptionCalls++;
+    if (deactivateSubscriptionError != null) {
+      throw deactivateSubscriptionError!;
+    }
+    if (deactivateSubscriptionCompleter != null) {
+      return deactivateSubscriptionCompleter!.future;
+    }
   }
 
   @override
@@ -833,7 +848,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(service.voidCalls, 1);
-        expect(service.overviewCalls, greaterThanOrEqualTo(2));
+        expect(service.overviewCalls, 2);
         expect(find.text('دفتر'), findsNothing);
         expect(
           find.text('تم إلغاء المصروف مع الاحتفاظ بسجله المالي'),
@@ -842,6 +857,23 @@ void main() {
       },
     );
 
+    testWidgets('voided false leaves the expense and overview unchanged', (
+      tester,
+    ) async {
+      final service = await pumpExpense(tester, voidResult: false);
+      await tester.enterText(
+        find.byKey(const Key('void-expense-reason')),
+        'already voided',
+      );
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'إلغاء المصروف'));
+      await tester.pumpAndSettle();
+
+      expect(service.voidCalls, 1);
+      expect(service.overviewCalls, 1);
+      expect(find.text('دفتر'), findsOneWidget);
+    });
+
     testWidgets('void dialog fits at 320px without overflow', (tester) async {
       tester.view.physicalSize = const Size(320, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -849,6 +881,57 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       await pumpExpense(tester);
       expect(find.byType(AlertDialog), findsOneWidget);
+    });
+  });
+
+  group('subscription deactivation', () {
+    testWidgets('is row-busy, blocks duplicates, and targets overview once', (
+      tester,
+    ) async {
+      final auth = _authWithProfile('profile-1');
+      final pending = Completer<void>();
+      final sub = AppSubscription(
+        id: 'sub-1',
+        name: 'ماء',
+        amount: 30,
+        startDate: DateTime(2026, 7, 1),
+        endDate: DateTime(2026, 7, 30),
+        notifyDaysBefore: 3,
+        isActive: true,
+      );
+      final service = _StubBudgetService(
+        authService: auth,
+        overview: BudgetOverview(
+          budgetPlan: _overview.budgetPlan,
+          summary: _overview.summary,
+          activeSubscriptions: [sub],
+          recentExpenses: const [],
+        ),
+        recurringStats: _recurringStats,
+        deactivateSubscriptionCompleter: pending,
+      );
+      await _pumpBudget(tester, auth, service);
+      final initialOverviewCalls = service.overviewCalls;
+
+      await tester.tap(find.byTooltip('إلغاء'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تأكيد'));
+      await tester.pump();
+      expect(service.deactivateSubscriptionCalls, 1);
+
+      await tester.tap(find.byTooltip('إلغاء'));
+      expect(service.deactivateSubscriptionCalls, 1);
+
+      service.overview = BudgetOverview(
+        budgetPlan: _overview.budgetPlan,
+        summary: _overview.summary,
+        activeSubscriptions: const [],
+        recentExpenses: const [],
+      );
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(service.overviewCalls, initialOverviewCalls + 1);
+      expect(find.text('ماء'), findsNothing);
     });
   });
 

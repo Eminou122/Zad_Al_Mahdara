@@ -11,11 +11,13 @@ import '../domain/budget_models.dart';
 class SubscriptionFormScreen extends StatefulWidget {
   final AuthService authService;
   final AppSubscription? existingSub;
+  final BudgetService? budgetService;
 
   const SubscriptionFormScreen({
     super.key,
     required this.authService,
     this.existingSub,
+    this.budgetService,
   });
 
   @override
@@ -24,7 +26,7 @@ class SubscriptionFormScreen extends StatefulWidget {
 
 class _SubscriptionFormScreenState extends State<SubscriptionFormScreen> {
   late final BudgetService _budget;
-  final _nameCtrl   = TextEditingController();
+  final _nameCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _notifyCtrl = TextEditingController();
   DateTime? _startDate;
@@ -35,19 +37,19 @@ class _SubscriptionFormScreenState extends State<SubscriptionFormScreen> {
   @override
   void initState() {
     super.initState();
-    _budget = BudgetService(widget.authService);
+    _budget = widget.budgetService ?? BudgetService(widget.authService);
     final s = widget.existingSub;
     if (s != null) {
-      _nameCtrl.text   = s.name;
+      _nameCtrl.text = s.name;
       _amountCtrl.text = s.amount.toStringAsFixed(2);
       _notifyCtrl.text = s.notifyDaysBefore.toString();
       _startDate = s.startDate;
-      _endDate   = s.endDate;
+      _endDate = s.endDate;
     } else {
       _notifyCtrl.text = '3';
       final now = DateTime.now();
       _startDate = now;
-      _endDate   = DateTime(now.year, now.month + 1, now.day);
+      _endDate = DateTime(now.year, now.month + 1, now.day);
     }
   }
 
@@ -60,22 +62,28 @@ class _SubscriptionFormScreenState extends State<SubscriptionFormScreen> {
   }
 
   Future<void> _pickDate(bool isStart) async {
-    final now  = DateTime.now();
-    final init = isStart ? (_startDate ?? now) : (_endDate ?? _startDate ?? now);
+    final now = DateTime.now();
+    final init = isStart
+        ? (_startDate ?? now)
+        : (_endDate ?? _startDate ?? now);
     final picked = await showDatePicker(
       context: context,
       initialDate: init,
       firstDate: DateTime(now.year - 1),
-      lastDate:  DateTime(now.year + 5),
+      lastDate: DateTime(now.year + 5),
     );
     if (picked == null) return;
     setState(() {
-      if (isStart) { _startDate = picked; } else { _endDate = picked; }
+      if (isStart) {
+        _startDate = picked;
+      } else {
+        _endDate = picked;
+      }
     });
   }
 
   Future<void> _submit() async {
-    final name   = _nameCtrl.text.trim();
+    final name = _nameCtrl.text.trim();
     final amount = double.tryParse(_amountCtrl.text.trim());
     final notify = int.tryParse(_notifyCtrl.text.trim()) ?? 3;
 
@@ -104,33 +112,47 @@ class _SubscriptionFormScreenState extends State<SubscriptionFormScreen> {
       return;
     }
 
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
+      final BudgetOverview overview;
       final sub = widget.existingSub;
       if (sub != null) {
-        await _budget.updateSubscription(
-          subscriptionId:   sub.id,
-          name:             name,
-          amount:           amount,
-          startDate:        _startDate!,
-          endDate:          _endDate!,
+        overview = await _budget.updateSubscription(
+          subscriptionId: sub.id,
+          name: name,
+          amount: amount,
+          startDate: _startDate!,
+          endDate: _endDate!,
           notifyDaysBefore: notify,
-          isActive:         sub.isActive,
+          isActive: sub.isActive,
         );
       } else {
-        await _budget.addSubscription(
-          name:             name,
-          amount:           amount,
-          startDate:        _startDate!,
-          endDate:          _endDate!,
+        overview = await _budget.addSubscription(
+          name: name,
+          amount: amount,
+          startDate: _startDate!,
+          endDate: _endDate!,
           notifyDaysBefore: notify,
         );
       }
-      if (mounted) context.pop();
+      if (mounted) context.pop(overview);
     } on PostgrestException catch (e) {
-      if (mounted) setState(() { _error = _arabicError(e.message); _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = _arabicError(e.message);
+          _loading = false;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() { _error = 'حدث خطأ — تحقق من اتصالك'; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = 'حدث خطأ — تحقق من اتصالك';
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -138,9 +160,13 @@ class _SubscriptionFormScreenState extends State<SubscriptionFormScreen> {
     final m = msg.toLowerCase();
     if (m.contains('name invalid')) return 'اسم الاشتراك غير صالح';
     if (m.contains('amount')) return 'المبلغ يجب أن يكون صفر أو أكثر';
-    if (m.contains('end_date')) return 'تاريخ النهاية يجب أن يكون بعد تاريخ البداية';
+    if (m.contains('end_date')) {
+      return 'تاريخ النهاية يجب أن يكون بعد تاريخ البداية';
+    }
     if (m.contains('notify')) return 'أيام الإشعار يجب أن تكون بين 0 و 30';
-    if (m.contains('invalid session')) return 'انتهت جلستك — يرجى إعادة تسجيل الدخول';
+    if (m.contains('invalid session')) {
+      return 'انتهت جلستك — يرجى إعادة تسجيل الدخول';
+    }
     return 'حدث خطأ: $msg';
   }
 
@@ -160,7 +186,10 @@ class _SubscriptionFormScreenState extends State<SubscriptionFormScreen> {
           TextField(
             controller: _nameCtrl,
             maxLength: 80,
-            decoration: const InputDecoration(labelText: 'اسم الاشتراك', counterText: ''),
+            decoration: const InputDecoration(
+              labelText: 'اسم الاشتراك',
+              counterText: '',
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -191,8 +220,12 @@ class _SubscriptionFormScreenState extends State<SubscriptionFormScreen> {
             onPressed: _loading ? null : _submit,
             child: _loading
                 ? const SizedBox(
-                    height: 22, width: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
                 : Text(isEdit ? 'تحديث الاشتراك' : 'حفظ الاشتراك'),
           ),
@@ -206,7 +239,11 @@ class _DateField extends StatelessWidget {
   final String label;
   final DateTime? date;
   final VoidCallback onTap;
-  const _DateField({required this.label, required this.date, required this.onTap});
+  const _DateField({
+    required this.label,
+    required this.date,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
