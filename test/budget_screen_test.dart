@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zad_al_mahdara/features/budget/data/budget_cache_service.dart';
 import 'package:zad_al_mahdara/features/budget/data/budget_service.dart';
 import 'package:zad_al_mahdara/features/budget/domain/budget_models.dart';
 import 'package:zad_al_mahdara/features/budget/presentation/budget_screen.dart';
+import 'package:zad_al_mahdara/features/budget/presentation/recurring_purchase_form_screen.dart';
+import 'package:zad_al_mahdara/features/budget/presentation/recurring_purchases_screen.dart';
 import 'package:zad_al_mahdara/services/auth_service.dart';
 
 /// Stub service that returns the given data or throws.
@@ -27,10 +30,24 @@ class _StubBudgetService extends BudgetService {
   Object? deactivateSubscriptionError;
   Completer<void>? deactivateSubscriptionCompleter;
   List<TodayRecurringPurchase>? markResult;
+  final List<List<TodayRecurringPurchase>> markResults = [];
   Completer<List<TodayRecurringPurchase>>? markCompleter;
   final List<Completer<List<TodayRecurringPurchase>>> todayCompleters = [];
   int markCalls = 0;
   int todayCalls = 0;
+  int recurringStatsCalls = 0;
+  int recurringCalls = 0;
+  int createCalls = 0;
+  int updateCalls = 0;
+  int deactivateRecurringCalls = 0;
+  List<RecurringPurchase>? createResult;
+  List<RecurringPurchase>? updateResult;
+  List<RecurringPurchase>? deactivateRecurringResult;
+  Object? deactivateRecurringError;
+  Completer<RecurringPurchaseOverview>? recurringStatsCompleter;
+  final List<Completer<RecurringPurchaseOverview>> recurringStatsCompleters =
+      [];
+  final List<Completer<BudgetOverview>> overviewCompleters = [];
 
   _StubBudgetService({
     required AuthService authService,
@@ -52,6 +69,9 @@ class _StubBudgetService extends BudgetService {
   Future<BudgetOverview> getOverview() async {
     if (error != null) throw error!;
     overviewCalls++;
+    if (overviewCompleters.isNotEmpty) {
+      return overviewCompleters.removeAt(0).future;
+    }
     return overview!;
   }
 
@@ -88,13 +108,59 @@ class _StubBudgetService extends BudgetService {
   @override
   Future<List<RecurringPurchase>> getRecurringPurchases() async {
     if (error != null) throw error!;
+    recurringCalls++;
     return recurringItems;
   }
 
   @override
   Future<RecurringPurchaseOverview> getRecurringPurchaseOverview() async {
     if (error != null) throw error!;
+    recurringStatsCalls++;
+    if (recurringStatsCompleters.isNotEmpty) {
+      return recurringStatsCompleters.removeAt(0).future;
+    }
+    if (recurringStatsCompleter != null) return recurringStatsCompleter!.future;
     return recurringStats!;
+  }
+
+  @override
+  Future<List<RecurringPurchase>> createRecurringPurchase({
+    required String name,
+    required double price,
+    required String frequency,
+    int? intervalDays,
+    required DateTime startDate,
+    required DateTime endDate,
+    String? reminderTime,
+    String? note,
+  }) async {
+    createCalls++;
+    return createResult!;
+  }
+
+  @override
+  Future<List<RecurringPurchase>> updateRecurringPurchase({
+    required String recurringPurchaseId,
+    required String name,
+    required double price,
+    required String frequency,
+    int? intervalDays,
+    required DateTime startDate,
+    required DateTime endDate,
+    String? reminderTime,
+    String? note,
+  }) async {
+    updateCalls++;
+    return updateResult!;
+  }
+
+  @override
+  Future<List<RecurringPurchase>> deactivateRecurringPurchase(
+    String recurringPurchaseId,
+  ) async {
+    deactivateRecurringCalls++;
+    if (deactivateRecurringError != null) throw deactivateRecurringError!;
+    return deactivateRecurringResult!;
   }
 
   @override
@@ -107,6 +173,7 @@ class _StubBudgetService extends BudgetService {
     markCalls++;
     if (markError != null) throw markError!;
     if (markCompleter != null) return markCompleter!.future;
+    if (markResults.isNotEmpty) return markResults.removeAt(0);
     return markResult ?? todayRecurring;
   }
 }
@@ -187,6 +254,43 @@ TodayRecurringPurchase _todayPurchase({
   occurrenceDate: DateTime(2026, 7, 4),
   status: status,
 );
+
+RecurringPurchase _recurringPurchase(String id, String name) =>
+    RecurringPurchase(
+      id: id,
+      name: name,
+      price: 25,
+      frequency: 'daily',
+      startDate: DateTime(2026, 7, 1),
+      endDate: DateTime(2026, 7, 31),
+      isActive: true,
+    );
+
+Widget _recurringHost(AuthService auth, _StubBudgetService service) {
+  final router = GoRouter(
+    initialLocation: '/',
+    routes: [
+      GoRoute(
+        path: '/',
+        builder: (context, state) =>
+            RecurringPurchasesScreen(authService: auth, budgetService: service),
+      ),
+      GoRoute(
+        path: '/budget/recurring/new',
+        builder: (_, state) => RecurringPurchaseFormScreen(
+          authService: auth,
+          budgetService: service,
+          existing: state.extra as RecurringPurchase?,
+        ),
+      ),
+    ],
+  );
+  return MaterialApp.router(
+    routerConfig: router,
+    builder: (_, child) =>
+        Directionality(textDirection: TextDirection.rtl, child: child!),
+  );
+}
 
 Future<void> _pumpBudget(
   WidgetTester tester,
@@ -580,7 +684,9 @@ void main() {
               .onPressed,
           isNull,
         );
-        expect(service.todayCalls, greaterThanOrEqualTo(2));
+        expect(service.todayCalls, 1);
+        expect(service.overviewCalls, 2);
+        expect(service.recurringStatsCalls, 2);
         expect(find.text('700.00'), findsOneWidget);
         expect(find.byType(CircularProgressIndicator), findsNothing);
       },
@@ -645,6 +751,8 @@ void main() {
         expect(find.text('تم الشراء'), findsOneWidget);
         expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(service.todayCalls, initialTodayCalls);
+        expect(service.overviewCalls, 1);
+        expect(service.recurringStatsCalls, 1);
         expect(find.byType(SnackBar), findsOneWidget);
         expect(find.text('تعذر حفظ التغيير. حاول مرة أخرى.'), findsOneWidget);
       },
@@ -690,7 +798,7 @@ void main() {
             .onPressed,
         isNull,
       );
-      expect(service.todayCalls, 3);
+      expect(service.todayCalls, 2);
 
       confirmationRefresh.complete([purchased]);
       await tester.pump();
@@ -707,6 +815,102 @@ void main() {
         isNull,
       );
     });
+
+    testWidgets(
+      'stale overview cannot replace newer occurrence reconciliation',
+      (tester) async {
+        final auth = _authWithProfile('profile-1');
+        final bread = _todayPurchase(id: 'rp-1', name: 'خبز');
+        final milk = _todayPurchase(id: 'rp-2', name: 'حليب');
+        final purchased = [
+          _todayPurchase(id: 'rp-1', name: 'خبز', status: 'purchased'),
+          _todayPurchase(id: 'rp-2', name: 'حليب', status: 'purchased'),
+        ];
+        final service = _StubBudgetService(
+          authService: auth,
+          overview: _overview,
+          todayRecurring: [bread, milk],
+          recurringStats: _recurringStats,
+        );
+        service.markResults.addAll([
+          [purchased.first, milk],
+          purchased,
+        ]);
+        await _pumpBudget(tester, auth, service);
+        final oldOverview = Completer<BudgetOverview>();
+        final newOverview = Completer<BudgetOverview>();
+        service.overviewCompleters.addAll([oldOverview, newOverview]);
+
+        final purchases = find.widgetWithText(ElevatedButton, 'تم الشراء');
+        final firstEnabled =
+            List.generate(
+              purchases.evaluate().length,
+              (index) => index,
+            ).firstWhere(
+              (index) =>
+                  tester
+                      .widget<ElevatedButton>(purchases.at(index))
+                      .onPressed !=
+                  null,
+            );
+        await tester.tap(purchases.at(firstEnabled));
+        await tester.pump();
+        final secondEnabled =
+            List.generate(
+              purchases.evaluate().length,
+              (index) => index,
+            ).firstWhere(
+              (index) =>
+                  tester
+                      .widget<ElevatedButton>(purchases.at(index))
+                      .onPressed !=
+                  null,
+            );
+        await tester.tap(purchases.at(secondEnabled));
+        await tester.pump();
+        expect(service.overviewCalls, 3);
+        expect(service.todayCalls, 1);
+
+        newOverview.complete(
+          BudgetOverview(
+            budgetPlan: _overview.budgetPlan,
+            summary: const BudgetSummary(
+              daysTotal: 30,
+              daysRemaining: 10,
+              totalSpent: 112,
+              subscriptionTotal: 0,
+              remainingMoney: 888,
+              safeDailyLimit: 88,
+              todaySpending: 50,
+              isOverDailyLimit: false,
+              plannedRecurringTotal: 0,
+              actualRecurringTotal: 50,
+              skippedRecurringTotal: 0,
+              skippedRecurringCount: 0,
+              todayRecurringExpectedTotal: 50,
+              todayRecurringPurchasedTotal: 50,
+              todayRecurringSkippedCount: 0,
+            ),
+            activeSubscriptions: const [],
+            recentExpenses: const [],
+          ),
+        );
+        await tester.pump();
+        expect(find.text('888.00'), findsOneWidget);
+
+        oldOverview.complete(_overview);
+        await tester.pump();
+        expect(find.text('888.00'), findsOneWidget);
+        expect(
+          tester
+              .widget<ElevatedButton>(
+                find.widgetWithText(ElevatedButton, 'تم الشراء').first,
+              )
+              .onPressed,
+          isNull,
+        );
+      },
+    );
   });
 
   group('expense void', () {
@@ -743,7 +947,7 @@ void main() {
       );
       await _pumpBudget(tester, auth, service);
       await tester.tap(find.byTooltip('إلغاء المصروف'));
-      await tester.pumpAndSettle();
+      await tester.pump();
       return service;
     }
 
@@ -781,7 +985,7 @@ void main() {
       );
       await tester.pump();
       await tester.tap(confirm);
-      await tester.pumpAndSettle();
+      await tester.pump();
       expect(service.voidReason, maxReason);
 
       final second = await pumpExpense(tester);
@@ -932,6 +1136,164 @@ void main() {
       await tester.pumpAndSettle();
       expect(service.overviewCalls, initialOverviewCalls + 1);
       expect(find.text('ماء'), findsNothing);
+    });
+  });
+
+  group('recurring purchase reconciliation', () {
+    Future<_StubBudgetService> pumpRecurring(WidgetTester tester) async {
+      final auth = _authWithProfile('profile-1');
+      final old = _recurringPurchase('old', 'قديم');
+      final service = _StubBudgetService(
+        authService: auth,
+        recurringItems: [old],
+        recurringStats: _recurringStats,
+      );
+      await tester.pumpWidget(_recurringHost(auth, service));
+      await tester.pumpAndSettle();
+      return service;
+    }
+
+    testWidgets('create applies its authoritative list without broad refresh', (
+      tester,
+    ) async {
+      final service = await pumpRecurring(tester);
+      service.createResult = [
+        _recurringPurchase('old', 'قديم'),
+        _recurringPurchase('new', 'جديد'),
+      ];
+      await tester.tap(find.text('إضافة شراء متكرر'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).at(0), 'جديد');
+      await tester.enterText(find.byType(TextField).at(1), '25');
+      await tester.ensureVisible(find.text('حفظ'));
+      await tester.tap(find.text('حفظ'));
+      await tester.pumpAndSettle();
+
+      expect(service.createCalls, 1);
+      expect(find.text('جديد'), findsOneWidget);
+      expect(service.recurringCalls, 1);
+      expect(service.todayCalls, 0);
+      expect(service.overviewCalls, 0);
+      expect(service.recurringStatsCalls, 2);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets(
+      'update replaces the stable item and cancellation changes nothing',
+      (tester) async {
+        final service = await pumpRecurring(tester);
+        service.updateResult = [_recurringPurchase('old', 'محدّث')];
+        await tester.tap(find.byTooltip('تعديل'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).at(0), 'محدّث');
+        await tester.ensureVisible(find.text('تحديث'));
+        await tester.tap(find.text('تحديث'));
+        await tester.pumpAndSettle();
+
+        expect(service.updateCalls, 1);
+        expect(find.text('محدّث'), findsOneWidget);
+        expect(find.text('قديم'), findsNothing);
+        expect(service.recurringCalls, 1);
+        expect(service.todayCalls, 0);
+        expect(service.overviewCalls, 0);
+        expect(service.recurringStatsCalls, 2);
+      },
+    );
+
+    testWidgets(
+      'deactivate is row-busy, idempotent, and keeps content visible',
+      (tester) async {
+        final service = await pumpRecurring(tester);
+        service.deactivateRecurringResult = const [];
+        await tester.tap(find.byTooltip('إلغاء التفعيل'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('تأكيد'));
+        await tester.pump();
+        expect(service.deactivateRecurringCalls, 1);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        await tester.pumpAndSettle();
+        expect(find.text('قديم'), findsNothing);
+        expect(service.recurringCalls, 1);
+        expect(service.todayCalls, 0);
+        expect(service.overviewCalls, 0);
+        expect(service.recurringStatsCalls, 2);
+      },
+    );
+
+    testWidgets('recurring management fits at 320px in RTL', (tester) async {
+      tester.view.physicalSize = const Size(320, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpRecurring(tester);
+
+      expect(
+        Directionality.of(tester.element(find.text('قديم'))),
+        TextDirection.rtl,
+      );
+      expect(find.byTooltip('تعديل'), findsOneWidget);
+      expect(find.byTooltip('إلغاء التفعيل'), findsOneWidget);
+      await tester.ensureVisible(find.text('إضافة شراء متكرر'));
+      await tester.tap(find.text('إضافة شراء متكرر'));
+      await tester.pumpAndSettle();
+      expect(find.text('حفظ'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('stale recurring statistics cannot replace newer statistics', (
+      tester,
+    ) async {
+      final service = await pumpRecurring(tester);
+      final oldStats = Completer<RecurringPurchaseOverview>();
+      final newStats = Completer<RecurringPurchaseOverview>();
+      service.recurringStatsCompleters.addAll([oldStats, newStats]);
+      service.deactivateRecurringResult = const [];
+
+      final refresh = tester.state<RefreshIndicatorState>(
+        find.byType(RefreshIndicator),
+      );
+      final oldRefresh = refresh.show();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(service.recurringStatsCalls, 2);
+
+      await tester.tap(find.byTooltip('إلغاء التفعيل'));
+      await tester.pump();
+      await tester.tap(find.text('تأكيد'));
+      await tester.pump();
+      expect(service.recurringStatsCalls, 3);
+
+      newStats.complete(
+        const RecurringPurchaseOverview(
+          activeRecurringCount: 0,
+          todayExpectedTotal: 0,
+          todayPurchasedTotal: 0,
+          todaySkippedCount: 0,
+          plannedTotal: 222,
+          actualPurchasedTotal: 0,
+          skippedTotal: 0,
+          skippedCount: 0,
+        ),
+      );
+      await tester.pump();
+      expect(find.text('222.00 MRU'), findsOneWidget);
+
+      oldStats.complete(
+        const RecurringPurchaseOverview(
+          activeRecurringCount: 1,
+          todayExpectedTotal: 0,
+          todayPurchasedTotal: 0,
+          todaySkippedCount: 0,
+          plannedTotal: 111,
+          actualPurchasedTotal: 0,
+          skippedTotal: 0,
+          skippedCount: 0,
+        ),
+      );
+      await oldRefresh;
+      await tester.pump();
+      expect(find.text('222.00 MRU'), findsOneWidget);
+      expect(find.text('111.00 MRU'), findsNothing);
     });
   });
 

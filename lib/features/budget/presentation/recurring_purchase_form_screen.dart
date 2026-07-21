@@ -11,11 +11,13 @@ import '../domain/budget_models.dart';
 class RecurringPurchaseFormScreen extends StatefulWidget {
   final AuthService authService;
   final RecurringPurchase? existing;
+  final BudgetService? budgetService;
 
   const RecurringPurchaseFormScreen({
     super.key,
     required this.authService,
     this.existing,
+    this.budgetService,
   });
 
   @override
@@ -40,7 +42,7 @@ class _RecurringPurchaseFormScreenState
   @override
   void initState() {
     super.initState();
-    _budget = BudgetService(widget.authService);
+    _budget = widget.budgetService ?? BudgetService(widget.authService);
     final r = widget.existing;
     if (r == null) {
       final now = DateTime.now();
@@ -140,7 +142,7 @@ class _RecurringPurchaseFormScreenState
     try {
       final r = widget.existing;
       if (r == null) {
-        await _budget.createRecurringPurchase(
+        final items = await _budget.createRecurringPurchase(
           name: name,
           price: price,
           frequency: _frequency,
@@ -150,8 +152,9 @@ class _RecurringPurchaseFormScreenState
           reminderTime: _timeText(_reminderTime),
           note: note.isEmpty ? null : note,
         );
+        if (mounted) context.pop(items);
       } else {
-        await _budget.updateRecurringPurchase(
+        final items = await _budget.updateRecurringPurchase(
           recurringPurchaseId: r.id,
           name: name,
           price: price,
@@ -162,8 +165,8 @@ class _RecurringPurchaseFormScreenState
           reminderTime: _timeText(_reminderTime),
           note: note.isEmpty ? null : note,
         );
+        if (mounted) context.pop(items);
       }
-      if (mounted) context.pop();
     } on PostgrestException catch (e) {
       if (mounted) {
         setState(() {

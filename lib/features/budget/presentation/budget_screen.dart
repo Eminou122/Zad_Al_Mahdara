@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -48,6 +46,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
   final Set<String> _deactivatingSubscriptions = {};
   int _loadGeneration = 0;
   int _mutationGeneration = 0;
+  int _recurringGeneration = 0;
 
   @override
   void initState() {
@@ -177,6 +176,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
     }
     final key = _occurrenceKey(item);
     if (_updatingRecurring.contains(key)) return;
+    final mutationVersion = ++_mutationGeneration;
+    final recurringVersion = ++_recurringGeneration;
     setState(() => _updatingRecurring.add(key));
     try {
       final updatedToday = await _budget.markRecurringPurchaseOccurrence(
@@ -184,24 +185,48 @@ class _BudgetScreenState extends State<BudgetScreen> {
         occurrenceDate: item.occurrenceDate,
         status: status,
       );
-      _mutationGeneration++;
-      if (!mounted) return;
-      final updatedItem = _matchingOccurrence(updatedToday, item);
+      if (!mounted ||
+          mutationVersion != _mutationGeneration ||
+          recurringVersion != _recurringGeneration) {
+        return;
+      }
       setState(() {
-        _todayRecurring = _todayRecurring
-            .map(
-              (current) => _sameOccurrence(current, item)
-                  ? (updatedItem ?? _withStatus(current, status))
-                  : current,
-            )
-            .toList();
+        _todayRecurring = updatedToday;
       });
-      unawaited(_load());
+      await Future.wait([
+        _refreshOverview(mutationVersion),
+        _refreshRecurringStats(recurringVersion),
+      ]);
     } catch (_) {
-      if (mounted) _showError('تعذر حفظ التغيير. حاول مرة أخرى.');
+      if (mounted && mutationVersion == _mutationGeneration) {
+        _showError('تعذر حفظ التغيير. حاول مرة أخرى.');
+      }
     } finally {
       if (mounted) setState(() => _updatingRecurring.remove(key));
     }
+  }
+
+  Future<void> _refreshRecurringStats(int recurringVersion) async {
+    try {
+      final stats = await _budget.getRecurringPurchaseOverview();
+      if (mounted && recurringVersion == _recurringGeneration) {
+        setState(() => _recurringStats = stats);
+      }
+    } catch (e) {
+      if (mounted && recurringVersion == _recurringGeneration) {
+        _showError(_arabicError(e));
+      }
+    }
+  }
+
+  Future<void> _openRecurring() async {
+    final items = await context.push<List<RecurringPurchase>>(
+      '/budget/recurring',
+    );
+    if (items is! List<RecurringPurchase> || !mounted) return;
+    final recurringVersion = ++_recurringGeneration;
+    setState(() => _recurringItems = items);
+    await _refreshRecurringStats(recurringVersion);
   }
 
   String _occurrenceKey(TodayRecurringPurchase item) =>
@@ -209,40 +234,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   String _dateKey(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-
-  bool _sameOccurrence(
-    TodayRecurringPurchase first,
-    TodayRecurringPurchase second,
-  ) =>
-      first.recurringPurchaseId == second.recurringPurchaseId &&
-      _dateKey(first.occurrenceDate) == _dateKey(second.occurrenceDate);
-
-  TodayRecurringPurchase? _matchingOccurrence(
-    List<TodayRecurringPurchase> items,
-    TodayRecurringPurchase target,
-  ) {
-    for (final item in items) {
-      if (_sameOccurrence(item, target)) return item;
-    }
-    return null;
-  }
-
-  TodayRecurringPurchase _withStatus(
-    TodayRecurringPurchase item,
-    String status,
-  ) => TodayRecurringPurchase(
-    recurringPurchaseId: item.recurringPurchaseId,
-    occurrenceId: item.occurrenceId,
-    name: item.name,
-    price: item.price,
-    frequency: item.frequency,
-    intervalDays: item.intervalDays,
-    reminderTime: item.reminderTime,
-    note: item.note,
-    occurrenceDate: item.occurrenceDate,
-    status: status,
-    expenseId: item.expenseId,
-  );
 
   Future<void> _voidExpense(Expense expense) async {
     if (_isOfflineCached) {
@@ -486,11 +477,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 icon: Icons.shopping_basket_outlined,
                 label: 'المشتريات',
                 enabled: !_isOfflineCached,
-                onTap: _isOfflineCached
-                    ? _onOfflineAction
-                    : () => context
-                          .push('/budget/recurring')
-                          .then((_) => _load()),
+                onTap: _isOfflineCached ? _onOfflineAction : _openRecurring,
               ),
             ),
           ],
@@ -508,8 +495,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          onPressed: () =>
-              context.push('/budget/recurring').then((_) => _load()),
+          onPressed: _openRecurring,
           child: const Text('عرض الكل'),
         ),
       ),
@@ -712,8 +698,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
-          onPressed: () =>
-              context.push('/budget/recurring').then((_) => _load()),
+          onPressed: _openRecurring,
           child: const Text('عرض الكل'),
         ),
       ),
@@ -721,7 +706,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
         stats: ov.budgetPlan != null ? _recurringStats : null,
         items: _recurringItems,
         todayItems: _todayRecurring,
-        onManage: () => context.push('/budget/recurring').then((_) => _load()),
+        onManage: _openRecurring,
       ),
       if (ov.recentExpenses.isNotEmpty) ...[
         // Stitch title. "التقارير" button rejected: no reports feature.

@@ -13,8 +13,13 @@ import '../domain/budget_models.dart';
 
 class RecurringPurchasesScreen extends StatefulWidget {
   final AuthService authService;
+  final BudgetService? budgetService;
 
-  const RecurringPurchasesScreen({super.key, required this.authService});
+  const RecurringPurchasesScreen({
+    super.key,
+    required this.authService,
+    this.budgetService,
+  });
 
   @override
   State<RecurringPurchasesScreen> createState() =>
@@ -27,15 +32,20 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
   RecurringPurchaseOverview? _stats;
   bool _loading = true;
   String? _error;
+  final Set<String> _deactivating = {};
+  int _generation = 0;
+  bool _changed = false;
+  bool _allowPop = false;
 
   @override
   void initState() {
     super.initState();
-    _budget = BudgetService(widget.authService);
+    _budget = widget.budgetService ?? BudgetService(widget.authService);
     _load();
   }
 
   Future<void> _load({bool? showLoading, bool throwOnError = false}) async {
+    final generation = ++_generation;
     final isInitialLoad = showLoading ?? _stats == null;
     setState(() {
       if (isInitialLoad) _loading = true;
@@ -44,7 +54,7 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
     try {
       final items = await _budget.getRecurringPurchases();
       final stats = await _budget.getRecurringPurchaseOverview();
-      if (mounted) {
+      if (mounted && generation == _generation) {
         setState(() {
           _items = items;
           _stats = stats;
@@ -56,7 +66,7 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
         if (throwOnError) rethrow;
         return;
       }
-      if (mounted) {
+      if (mounted && generation == _generation) {
         setState(() {
           _error = _arabicError(e);
           _loading = false;
@@ -85,12 +95,54 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
       ),
     );
     if (ok != true) return;
+    if (_deactivating.contains(id)) return;
+    setState(() => _deactivating.add(id));
+    final generation = ++_generation;
     try {
-      await _budget.deactivateRecurringPurchase(id);
-      _load();
+      final items = await _budget.deactivateRecurringPurchase(id);
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _items = items;
+        _changed = true;
+      });
+      await _refreshStats(generation);
     } catch (e) {
-      if (mounted) setState(() => _error = _arabicError(e));
+      if (mounted && generation == _generation) {
+        setState(() => _error = _arabicError(e));
+      }
+    } finally {
+      if (mounted) setState(() => _deactivating.remove(id));
     }
+  }
+
+  Future<void> _applyFormResult(Object? result) async {
+    if (result is! List<RecurringPurchase>) return;
+    final generation = ++_generation;
+    if (!mounted) return;
+    setState(() {
+      _items = result;
+      _changed = true;
+    });
+    await _refreshStats(generation);
+  }
+
+  Future<void> _refreshStats(int generation) async {
+    try {
+      final stats = await _budget.getRecurringPurchaseOverview();
+      if (mounted && generation == _generation) {
+        setState(() => _stats = stats);
+      }
+    } catch (e) {
+      if (mounted && generation == _generation) {
+        setState(() => _error = _arabicError(e));
+      }
+    }
+  }
+
+  void _popWithResult() {
+    if (_allowPop) return;
+    setState(() => _allowPop = true);
+    context.pop(_changed ? _items : null);
   }
 
   @override
@@ -98,98 +150,111 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
     return ZadScaffold(
       title: 'المشتريات المتكررة',
       onRefresh: () => _load(showLoading: false, throwOnError: true),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ZadAnimatedEntry(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const ZadInfoBanner(
-                    'أضف الأشياء التي تشتريها كثيراً، مثل الحليب أو الخبز، ثم علّم ما اشتريته اليوم. التذكير للعرض داخل التطبيق فقط.',
-                  ),
-                  if (_error != null)
-                    ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
-                  if (_stats != null) _statsCard(_stats!),
-                  const ZadSectionHeader('قائمة المشتريات'),
-                  if (_items.isEmpty)
-                    const ZadCard(
-                      child: Text(
-                        'لا توجد مشتريات متكررة حالياً',
-                        style: TextStyle(color: ZadTokens.textMuted),
-                      ),
+      body: PopScope(
+        canPop: _allowPop,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _popWithResult();
+        },
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ZadAnimatedEntry(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const ZadInfoBanner(
+                      'أضف الأشياء التي تشتريها كثيراً، مثل الحليب أو الخبز، ثم علّم ما اشتريته اليوم. التذكير للعرض داخل التطبيق فقط.',
                     ),
-                  for (final item in _items)
-                    ZadCard(
-                      margin: const EdgeInsets.only(bottom: ZadTokens.s2),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ZadTokens.s4,
-                        vertical: ZadTokens.s3,
+                    if (_error != null)
+                      ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
+                    if (_stats != null) _statsCard(_stats!),
+                    const ZadSectionHeader('قائمة المشتريات'),
+                    if (_items.isEmpty)
+                      const ZadCard(
+                        child: Text(
+                          'لا توجد مشتريات متكررة حالياً',
+                          style: TextStyle(color: ZadTokens.textMuted),
+                        ),
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.shopping_basket_outlined,
-                            color: ZadTokens.gold,
-                            size: 22,
-                          ),
-                          const SizedBox(width: ZadTokens.s3),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
+                    for (final item in _items)
+                      ZadCard(
+                        margin: const EdgeInsets.only(bottom: ZadTokens.s2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: ZadTokens.s4,
+                          vertical: ZadTokens.s3,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.shopping_basket_outlined,
+                              color: ZadTokens.gold,
+                              size: 22,
+                            ),
+                            const SizedBox(width: ZadTokens.s2),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  '${_freq(item)}  •  ${_fmtDate(item.startDate)} ← ${_fmtDate(item.endDate)}'
-                                  '${item.reminderTime == null ? '' : '\nتذكير: ${item.reminderTime}'}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: ZadTokens.textMuted,
+                                  Text(
+                                    '${_freq(item)}  •  ${_fmtDate(item.startDate)} ← ${_fmtDate(item.endDate)}'
+                                    '${item.reminderTime == null ? '' : '\nتذكير: ${item.reminderTime}'}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: ZadTokens.textMuted,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          Text(
-                            '${item.price.toStringAsFixed(2)} MRU',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: ZadTokens.primary,
+                            Text(
+                              '${item.price.toStringAsFixed(2)} MRU',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: ZadTokens.primary,
+                              ),
                             ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined, size: 20),
-                            tooltip: 'تعديل',
-                            onPressed: () => context
-                                .push('/budget/recurring/new', extra: item)
-                                .then((_) => _load()),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.cancel_outlined,
-                              size: 20,
-                              color: ZadTokens.danger,
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 20),
+                              tooltip: 'تعديل',
+                              onPressed: _deactivating.contains(item.id)
+                                  ? null
+                                  : () => context
+                                        .push(
+                                          '/budget/recurring/new',
+                                          extra: item,
+                                        )
+                                        .then(_applyFormResult),
                             ),
-                            tooltip: 'إلغاء التفعيل',
-                            onPressed: () => _deactivate(item.id),
-                          ),
-                        ],
+                            IconButton(
+                              icon: const Icon(
+                                Icons.cancel_outlined,
+                                size: 20,
+                                color: ZadTokens.danger,
+                              ),
+                              tooltip: 'إلغاء التفعيل',
+                              onPressed: _deactivating.contains(item.id)
+                                  ? null
+                                  : () => _deactivate(item.id),
+                            ),
+                          ],
+                        ),
                       ),
+                    const SizedBox(height: ZadTokens.s4),
+                    ElevatedButton(
+                      onPressed: () => context
+                          .push('/budget/recurring/new')
+                          .then(_applyFormResult),
+                      child: const Text('إضافة شراء متكرر'),
                     ),
-                  const SizedBox(height: ZadTokens.s4),
-                  ElevatedButton(
-                    onPressed: () => context
-                        .push('/budget/recurring/new')
-                        .then((_) => _load()),
-                    child: const Text('إضافة شراء متكرر'),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 
