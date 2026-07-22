@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
+import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_info_banner.dart';
@@ -205,7 +206,7 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
                                   ),
                                   Text(
                                     '${_freq(item)}  •  ${_fmtDate(item.startDate)} ← ${_fmtDate(item.endDate)}'
-                                    '${item.reminderTime == null ? '' : '\nتذكير: ${item.reminderTime}'}',
+                                    '${item.reminderTime == null ? '' : '\nتذكير: ${formatArabicTime12(item.reminderTime)}'}',
                                     style: const TextStyle(
                                       fontSize: 12,
                                       color: ZadTokens.textMuted,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/zad_scaffold.dart';
 import '../../../core/widgets/tip_card.dart';
 import '../../../core/widgets/zad_info_banner.dart';
@@ -252,7 +253,9 @@ class _RecurringPurchaseFormScreenState
                 labelText: 'وقت التذكير (اختياري)',
                 suffixIcon: Icon(Icons.schedule_outlined, size: 18),
               ),
-              child: Text(_timeText(_reminderTime) ?? 'لا يوجد'),
+              child: Text(
+                formatArabicTime12(_timeText(_reminderTime)) ?? 'لا يوجد',
+              ),
             ),
           ),
           const SizedBox(height: 12),

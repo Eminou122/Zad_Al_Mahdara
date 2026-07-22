@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
+import '../../../core/utils/time_format.dart';
 import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_info_banner.dart';
@@ -619,7 +620,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                               const SizedBox(height: 2),
                               Text(
                                 '${_statusText(item.status)}'
-                                '${item.reminderTime == null ? '' : '  •  تذكير: ${item.reminderTime}'}',
+                                '${item.reminderTime == null ? '' : '  •  تذكير: ${formatArabicTime12(item.reminderTime)}'}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: _statusColor(item.status),
