@@ -26,6 +26,7 @@ class TeamSummary {
   final int inactiveMemberCount;
   final String? myRole;
   final bool? isLeader;
+  final bool isArchived;
 
   const TeamSummary({
     required this.id,
@@ -39,6 +40,7 @@ class TeamSummary {
     required this.inactiveMemberCount,
     this.myRole,
     this.isLeader,
+    this.isArchived = false,
   });
 
   factory TeamSummary.fromJson(Map<String, dynamic> j) => TeamSummary(
@@ -54,6 +56,7 @@ class TeamSummary {
     inactiveMemberCount: (j['inactive_member_count'] as num? ?? 0).toInt(),
     myRole: j['my_role'] as String?,
     isLeader: j['is_leader'] as bool?,
+    isArchived: j['is_archived'] as bool? ?? false,
   );
 }
 
@@ -112,6 +115,7 @@ class TeamInfo {
   final int activeMemberCount;
   final int inactiveMemberCount;
   final DateTime createdAt;
+  final bool isArchived;
 
   const TeamInfo({
     required this.id,
@@ -126,6 +130,7 @@ class TeamInfo {
     required this.activeMemberCount,
     required this.inactiveMemberCount,
     required this.createdAt,
+    this.isArchived = false,
   });
 
   factory TeamInfo.fromJson(Map<String, dynamic> j) => TeamInfo(
@@ -142,6 +147,7 @@ class TeamInfo {
         (j['active_member_count'] as num? ?? j['member_count'] as num).toInt(),
     inactiveMemberCount: (j['inactive_member_count'] as num? ?? 0).toInt(),
     createdAt: DateTime.parse(j['created_at'] as String),
+    isArchived: j['is_archived'] as bool? ?? false,
   );
 }
 
@@ -150,12 +156,14 @@ class TeamDetail {
   final List<TeamMember> members;
   final bool canEdit;
   final bool isMember;
+  final bool canManageLifecycle;
 
   const TeamDetail({
     required this.team,
     required this.members,
     required this.canEdit,
     required this.isMember,
+    this.canManageLifecycle = false,
   });
 
   factory TeamDetail.fromJson(Map<String, dynamic> j) => TeamDetail(
@@ -165,6 +173,7 @@ class TeamDetail {
         .toList(),
     canEdit: j['can_edit'] as bool,
     isMember: j['is_member'] as bool,
+    canManageLifecycle: j['can_manage_lifecycle'] as bool? ?? false,
   );
 }
 

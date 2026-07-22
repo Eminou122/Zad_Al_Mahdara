@@ -210,6 +210,47 @@ class TeamService {
     );
     return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
   }
+
+  Future<TeamDetail> archiveTeam(String teamId) async {
+    final res = await rpc('archive_team', {
+      'p_session_token': _token,
+      'p_team_id': teamId,
+    });
+    return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
+  }
+
+  Future<TeamDetail> restoreTeam(String teamId) async {
+    final res = await rpc('restore_team', {
+      'p_session_token': _token,
+      'p_team_id': teamId,
+    });
+    return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
+  }
+
+  Future<TeamRemovalResult> removeTeamPermanently({
+    required String teamId,
+    required String reason,
+  }) async {
+    final trimmed = reason.trim();
+    if (trimmed.isEmpty || trimmed.length > 300) {
+      throw ArgumentError('invalid removal reason');
+    }
+    final res = await rpc('remove_team_permanently', {
+      'p_session_token': _token,
+      'p_team_id': teamId,
+      'p_reason': trimmed,
+    });
+    final result = Map<String, dynamic>.from(res as Map);
+    if (result['ok'] != true ||
+        result['removed'] is! bool ||
+        result['blocked'] is! bool) {
+      throw StateError('invalid team removal response');
+    }
+    return TeamRemovalResult(
+      removed: result['removed'] as bool,
+      blocked: result['blocked'] as bool,
+    );
+  }
 }
 
 class TeamMemberRemoval {
@@ -217,4 +258,10 @@ class TeamMemberRemoval {
   final TeamDetail detail;
 
   const TeamMemberRemoval({required this.removed, required this.detail});
+}
+
+class TeamRemovalResult {
+  final bool removed;
+  final bool blocked;
+  const TeamRemovalResult({required this.removed, required this.blocked});
 }

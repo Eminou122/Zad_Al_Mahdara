@@ -185,4 +185,50 @@ void main() {
       );
     });
   });
+
+  group('team lifecycle', () {
+    test('uses archive and restore RPCs', () async {
+      final service = _RecordingTeamService()
+        ..response = {
+          'team': {
+            'id': 'team-1',
+            'name': 'team',
+            'team_type': 'lunch',
+            'is_public': true,
+            'status': 'open',
+            'leader_id': 'leader-1',
+            'leader_name': 'leader',
+            'member_count': 1,
+            'active_member_count': 1,
+            'inactive_member_count': 0,
+            'created_at': '2026-07-01T00:00:00Z',
+            'is_archived': true,
+          },
+          'members': [],
+          'can_edit': false,
+          'can_manage_lifecycle': true,
+          'is_member': true,
+        };
+      expect((await service.archiveTeam('team-1')).team.isArchived, isTrue);
+      expect(service.lastRpc, 'archive_team');
+      expect((await service.restoreTeam('team-1')).team.isArchived, isTrue);
+      expect(service.lastRpc, 'restore_team');
+    });
+
+    test('uses permanent-removal RPC with a validated reason', () async {
+      final service = _RecordingTeamService()
+        ..response = {'ok': true, 'removed': false, 'blocked': true};
+      final result = await service.removeTeamPermanently(
+        teamId: 'team-1',
+        reason: ' سبب ',
+      );
+      expect(service.lastRpc, 'remove_team_permanently');
+      expect(service.lastParams!['p_reason'], 'سبب');
+      expect(result.blocked, isTrue);
+      await expectLater(
+        service.removeTeamPermanently(teamId: 'team-1', reason: ' '),
+        throwsArgumentError,
+      );
+    });
+  });
 }

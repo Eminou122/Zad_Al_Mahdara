@@ -17,6 +17,7 @@ import '../../../services/auth_service.dart';
 import '../../messaging/data/team_messaging_service.dart';
 import '../../messaging/domain/team_messaging_models.dart';
 import '../../messaging/presentation/message_team_leader_dialog.dart';
+import '../../budget/presentation/widgets/recurring_removal_dialog.dart';
 import '../data/team_service.dart';
 import '../data/team_shopping_service.dart';
 import '../data/team_turn_service.dart';
@@ -118,6 +119,7 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   final Set<String> _busyMembers = {};
   final Set<String> _markingItems = {};
   final Set<String> _removingItems = {};
+  bool _teamLifecycleBusy = false;
 
   @override
   void initState() {
@@ -182,6 +184,15 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
             context,
           ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
         }
+      }
+      return;
+    }
+    if (_detail!.team.isArchived) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _refreshing = false;
+        });
       }
       return;
     }
@@ -999,6 +1010,73 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     );
   }
 
+  Future<void> _archiveOrRestore() async {
+    final d = _detail!;
+    if (_teamLifecycleBusy) return;
+    if (!d.team.isArchived &&
+        !await zadConfirm(
+          context,
+          title: 'أرشفة الفريق',
+          body: 'سيختفي الفريق من قائمة الفرق النشطة مع الاحتفاظ بكل السجلات.',
+          confirmLabel: 'أرشفة الفريق',
+        )) {
+      return;
+    }
+    setState(() => _teamLifecycleBusy = true);
+    try {
+      final detail = d.team.isArchived
+          ? await _svc.restoreTeam(widget.teamId)
+          : await _svc.archiveTeam(widget.teamId);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _detail = detail);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            d.team.isArchived ? 'تمت استعادة الفريق' : 'تمت أرشفة الفريق',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _teamLifecycleBusy = false);
+      }
+    }
+  }
+
+  Future<void> _removeTeam() async {
+    if (_teamLifecycleBusy) return;
+    final removed = await showDialog<bool>(
+      context: context,
+      builder: (_) => RecurringRemovalDialog(
+        title: 'حذف الفريق نهائياً',
+        body: 'سيتم الحذف فقط إذا لم توجد بيانات أو سجلات مرتبطة بالفريق.',
+        actionLabel: 'حذف الفريق نهائياً',
+        errorMessage:
+            'لا يمكن حذف هذا الفريق نهائياً لوجود بيانات أو سجلات مرتبطة به. يمكنك أرشفته بدلاً من ذلك.',
+        onSubmit: (reason) async {
+          final result = await _svc.removeTeamPermanently(
+            teamId: widget.teamId,
+            reason: reason,
+          );
+          if (result.blocked) {
+            throw Exception(
+              'لا يمكن حذف هذا الفريق نهائياً لوجود بيانات أو سجلات مرتبطة به. يمكنك أرشفته بدلاً من ذلك.',
+            );
+          }
+        },
+      ),
+    );
+    if (removed == true && mounted) context.pop();
+  }
+
   Future<void> _remove(TeamMember m) async {
     if (_busyMembers.contains(m.memberId)) return;
     final c = TextEditingController();
@@ -1451,6 +1529,40 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                     ),
                     const SizedBox(height: ZadTokens.s2),
                   ],
+                  if (team.isArchived)
+                    const ZadInfoBanner(
+                      'هذا الفريق مؤرشف. تبقى السجلات محفوظة ولا يمكن إجراء عمليات جديدة.',
+                    ),
+                  if (d.canManageLifecycle) ...[
+                    const SizedBox(height: ZadTokens.s2),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _teamLifecycleBusy
+                            ? null
+                            : _archiveOrRestore,
+                        icon: Icon(
+                          team.isArchived
+                              ? Icons.restore
+                              : Icons.archive_outlined,
+                        ),
+                        label: Text(
+                          team.isArchived ? 'استعادة الفريق' : 'أرشفة الفريق',
+                        ),
+                      ),
+                    ),
+                    if (!team.isArchived) ...[
+                      const SizedBox(height: ZadTokens.s2),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton.icon(
+                          onPressed: _teamLifecycleBusy ? null : _removeTeam,
+                          icon: const Icon(Icons.delete_forever_outlined),
+                          label: const Text('حذف الفريق نهائياً'),
+                        ),
+                      ),
+                    ],
+                  ],
                   if (d.isMember && !d.canEdit)
                     OutlinedButton.icon(
                       icon: const Icon(Icons.chat_bubble_outline),
@@ -1458,22 +1570,24 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                       onPressed: _openMessageLeaderComposer,
                     ),
                   const SizedBox(height: ZadTokens.s4),
-                  ..._shoppingCard(),
-                  ZadAnimatedEntry(
-                    delay: const Duration(milliseconds: 60),
-                    child: _TurnCard(
-                      state: _turnState,
-                      loading: _turnLoading,
-                      isMember: d.isMember,
-                      onStart: _shoppingOverview?.hasValidItems == true
-                          ? _startTurn
-                          : null,
-                      onComplete: _shoppingOverview?.hasValidItems == true
-                          ? _completeTurn
-                          : null,
-                      onSkipMissedTurn: _skipMissedTurn,
+                  if (!team.isArchived) ...[
+                    ..._shoppingCard(),
+                    ZadAnimatedEntry(
+                      delay: const Duration(milliseconds: 60),
+                      child: _TurnCard(
+                        state: _turnState,
+                        loading: _turnLoading,
+                        isMember: d.isMember,
+                        onStart: _shoppingOverview?.hasValidItems == true
+                            ? _startTurn
+                            : null,
+                        onComplete: _shoppingOverview?.hasValidItems == true
+                            ? _completeTurn
+                            : null,
+                        onSkipMissedTurn: _skipMissedTurn,
+                      ),
                     ),
-                  ),
+                  ],
                   if (d.isMember && d.members.isNotEmpty) ...[
                     // Stitch member header: title + real total count.
                     Padding(

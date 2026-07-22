@@ -37,6 +37,7 @@ TeamSummary _team({
   required String name,
   bool isPublic = true,
   String? myRole,
+  bool isArchived = false,
 }) => TeamSummary(
   id: id,
   name: name,
@@ -49,6 +50,7 @@ TeamSummary _team({
   inactiveMemberCount: 0,
   myRole: myRole,
   isLeader: myRole == 'leader',
+  isArchived: isArchived,
 );
 
 Widget _build(TeamService service) => MaterialApp(
@@ -119,4 +121,29 @@ void main() {
     expect(find.textContaining('public failed'), findsOneWidget);
     expect(find.text('إعادة المحاولة'), findsOneWidget);
   });
+
+  testWidgets(
+    'keeps archived teams out of the active list and under its section',
+    (tester) async {
+      await tester.pumpWidget(
+        _build(
+          _FakeTeamService(
+            myTeams: [
+              _team(id: 'active', name: 'فريق نشط', myRole: 'leader'),
+              _team(
+                id: 'archived',
+                name: 'فريق محفوظ',
+                myRole: 'leader',
+                isArchived: true,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('فريق نشط'), findsOneWidget);
+      expect(find.text('الفرق المؤرشفة'), findsOneWidget);
+      expect(find.text('فريق محفوظ'), findsOneWidget);
+    },
+  );
 }

@@ -9,6 +9,7 @@ class RecurringRemovalDialog extends StatefulWidget {
   final String actionLabel;
   final Future<void> Function(String reason) onSubmit;
   final Duration countdown;
+  final String errorMessage;
 
   const RecurringRemovalDialog({
     super.key,
@@ -18,6 +19,7 @@ class RecurringRemovalDialog extends StatefulWidget {
     required this.actionLabel,
     required this.onSubmit,
     this.countdown = const Duration(seconds: 3),
+    this.errorMessage = 'حدث خطأ — حاول مرة أخرى',
   });
 
   @override
@@ -68,7 +70,7 @@ class _RecurringRemovalDialogState extends State<RecurringRemovalDialog> {
       if (mounted) {
         setState(() {
           _busy = false;
-          _error = 'حدث خطأ — حاول مرة أخرى';
+          _error = widget.errorMessage;
         });
       }
     }

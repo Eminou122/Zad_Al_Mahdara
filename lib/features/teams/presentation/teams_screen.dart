@@ -252,12 +252,17 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   Widget _buildList({required bool isMine, String? error}) {
-    final items = isMine ? _mine : _public;
+    final items = isMine
+        ? _mine.where((team) => !team.isArchived).toList()
+        : _public;
+    final archived = isMine
+        ? _mine.where((team) => team.isArchived).toList()
+        : const <TeamSummary>[];
     return LayoutBuilder(
       builder: (context, constraints) {
         final side = ((constraints.maxWidth - ZadTokens.contentMaxWidth) / 2)
             .clamp(ZadTokens.s3, double.infinity);
-        if (items.isEmpty) {
+        if (items.isEmpty && archived.isEmpty) {
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.symmetric(
@@ -278,30 +283,45 @@ class _TeamsScreenState extends State<TeamsScreen> {
             ],
           );
         }
-        return ListView.builder(
+        return ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.symmetric(
             horizontal: side,
             vertical: ZadTokens.s3,
           ),
-          itemCount: items.length + (error == null ? 0 : 1),
-          itemBuilder: (_, i) {
-            if (error != null && i == 0) {
-              return Padding(
+          children: [
+            if (error != null)
+              Padding(
                 padding: const EdgeInsets.only(bottom: ZadTokens.s3),
                 child: ZadInfoBanner(error, kind: ZadBannerKind.danger),
-              );
-            }
-            final item = items[i - (error == null ? 0 : 1)];
-            return ZadAnimatedEntry(
-              delay: Duration(milliseconds: i < 6 ? 40 * i : 0),
-              child: _TeamCard(
-                team: item,
-                onTap: () =>
-                    context.push('/teams/${item.id}').then((_) => _load()),
               ),
-            );
-          },
+            for (final item in items)
+              ZadAnimatedEntry(
+                child: _TeamCard(
+                  team: item,
+                  onTap: () =>
+                      context.push('/teams/${item.id}').then((_) => _load()),
+                ),
+              ),
+            if (archived.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.only(
+                  top: ZadTokens.s2,
+                  bottom: ZadTokens.s2,
+                ),
+                child: Text(
+                  'الفرق المؤرشفة',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              for (final item in archived)
+                _TeamCard(
+                  team: item,
+                  onTap: () =>
+                      context.push('/teams/${item.id}').then((_) => _load()),
+                ),
+            ],
+          ],
         );
       },
     );
