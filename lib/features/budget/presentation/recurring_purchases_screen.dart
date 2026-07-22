@@ -10,6 +10,7 @@ import '../../../core/widgets/zad_section_header.dart';
 import '../../../services/auth_service.dart';
 import '../data/budget_service.dart';
 import '../domain/budget_models.dart';
+import 'widgets/recurring_removal_dialog.dart';
 
 class RecurringPurchasesScreen extends StatefulWidget {
   final AuthService authService;
@@ -32,7 +33,7 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
   RecurringPurchaseOverview? _stats;
   bool _loading = true;
   String? _error;
-  final Set<String> _deactivating = {};
+  final Set<String> _removing = {};
   int _generation = 0;
   bool _changed = false;
   bool _allowPop = false;
@@ -76,43 +77,45 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
     }
   }
 
-  Future<void> _deactivate(String id) async {
+  Future<void> _remove(RecurringPurchase item) async {
+    if (_removing.contains(item.id)) return;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('إلغاء التفعيل'),
-        content: const Text('هل تريد إلغاء تفعيل هذا الشراء المتكرر؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, false),
-            child: const Text('إلغاء'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(c, true),
-            child: const Text('تأكيد'),
-          ),
-        ],
+      builder: (_) => RecurringRemovalDialog(
+        title: 'إزالة الشراء المتكرر',
+        body:
+            'سيتم إيقاف هذا الشراء المتكرر ومنع العمليات المستقبلية، مع الاحتفاظ بجميع العمليات السابقة وسجلاتها المالية.',
+        details: [item.name, _freq(item)],
+        actionLabel: 'إزالة الشراء المتكرر',
+        onSubmit: (reason) async {
+          if (_removing.contains(item.id)) return;
+          setState(() => _removing.add(item.id));
+          final generation = ++_generation;
+          try {
+            final result = await _budget.removeRecurringPurchase(
+              recurringPurchaseId: item.id,
+              reason: reason,
+            );
+            if (!mounted || generation != _generation) return;
+            setState(() {
+              _items = result.recurringPurchases;
+              _stats = result.recurringStatistics;
+              _changed = true;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'تمت إزالة الشراء المتكرر مع الاحتفاظ بسجل العمليات السابقة',
+                ),
+              ),
+            );
+          } finally {
+            if (mounted) setState(() => _removing.remove(item.id));
+          }
+        },
       ),
     );
     if (ok != true) return;
-    if (_deactivating.contains(id)) return;
-    setState(() => _deactivating.add(id));
-    final generation = ++_generation;
-    try {
-      final items = await _budget.deactivateRecurringPurchase(id);
-      if (!mounted || generation != _generation) return;
-      setState(() {
-        _items = items;
-        _changed = true;
-      });
-      await _refreshStats(generation);
-    } catch (e) {
-      if (mounted && generation == _generation) {
-        setState(() => _error = _arabicError(e));
-      }
-    } finally {
-      if (mounted) setState(() => _deactivating.remove(id));
-    }
   }
 
   Future<void> _applyFormResult(Object? result) async {
@@ -221,7 +224,7 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
                             IconButton(
                               icon: const Icon(Icons.edit_outlined, size: 20),
                               tooltip: 'تعديل',
-                              onPressed: _deactivating.contains(item.id)
+                              onPressed: _removing.contains(item.id)
                                   ? null
                                   : () => context
                                         .push(
@@ -236,15 +239,21 @@ class _RecurringPurchasesScreenState extends State<RecurringPurchasesScreen> {
                                 size: 20,
                                 color: ZadTokens.danger,
                               ),
-                              tooltip: 'إلغاء التفعيل',
-                              onPressed: _deactivating.contains(item.id)
+                              tooltip: 'إزالة الشراء المتكرر',
+                              onPressed: _removing.contains(item.id)
                                   ? null
-                                  : () => _deactivate(item.id),
+                                  : () => _remove(item),
                             ),
                           ],
                         ),
                       ),
                     const SizedBox(height: ZadTokens.s4),
+                    OutlinedButton(
+                      onPressed: () =>
+                          context.push('/budget/recurring/history'),
+                      child: const Text('سجل المشتريات المتكررة'),
+                    ),
+                    const SizedBox(height: ZadTokens.s2),
                     ElevatedButton(
                       onPressed: () => context
                           .push('/budget/recurring/new')

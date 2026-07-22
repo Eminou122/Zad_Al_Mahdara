@@ -297,6 +297,7 @@ class TodayRecurringPurchase {
   final DateTime occurrenceDate;
   final String status;
   final String? expenseId;
+  final bool isVoided;
 
   const TodayRecurringPurchase({
     required this.recurringPurchaseId,
@@ -310,6 +311,7 @@ class TodayRecurringPurchase {
     required this.occurrenceDate,
     required this.status,
     this.expenseId,
+    this.isVoided = false,
   });
 
   factory TodayRecurringPurchase.fromJson(Map<String, dynamic> j) =>
@@ -325,6 +327,7 @@ class TodayRecurringPurchase {
         occurrenceDate: DateTime.parse(j['occurrence_date'] as String),
         status: j['status'] as String,
         expenseId: j['expense_id'] as String?,
+        isVoided: j['is_voided'] == true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -339,7 +342,77 @@ class TodayRecurringPurchase {
     'occurrence_date': occurrenceDate.toIso8601String(),
     'status': status,
     'expense_id': expenseId,
+    'is_voided': isVoided,
   };
+}
+
+class RecurringPurchaseHistoryItem {
+  final String occurrenceId;
+  final String recurringPurchaseId;
+  final String name;
+  final double price;
+  final DateTime occurrenceDate;
+  final String status;
+  final bool isVoided;
+  final String? voidReason;
+  final DateTime? voidedAt;
+  final String? expenseId;
+  final bool definitionRemoved;
+  const RecurringPurchaseHistoryItem({
+    required this.occurrenceId,
+    required this.recurringPurchaseId,
+    required this.name,
+    required this.price,
+    required this.occurrenceDate,
+    required this.status,
+    required this.isVoided,
+    this.voidReason,
+    this.voidedAt,
+    this.expenseId,
+    required this.definitionRemoved,
+  });
+  factory RecurringPurchaseHistoryItem.fromJson(Map<String, dynamic> j) =>
+      RecurringPurchaseHistoryItem(
+        occurrenceId: j['occurrence_id'] as String,
+        recurringPurchaseId: j['recurring_purchase_id'] as String,
+        name: j['name'] as String,
+        price: (j['price'] as num).toDouble(),
+        occurrenceDate: DateTime.parse(j['occurrence_date'] as String),
+        status: j['status'] as String,
+        isVoided: j['is_voided'] == true,
+        voidReason: j['void_reason'] as String?,
+        voidedAt: j['voided_at'] == null
+            ? null
+            : DateTime.parse(j['voided_at'] as String),
+        expenseId: j['expense_id'] as String?,
+        definitionRemoved: j['definition_removed'] == true,
+      );
+}
+
+class RecurringOccurrenceRemovalResult {
+  final bool removed;
+  final List<TodayRecurringPurchase> todayItems;
+  final List<RecurringPurchaseHistoryItem> history;
+  final BudgetOverview budgetOverview;
+  final RecurringPurchaseOverview recurringStatistics;
+  const RecurringOccurrenceRemovalResult({
+    required this.removed,
+    required this.todayItems,
+    required this.history,
+    required this.budgetOverview,
+    required this.recurringStatistics,
+  });
+}
+
+class RecurringPurchaseRemovalResult {
+  final bool removed;
+  final List<RecurringPurchase> recurringPurchases;
+  final RecurringPurchaseOverview recurringStatistics;
+  const RecurringPurchaseRemovalResult({
+    required this.removed,
+    required this.recurringPurchases,
+    required this.recurringStatistics,
+  });
 }
 
 class RecurringPurchaseOverview {

@@ -12,6 +12,7 @@ import '../../../services/auth_service.dart';
 import '../data/budget_cache_service.dart';
 import '../data/budget_service.dart';
 import '../domain/budget_models.dart';
+import 'widgets/recurring_removal_dialog.dart';
 import 'widgets/budget_quick_action_card.dart';
 import 'widgets/budget_summary_card.dart';
 import 'widgets/recurring_purchases_card.dart';
@@ -204,6 +205,72 @@ class _BudgetScreenState extends State<BudgetScreen> {
     } finally {
       if (mounted) setState(() => _updatingRecurring.remove(key));
     }
+  }
+
+  Future<void> _removeRecurringOccurrence(TodayRecurringPurchase item) async {
+    if (_isOfflineCached ||
+        item.recurringPurchaseId.trim().isEmpty ||
+        item.status != 'purchased' ||
+        item.isVoided) {
+      return;
+    }
+    final key = _occurrenceKey(item);
+    if (_updatingRecurring.contains(key)) return;
+    await showDialog<bool>(
+      context: context,
+      builder: (_) => RecurringRemovalDialog(
+        title: 'إلغاء عملية الشراء',
+        body:
+            'سيتم إلغاء عملية الشراء المحددة وعكس أثرها من المصروفات، مع الاحتفاظ بسجلها المالي.',
+        details: [
+          item.name,
+          _fmtDate(item.occurrenceDate),
+          '${item.price.toStringAsFixed(2)} MRU',
+        ],
+        actionLabel: 'إلغاء العملية',
+        onSubmit: (reason) async {
+          if (_updatingRecurring.contains(key)) return;
+          final mutationVersion = ++_mutationGeneration;
+          final recurringVersion = ++_recurringGeneration;
+          if (mounted) {
+            setState(() => _updatingRecurring.add(key));
+          }
+          try {
+            final result = await _budget.removeRecurringPurchaseOccurrence(
+              recurringPurchaseId: item.recurringPurchaseId,
+              occurrenceDate: item.occurrenceDate,
+              reason: reason,
+            );
+            if (!mounted ||
+                mutationVersion != _mutationGeneration ||
+                recurringVersion != _recurringGeneration) {
+              return;
+            }
+            ++_loadGeneration;
+            setState(() {
+              _todayRecurring = result.todayItems;
+              _overview = result.budgetOverview;
+              _recurringStats = result.recurringStatistics;
+              _isOfflineCached = false;
+              _cachedAt = null;
+            });
+            if (result.removed) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'تم إلغاء عملية الشراء مع الاحتفاظ بسجلها المالي',
+                  ),
+                ),
+              );
+            }
+          } finally {
+            if (mounted) {
+              setState(() => _updatingRecurring.remove(key));
+            }
+          }
+        },
+      ),
+    );
   }
 
   Future<void> _refreshRecurringStats(int recurringVersion) async {
@@ -602,6 +669,19 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         ),
                       ],
                     ),
+                    if (item.status == 'purchased' &&
+                        !item.isVoided &&
+                        item.recurringPurchaseId.trim().isNotEmpty)
+                      Align(
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: TextButton.icon(
+                          onPressed: isUpdating
+                              ? null
+                              : () => _removeRecurringOccurrence(item),
+                          icon: const Icon(Icons.cancel_outlined, size: 18),
+                          label: const Text('إلغاء عملية الشراء'),
+                        ),
+                      ),
                   ],
                 ),
               );

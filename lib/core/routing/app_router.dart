@@ -16,6 +16,7 @@ import '../../features/budget/presentation/budget_plan_form_screen.dart';
 import '../../features/budget/presentation/expense_form_screen.dart';
 import '../../features/budget/presentation/subscription_form_screen.dart';
 import '../../features/budget/presentation/recurring_purchases_screen.dart';
+import '../../features/budget/presentation/recurring_purchase_history_screen.dart';
 import '../../features/budget/presentation/recurring_purchase_form_screen.dart';
 import '../../features/budget/domain/budget_models.dart';
 import '../../features/teams/presentation/teams_screen.dart';
@@ -151,6 +152,11 @@ class AppRouter {
           authService: authService,
           existing: state.extra as RecurringPurchase?,
         ),
+      ),
+      GoRoute(
+        path: '/budget/recurring/history',
+        builder: (_, _) =>
+            RecurringPurchaseHistoryScreen(authService: authService),
       ),
       GoRoute(
         path: '/teams',

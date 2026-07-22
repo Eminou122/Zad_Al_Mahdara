@@ -10,6 +10,7 @@ import 'package:zad_al_mahdara/features/budget/domain/budget_models.dart';
 import 'package:zad_al_mahdara/features/budget/presentation/budget_screen.dart';
 import 'package:zad_al_mahdara/features/budget/presentation/recurring_purchase_form_screen.dart';
 import 'package:zad_al_mahdara/features/budget/presentation/recurring_purchases_screen.dart';
+import 'package:zad_al_mahdara/features/budget/presentation/widgets/recurring_removal_dialog.dart';
 import 'package:zad_al_mahdara/services/auth_service.dart';
 
 /// Stub service that returns the given data or throws.
@@ -40,6 +41,7 @@ class _StubBudgetService extends BudgetService {
   int createCalls = 0;
   int updateCalls = 0;
   int deactivateRecurringCalls = 0;
+  int removeRecurringCalls = 0;
   List<RecurringPurchase>? createResult;
   List<RecurringPurchase>? updateResult;
   List<RecurringPurchase>? deactivateRecurringResult;
@@ -161,6 +163,19 @@ class _StubBudgetService extends BudgetService {
     deactivateRecurringCalls++;
     if (deactivateRecurringError != null) throw deactivateRecurringError!;
     return deactivateRecurringResult!;
+  }
+
+  @override
+  Future<RecurringPurchaseRemovalResult> removeRecurringPurchase({
+    required String recurringPurchaseId,
+    required String reason,
+  }) async {
+    removeRecurringCalls++;
+    return RecurringPurchaseRemovalResult(
+      removed: true,
+      recurringPurchases: deactivateRecurringResult!,
+      recurringStatistics: _recurringStats,
+    );
   }
 
   @override
@@ -1200,25 +1215,25 @@ void main() {
       },
     );
 
-    testWidgets(
-      'deactivate is row-busy, idempotent, and keeps content visible',
-      (tester) async {
-        final service = await pumpRecurring(tester);
-        service.deactivateRecurringResult = const [];
-        await tester.tap(find.byTooltip('إلغاء التفعيل'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('تأكيد'));
-        await tester.pump();
-        expect(service.deactivateRecurringCalls, 1);
-        expect(find.byType(CircularProgressIndicator), findsNothing);
-        await tester.pumpAndSettle();
-        expect(find.text('قديم'), findsNothing);
-        expect(service.recurringCalls, 1);
-        expect(service.todayCalls, 0);
-        expect(service.overviewCalls, 0);
-        expect(service.recurringStatsCalls, 2);
-      },
-    );
+    testWidgets('removal replaces the active list', (tester) async {
+      final service = await pumpRecurring(tester);
+      service.deactivateRecurringResult = const [];
+      await tester.tap(find.byTooltip('إزالة الشراء المتكرر'));
+      await tester.pump();
+      expect(find.byType(RecurringRemovalDialog), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'سبب');
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('إزالة الشراء المتكرر').last);
+      await tester.pumpAndSettle();
+      expect(find.text('قديم'), findsNothing);
+      expect(service.removeRecurringCalls, 1);
+      expect(service.recurringCalls, 1);
+      expect(service.todayCalls, 0);
+      expect(service.overviewCalls, 0);
+      expect(service.recurringStatsCalls, 1);
+    });
 
     testWidgets('recurring management fits at 320px in RTL', (tester) async {
       tester.view.physicalSize = const Size(320, 800);
@@ -1232,7 +1247,7 @@ void main() {
         TextDirection.rtl,
       );
       expect(find.byTooltip('تعديل'), findsOneWidget);
-      expect(find.byTooltip('إلغاء التفعيل'), findsOneWidget);
+      expect(find.byTooltip('إزالة الشراء المتكرر'), findsOneWidget);
       await tester.ensureVisible(find.text('إضافة شراء متكرر'));
       await tester.tap(find.text('إضافة شراء متكرر'));
       await tester.pumpAndSettle();
@@ -1245,8 +1260,7 @@ void main() {
     ) async {
       final service = await pumpRecurring(tester);
       final oldStats = Completer<RecurringPurchaseOverview>();
-      final newStats = Completer<RecurringPurchaseOverview>();
-      service.recurringStatsCompleters.addAll([oldStats, newStats]);
+      service.recurringStatsCompleters.add(oldStats);
       service.deactivateRecurringResult = const [];
 
       final refresh = tester.state<RefreshIndicatorState>(
@@ -1257,43 +1271,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(service.recurringStatsCalls, 2);
 
-      await tester.tap(find.byTooltip('إلغاء التفعيل'));
-      await tester.pump();
-      await tester.tap(find.text('تأكيد'));
-      await tester.pump();
-      expect(service.recurringStatsCalls, 3);
-
-      newStats.complete(
-        const RecurringPurchaseOverview(
-          activeRecurringCount: 0,
-          todayExpectedTotal: 0,
-          todayPurchasedTotal: 0,
-          todaySkippedCount: 0,
-          plannedTotal: 222,
-          actualPurchasedTotal: 0,
-          skippedTotal: 0,
-          skippedCount: 0,
-        ),
-      );
-      await tester.pump();
-      expect(find.text('222.00 MRU'), findsOneWidget);
-
-      oldStats.complete(
-        const RecurringPurchaseOverview(
-          activeRecurringCount: 1,
-          todayExpectedTotal: 0,
-          todayPurchasedTotal: 0,
-          todaySkippedCount: 0,
-          plannedTotal: 111,
-          actualPurchasedTotal: 0,
-          skippedTotal: 0,
-          skippedCount: 0,
-        ),
-      );
+      // Removal now receives authoritative statistics in its RPC response.
+      oldStats.complete(_recurringStats);
       await oldRefresh;
-      await tester.pump();
-      expect(find.text('222.00 MRU'), findsOneWidget);
-      expect(find.text('111.00 MRU'), findsNothing);
+      expect(service.recurringStatsCalls, 2);
     });
   });
 

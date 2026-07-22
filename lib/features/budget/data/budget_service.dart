@@ -2,16 +2,40 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/auth_service.dart';
 import '../domain/budget_models.dart';
 
+typedef BudgetRpcCaller =
+    Future<dynamic> Function(
+      String functionName, {
+      Map<String, dynamic>? params,
+    });
+typedef BudgetSessionTokenProvider = String Function();
+
 class BudgetService {
   final AuthService _auth;
-  BudgetService(this._auth);
+  final BudgetRpcCaller? _rpcCaller;
+  final BudgetSessionTokenProvider? _sessionTokenProvider;
+  BudgetService(
+    this._auth, {
+    BudgetRpcCaller? rpcCaller,
+    BudgetSessionTokenProvider? sessionTokenProvider,
+  }) : _rpcCaller = rpcCaller,
+       _sessionTokenProvider = sessionTokenProvider;
 
   SupabaseClient get _client => Supabase.instance.client;
 
+  Future<dynamic> _rpc(String name, Map<String, dynamic> params) =>
+      _rpcCaller?.call(name, params: params) ??
+      _client.rpc(name, params: params);
+
   String get _token {
-    final t = _auth.currentToken;
-    if (t == null) throw Exception('not authenticated');
-    return t;
+    final injectedToken = _sessionTokenProvider?.call();
+    if (injectedToken != null && injectedToken.trim().isNotEmpty) {
+      return injectedToken;
+    }
+    final token = _auth.currentToken;
+    if (token == null || token.trim().isEmpty) {
+      throw Exception('not authenticated');
+    }
+    return token;
   }
 
   static BudgetOverview _overview(dynamic result) =>
@@ -296,6 +320,111 @@ class BudgetService {
       },
     );
     return _todayRecurringList(r);
+  }
+
+  Future<RecurringOccurrenceRemovalResult> removeRecurringPurchaseOccurrence({
+    required String recurringPurchaseId,
+    required DateTime occurrenceDate,
+    required String reason,
+  }) async {
+    final trimmed = reason.trim();
+    if (trimmed.isEmpty || trimmed.length > 300) {
+      throw ArgumentError('invalid removal reason');
+    }
+    final json = Map<String, dynamic>.from(
+      await _rpc('remove_recurring_purchase_occurrence', {
+            'p_session_token': _token,
+            'p_recurring_purchase_id': recurringPurchaseId,
+            'p_occurrence_date': _date(occurrenceDate),
+            'p_reason': trimmed,
+          })
+          as Map,
+    );
+    if (json['ok'] != true || json['removed'] is! bool) {
+      throw StateError('invalid removal response');
+    }
+    return RecurringOccurrenceRemovalResult(
+      removed: json['removed'] as bool,
+      todayItems: (json['today_items'] as List)
+          .map(
+            (e) => TodayRecurringPurchase.fromJson(
+              Map<String, dynamic>.from(e as Map),
+            ),
+          )
+          .toList(),
+      history: ((json['history'] as Map)['items'] as List)
+          .map(
+            (e) => RecurringPurchaseHistoryItem.fromJson(
+              Map<String, dynamic>.from(e as Map),
+            ),
+          )
+          .toList(),
+      budgetOverview: BudgetOverview.fromJson(
+        Map<String, dynamic>.from(json['budget_overview'] as Map),
+      ),
+      recurringStatistics: RecurringPurchaseOverview.fromJson(
+        Map<String, dynamic>.from(json['recurring_statistics'] as Map),
+      ),
+    );
+  }
+
+  Future<RecurringPurchaseRemovalResult> removeRecurringPurchase({
+    required String recurringPurchaseId,
+    required String reason,
+  }) async {
+    final trimmed = reason.trim();
+    if (trimmed.isEmpty || trimmed.length > 300) {
+      throw ArgumentError('invalid removal reason');
+    }
+    final json = Map<String, dynamic>.from(
+      await _client.rpc(
+            'remove_recurring_purchase',
+            params: {
+              'p_session_token': _token,
+              'p_recurring_purchase_id': recurringPurchaseId,
+              'p_reason': trimmed,
+            },
+          )
+          as Map,
+    );
+    if (json['ok'] != true || json['removed'] is! bool) {
+      throw StateError('invalid removal response');
+    }
+    return RecurringPurchaseRemovalResult(
+      removed: json['removed'] as bool,
+      recurringPurchases: (json['recurring_purchases'] as List)
+          .map(
+            (e) =>
+                RecurringPurchase.fromJson(Map<String, dynamic>.from(e as Map)),
+          )
+          .toList(),
+      recurringStatistics: RecurringPurchaseOverview.fromJson(
+        Map<String, dynamic>.from(json['recurring_statistics'] as Map),
+      ),
+    );
+  }
+
+  Future<List<RecurringPurchaseHistoryItem>> getRecurringPurchaseHistory({
+    String? recurringPurchaseId,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final json = Map<String, dynamic>.from(
+      await _rpc('get_recurring_purchase_history', {
+            'p_session_token': _token,
+            'p_recurring_purchase_id': recurringPurchaseId,
+            'p_limit': limit,
+            'p_offset': offset,
+          })
+          as Map,
+    );
+    return (json['items'] as List)
+        .map(
+          (e) => RecurringPurchaseHistoryItem.fromJson(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
+        .toList();
   }
 
   static String _date(DateTime d) =>
