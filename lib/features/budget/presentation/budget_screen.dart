@@ -711,7 +711,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       ),
                       Text(
                         '${_fmtDate(sub.startDate)} ← ${_fmtDate(sub.endDate)}'
-                        '  •  إشعار قبل ${sub.notifyDaysBefore} أيام',
+                        '  •  تذكير بالتجديد قبل ${sub.notifyDaysBefore} أيام لتفادي انقطاع الخدمة',
                         style: const TextStyle(
                           fontSize: 12,
                           color: ZadTokens.textMuted,
