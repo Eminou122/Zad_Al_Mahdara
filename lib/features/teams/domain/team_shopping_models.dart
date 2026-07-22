@@ -130,15 +130,6 @@ class TeamShoppingReport {
 }
 
 class TeamShoppingItem {
-  static const supportedQuantityUnits = {
-    'kg',
-    'packet',
-    'can',
-    'piece',
-    'mru_value',
-    'other',
-  };
-
   final String id;
   final String name;
   final String? quantityNote;
@@ -177,14 +168,14 @@ class TeamShoppingItem {
   bool get isValidForShoppingFlow {
     if (name.trim().isEmpty) return false;
     final hasQuantityValue = quantityValue != null;
-    final hasQuantityUnit = quantityUnit != null;
+    final hasQuantityUnit =
+        quantityUnit != null && quantityUnit!.trim().isNotEmpty;
     if (hasQuantityValue != hasQuantityUnit) return false;
     if (quantityValue != null &&
         (!quantityValue!.isFinite || quantityValue! < 0)) {
       return false;
     }
-    return quantityUnit == null ||
-        supportedQuantityUnits.contains(quantityUnit);
+    return true;
   }
 
   factory TeamShoppingItem.fromJson(Map<String, dynamic> j) {

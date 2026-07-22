@@ -269,11 +269,11 @@ void main() {
         position: 2,
         bought: false,
       );
-      const unsupportedUnit = TeamShoppingItem(
+      const blankUnit = TeamShoppingItem(
         id: 'invalid-3',
         name: 'زيت',
         quantityValue: 1,
-        quantityUnit: 'litre',
+        quantityUnit: '   ',
         isRequired: true,
         position: 3,
         bought: false,
@@ -290,8 +290,22 @@ void main() {
 
       expect(blank.isValidForShoppingFlow, false);
       expect(missingUnit.isValidForShoppingFlow, false);
-      expect(unsupportedUnit.isValidForShoppingFlow, false);
+      expect(blankUnit.isValidForShoppingFlow, false);
       expect(negativeQuantity.isValidForShoppingFlow, false);
+    });
+
+    test('a custom (non-standard) unit is a valid shopping item', () {
+      const customUnit = TeamShoppingItem(
+        id: 'valid-3',
+        name: 'زيت',
+        quantityValue: 1,
+        quantityUnit: 'صندوق كبير',
+        isRequired: true,
+        position: 3,
+        bought: false,
+      );
+
+      expect(customUnit.isValidForShoppingFlow, true);
     });
   });
 

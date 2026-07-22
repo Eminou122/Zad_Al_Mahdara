@@ -40,19 +40,37 @@ String _formatShoppingMoney(double amount) => _formatShoppingPrice(amount);
 // Hassaniya labels for structured shopping quantity units. mru_value means
 // "buy this many MRU worth of the item" (a requested amount), not a
 // currency total — kept visually separate from price via the السعر/الكمية
-// prefixes below so the two never read as the same number.
+// prefixes below so the two never read as the same number. 'other' selects
+// a required free-text custom unit (see _ShoppingItemSheet) whose entered
+// text becomes the stored value directly, so it is almost never displayed
+// literally — only legacy rows saved before the custom field existed do.
 const _kShoppingQuantityUnits = <MapEntry<String, String>>[
   MapEntry('kg', 'كغ'),
   MapEntry('packet', 'بكط'),
   MapEntry('can', 'بطة'),
-  MapEntry('piece', 'وحدة'),
   MapEntry('mru_value', 'MRU'),
   MapEntry('other', 'أخرى'),
 ];
 
-String _quantityUnitLabel(String unit) => _kShoppingQuantityUnits
-    .firstWhere((e) => e.key == unit, orElse: () => MapEntry(unit, unit))
-    .value;
+// Retired unit codes: no longer selectable, but historical items still show
+// their original Arabic label instead of the raw stored code.
+const _kLegacyShoppingQuantityUnitLabels = <String, String>{'piece': 'وحدة'};
+
+// Standard (non-custom) unit codes. Anything else stored in quantityUnit is
+// free-text entered via the "أخرى" custom-unit field.
+const _kStandardShoppingQuantityUnitCodes = {
+  'kg',
+  'packet',
+  'can',
+  'mru_value',
+};
+
+String _quantityUnitLabel(String unit) {
+  for (final entry in _kShoppingQuantityUnits) {
+    if (entry.key == unit) return entry.value;
+  }
+  return _kLegacyShoppingQuantityUnitLabels[unit] ?? unit;
+}
 
 String _formatShoppingQuantityValue(double value) {
   final isWhole = value == value.roundToDouble();
@@ -2403,7 +2421,12 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
   late final _quantityValueCtrl = TextEditingController(
     text: _initialPriceText(widget.existing?.quantityValue),
   );
-  late String? _quantityUnit = widget.existing?.quantityUnit;
+  late String? _quantityUnit = _initialQuantityUnit(
+    widget.existing?.quantityUnit,
+  );
+  late final _customUnitCtrl = TextEditingController(
+    text: _initialCustomUnitText(widget.existing?.quantityUnit),
+  );
   late bool _isRequired = widget.existing?.isRequired ?? true;
   bool _saving = false;
   String? _error;
@@ -2414,12 +2437,24 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
     return isWhole ? value.toStringAsFixed(0) : value.toStringAsFixed(2);
   }
 
+  static String? _initialQuantityUnit(String? stored) => stored == null
+      ? null
+      : (_kStandardShoppingQuantityUnitCodes.contains(stored)
+            ? stored
+            : 'other');
+
+  static String _initialCustomUnitText(String? stored) =>
+      stored != null && !_kStandardShoppingQuantityUnitCodes.contains(stored)
+      ? stored
+      : '';
+
   @override
   void dispose() {
     _nameCtrl.dispose();
     _noteCtrl.dispose();
     _priceCtrl.dispose();
     _quantityValueCtrl.dispose();
+    _customUnitCtrl.dispose();
     super.dispose();
   }
 
@@ -2455,6 +2490,14 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
         setState(() => _error = 'أدخل كمية صحيحة');
         return;
       }
+      if (quantityUnit == 'other') {
+        final customUnit = _customUnitCtrl.text.trim();
+        if (customUnit.isEmpty) {
+          setState(() => _error = 'أدخل اسم الوحدة');
+          return;
+        }
+        quantityUnit = customUnit;
+      }
     }
     setState(() {
       _saving = true;
@@ -2484,113 +2527,130 @@ class _ShoppingItemSheetState extends State<_ShoppingItemSheet> {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(ZadTokens.s4),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: ZadTokens.s2),
-              child: ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: ZadTokens.s2),
+                child: ZadInfoBanner(_error!, kind: ZadBannerKind.danger),
+              ),
+            TextField(
+              controller: _nameCtrl,
+              enabled: !_saving,
+              decoration: const InputDecoration(labelText: 'اسم العنصر'),
             ),
-          TextField(
-            controller: _nameCtrl,
-            enabled: !_saving,
-            decoration: const InputDecoration(labelText: 'اسم العنصر'),
-          ),
-          const SizedBox(height: ZadTokens.s3),
-          TextField(
-            controller: _quantityValueCtrl,
-            enabled: !_saving,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'الكمية'),
-          ),
-          const SizedBox(height: ZadTokens.s2),
-          Wrap(
-            spacing: ZadTokens.s2,
-            runSpacing: ZadTokens.s1,
-            children: [
-              for (final unit in _kShoppingQuantityUnits)
-                ChoiceChip(
-                  label: Text(unit.value),
-                  selected: _quantityUnit == unit.key,
-                  onSelected: _saving
-                      ? null
-                      : (_) => setState(
-                          () => _quantityUnit = _quantityUnit == unit.key
-                              ? null
-                              : unit.key,
-                        ),
-                ),
-            ],
-          ),
-          const SizedBox(height: ZadTokens.s3),
-          TextField(
-            controller: _noteCtrl,
-            enabled: !_saving,
-            decoration: const InputDecoration(labelText: 'ملاحظة الكمية'),
-          ),
-          const SizedBox(height: ZadTokens.s3),
-          TextField(
-            controller: _priceCtrl,
-            enabled: !_saving,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'السعر',
-              suffixText: 'MRU',
+            const SizedBox(height: ZadTokens.s3),
+            TextField(
+              controller: _quantityValueCtrl,
+              enabled: !_saving,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(labelText: 'الكمية'),
             ),
-          ),
-          const SizedBox(height: ZadTokens.s3),
-          Row(
-            children: [
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('أساسي'),
-                  selected: _isRequired,
-                  onSelected: _saving
-                      ? null
-                      : (_) => setState(() => _isRequired = true),
-                ),
-              ),
-              const SizedBox(width: ZadTokens.s2),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('اختياري'),
-                  selected: !_isRequired,
-                  onSelected: _saving
-                      ? null
-                      : (_) => setState(() => _isRequired = false),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: ZadTokens.s4),
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: _saving
-                      ? null
-                      : () => Navigator.pop(context, false),
-                  child: const Text('إلغاء'),
-                ),
-              ),
-              const SizedBox(width: ZadTokens.s2),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _saving ? null : _submit,
-                  child: _saving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('حفظ'),
-                ),
+            const SizedBox(height: ZadTokens.s2),
+            Wrap(
+              spacing: ZadTokens.s2,
+              runSpacing: ZadTokens.s1,
+              children: [
+                for (final unit in _kShoppingQuantityUnits)
+                  ChoiceChip(
+                    label: Text(unit.value),
+                    selected: _quantityUnit == unit.key,
+                    onSelected: _saving
+                        ? null
+                        : (_) => setState(() {
+                            _quantityUnit = _quantityUnit == unit.key
+                                ? null
+                                : unit.key;
+                            if (_quantityUnit != 'other') {
+                              _customUnitCtrl.clear();
+                            }
+                          }),
+                  ),
+              ],
+            ),
+            if (_quantityUnit == 'other') ...[
+              const SizedBox(height: ZadTokens.s2),
+              TextField(
+                controller: _customUnitCtrl,
+                enabled: !_saving,
+                decoration: const InputDecoration(labelText: 'اسم الوحدة'),
               ),
             ],
-          ),
-        ],
+            const SizedBox(height: ZadTokens.s3),
+            TextField(
+              controller: _noteCtrl,
+              enabled: !_saving,
+              decoration: const InputDecoration(labelText: 'ملاحظة الكمية'),
+            ),
+            const SizedBox(height: ZadTokens.s3),
+            TextField(
+              controller: _priceCtrl,
+              enabled: !_saving,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'السعر',
+                suffixText: 'MRU',
+              ),
+            ),
+            const SizedBox(height: ZadTokens.s3),
+            Row(
+              children: [
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Text('أساسي'),
+                    selected: _isRequired,
+                    onSelected: _saving
+                        ? null
+                        : (_) => setState(() => _isRequired = true),
+                  ),
+                ),
+                const SizedBox(width: ZadTokens.s2),
+                Expanded(
+                  child: ChoiceChip(
+                    label: const Text('اختياري'),
+                    selected: !_isRequired,
+                    onSelected: _saving
+                        ? null
+                        : (_) => setState(() => _isRequired = false),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: ZadTokens.s4),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: _saving
+                        ? null
+                        : () => Navigator.pop(context, false),
+                    child: const Text('إلغاء'),
+                  ),
+                ),
+                const SizedBox(width: ZadTokens.s2),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _submit,
+                    child: _saving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('حفظ'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

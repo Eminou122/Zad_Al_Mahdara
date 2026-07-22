@@ -2432,7 +2432,7 @@ void main() {
     expect(shoppingService.lastUpdatedPrice, isNull);
   });
 
-  testWidgets('add sheet shows quantity field and all six unit labels', (
+  testWidgets('add sheet shows quantity field and exactly five unit labels', (
     tester,
   ) async {
     await _pump(tester, overview: _sampleShoppingOverview(canEditList: true));
@@ -2443,9 +2443,203 @@ void main() {
     expect(find.text('كغ'), findsOneWidget);
     expect(find.text('بكط'), findsOneWidget);
     expect(find.text('بطة'), findsOneWidget);
-    expect(find.text('وحدة'), findsOneWidget);
     expect(find.text('MRU'), findsWidgets);
     expect(find.text('أخرى'), findsOneWidget);
+    expect(find.text('وحدة'), findsNothing);
+  });
+
+  testWidgets('selecting أخرى shows the required custom-unit field', (
+    tester,
+  ) async {
+    await _pump(tester, overview: _sampleShoppingOverview(canEditList: true));
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'اسم الوحدة'), findsNothing);
+
+    await tester.tap(find.text('أخرى'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'اسم الوحدة'), findsOneWidget);
+  });
+
+  testWidgets('blank custom unit is rejected', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'اسم العنصر'),
+      'زيت زيتون',
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'الكمية'), '1');
+    await tester.tap(find.text('أخرى'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastAddedQuantityUnit, isNull);
+    expect(find.text('أدخل اسم الوحدة'), findsOneWidget);
+  });
+
+  testWidgets('trimmed custom unit is submitted', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(canEditList: true),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'اسم العنصر'),
+      'زيت زيتون',
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'الكمية'), '1');
+    await tester.tap(find.text('أخرى'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'اسم الوحدة'),
+      '  صندوق كبير  ',
+    );
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastAddedQuantityUnit, 'صندوق كبير');
+  });
+
+  testWidgets('choosing a standard unit hides and clears the custom input', (
+    tester,
+  ) async {
+    await _pump(tester, overview: _sampleShoppingOverview(canEditList: true));
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('أخرى'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'اسم الوحدة'),
+      'صندوق',
+    );
+
+    await tester.tap(find.text('كغ'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'اسم الوحدة'), findsNothing);
+
+    await tester.tap(find.text('أخرى'));
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'اسم الوحدة'),
+    );
+    expect(field.controller!.text, isEmpty);
+  });
+
+  testWidgets('editing preserves an existing custom unit', (tester) async {
+    final shoppingService = _FakeTeamShoppingService(
+      overview: _sampleShoppingOverview(
+        canEditList: true,
+        firstItemQuantityValue: 3.0,
+        firstItemQuantityUnit: 'صندوق كبير',
+      ),
+    );
+    await tester.pumpWidget(
+      _buildTest(
+        _FakeAuthService(),
+        teamService: _FakeTeamService(detail: _sampleTeamDetail()),
+        turnService: _FakeTurnService(state: _sampleTurnState()),
+        shoppingService: shoppingService,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _tapVisible(
+      tester,
+      find.widgetWithIcon(IconButton, Icons.edit_outlined),
+    );
+
+    final chip = tester.widget<ChoiceChip>(
+      find.widgetWithText(ChoiceChip, 'أخرى'),
+    );
+    expect(chip.selected, isTrue);
+    expect(find.widgetWithText(TextField, 'صندوق كبير'), findsOneWidget);
+
+    await tester.tap(find.text('حفظ'));
+    await tester.pumpAndSettle();
+
+    expect(shoppingService.lastUpdatedQuantityUnit, 'صندوق كبير');
+  });
+
+  testWidgets('historical unknown units display safely', (tester) async {
+    await _pump(
+      tester,
+      overview: _sampleShoppingOverview(
+        items: [
+          const TeamShoppingItem(
+            id: 'legacy-1',
+            name: 'سكر',
+            quantityValue: 5,
+            quantityUnit: 'piece',
+            isRequired: true,
+            position: 1,
+            bought: false,
+          ),
+          const TeamShoppingItem(
+            id: 'legacy-2',
+            name: 'دقيق',
+            quantityValue: 1,
+            quantityUnit: 'litre',
+            isRequired: false,
+            position: 2,
+            bought: false,
+          ),
+        ],
+      ),
+    );
+
+    expect(find.text('الكمية: ${ltrFragment('5 وحدة')}'), findsOneWidget);
+    expect(find.text('الكمية: ${ltrFragment('1 litre')}'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('shopping item sheet with custom unit fits at 320px in RTL', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pump(tester, overview: _sampleShoppingOverview(canEditList: true));
+    await tester.tap(find.text('إضافة عنصر'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('أخرى'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'اسم الوحدة'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
