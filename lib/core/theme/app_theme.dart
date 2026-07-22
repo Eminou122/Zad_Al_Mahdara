@@ -2,6 +2,22 @@ import 'package:flutter/material.dart';
 import 'zad_tokens.dart';
 
 class AppTheme {
+  // Clear, visible keyboard-focus ring reused by every button style below —
+  // Material's default focus overlay is too subtle against these surfaces.
+  static final WidgetStateProperty<Color?> _focusOverlay =
+      WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.focused)) {
+          return ZadTokens.primary.withValues(alpha: 0.18);
+        }
+        if (states.contains(WidgetState.pressed)) {
+          return ZadTokens.primary.withValues(alpha: 0.12);
+        }
+        if (states.contains(WidgetState.hovered)) {
+          return ZadTokens.primary.withValues(alpha: 0.08);
+        }
+        return null;
+      });
+
   static final light = ThemeData(
     useMaterial3: true,
     scaffoldBackgroundColor: ZadTokens.background,
@@ -44,7 +60,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
         ),
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-      ),
+      ).copyWith(overlayColor: _focusOverlay),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
@@ -55,10 +71,15 @@ class AppTheme {
           borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
         ),
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-      ),
+      ).copyWith(overlayColor: _focusOverlay),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: ZadTokens.primary),
+      style: TextButton.styleFrom(
+        foregroundColor: ZadTokens.primary,
+      ).copyWith(overlayColor: _focusOverlay),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom().copyWith(overlayColor: _focusOverlay),
     ),
     cardTheme: const CardThemeData(
       color: ZadTokens.surface,

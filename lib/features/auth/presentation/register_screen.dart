@@ -38,6 +38,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _submit() async {
+    if (_loading) return;
     final name = _nameCtrl.text.trim();
     final phone = normalizeMauritanianPhone(_phoneCtrl.text);
     final pin = _pinCtrl.text.trim();
@@ -126,6 +127,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       TextField(
                         controller: _nameCtrl,
                         textCapitalization: TextCapitalization.words,
+                        textInputAction: TextInputAction.next,
                         decoration: const InputDecoration(
                           labelText: 'الاسم الكامل',
                           hintText: 'أدخل اسمك كما في الهوية',
@@ -136,6 +138,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       MauritanianPhoneField(
                         controller: _phoneCtrl,
                         labelText: 'رقم الهاتف (8 أرقام)',
+                        textInputAction: TextInputAction.next,
                       ),
                       const SizedBox(height: ZadTokens.s3),
                       // PIN + confirm side by side (Stitch register).
@@ -147,6 +150,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               obscureText: true,
                               keyboardType: TextInputType.number,
                               maxLength: 4,
+                              textInputAction: TextInputAction.next,
                               decoration: const InputDecoration(
                                 labelText: 'الرمز السري',
                                 prefixIcon: Icon(Icons.lock_outline),
@@ -161,6 +165,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               obscureText: true,
                               keyboardType: TextInputType.number,
                               maxLength: 4,
+                              textInputAction: TextInputAction.done,
+                              onSubmitted: (_) => _submit(),
                               decoration: const InputDecoration(
                                 labelText: 'تأكيد الرمز',
                                 prefixIcon: Icon(Icons.lock_outline),
@@ -189,8 +195,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
                 const SizedBox(height: ZadTokens.s4),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     const Text(
                       'لديك حساب بالفعل؟',

@@ -21,6 +21,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _phoneCtrl = TextEditingController();
   final _pinCtrl = TextEditingController();
+  final _pinVisibilityFocus = FocusNode();
   bool _loading = false;
   bool _showPin = false;
   bool _retrying = false;
@@ -30,6 +31,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _phoneCtrl.dispose();
     _pinCtrl.dispose();
+    _pinVisibilityFocus.dispose();
     super.dispose();
   }
 
@@ -146,6 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         controller: _phoneCtrl,
                         labelText: 'رقم الهاتف',
                         hintText: 'مثال: 00 00 00 00',
+                        textInputAction: TextInputAction.next,
                       ),
                       const SizedBox(height: ZadTokens.s3),
                       TextField(
@@ -153,11 +156,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         obscureText: !_showPin,
                         keyboardType: TextInputType.number,
                         maxLength: 4,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _submit(),
                         decoration: InputDecoration(
                           labelText: 'الرمز السري',
                           prefixIcon: const Icon(Icons.lock_outline),
                           counterText: '',
                           suffixIcon: IconButton(
+                            focusNode: _pinVisibilityFocus,
                             icon: Icon(
                               _showPin
                                   ? Icons.visibility_off_outlined
