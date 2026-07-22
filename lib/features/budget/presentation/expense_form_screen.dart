@@ -28,7 +28,6 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   late final BudgetService _budget;
   final _nameCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
-  final _categoryCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   DateTime? _date;
   bool _loading = false;
@@ -42,7 +41,6 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
     if (e != null) {
       _nameCtrl.text = e.itemName;
       _amountCtrl.text = e.amount.toStringAsFixed(2);
-      _categoryCtrl.text = e.category ?? '';
       _noteCtrl.text = e.note ?? '';
       _date = e.expenseDate;
     } else {
@@ -54,7 +52,6 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _amountCtrl.dispose();
-    _categoryCtrl.dispose();
     _noteCtrl.dispose();
     super.dispose();
   }
@@ -71,25 +68,21 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
   }
 
   Future<void> _submit() async {
+    if (_loading) return;
     final name = _nameCtrl.text.trim();
     final amount = double.tryParse(_amountCtrl.text.trim());
-    final cat = _categoryCtrl.text.trim();
     final note = _noteCtrl.text.trim();
 
     if (name.isEmpty || name.length > 80) {
       setState(() => _error = 'اسم المصروف مطلوب (1–80 حرف)');
       return;
     }
-    if (amount == null || amount < 0) {
-      setState(() => _error = 'أدخل مبلغاً صحيحاً (صفر أو أكثر)');
+    if (amount == null || amount <= 0) {
+      setState(() => _error = 'أدخل مبلغاً صحيحاً أكبر من صفر');
       return;
     }
     if (_date == null) {
       setState(() => _error = 'اختر تاريخ المصروف');
-      return;
-    }
-    if (cat.length > 40) {
-      setState(() => _error = 'الفئة طويلة جداً');
       return;
     }
     if (note.length > 300) {
@@ -109,7 +102,6 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
           expenseId: ex.id,
           itemName: name,
           amount: amount,
-          category: cat.isEmpty ? null : cat,
           note: note.isEmpty ? null : note,
           expenseDate: _date!,
         );
@@ -117,7 +109,6 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
         overview = await _budget.addExpense(
           itemName: name,
           amount: amount,
-          category: cat.isEmpty ? null : cat,
           note: note.isEmpty ? null : note,
           expenseDate: _date!,
         );
@@ -146,8 +137,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
       return 'التاريخ خارج نطاق الميزانية الحالية';
     }
     if (m.contains('item_name')) return 'اسم المصروف غير صالح';
-    if (m.contains('amount')) return 'المبلغ يجب أن يكون صفر أو أكثر';
-    if (m.contains('category')) return 'الفئة طويلة جداً';
+    if (m.contains('amount')) return 'المبلغ يجب أن يكون أكبر من صفر';
     if (m.contains('invalid session')) {
       return 'انتهت جلستك — يرجى إعادة تسجيل الدخول';
     }
@@ -184,12 +174,14 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             decoration: const InputDecoration(labelText: 'المبلغ (MRU)'),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _categoryCtrl,
-            maxLength: 40,
-            decoration: const InputDecoration(
-              labelText: 'الفئة (اختياري)',
-              counterText: '',
+          InkWell(
+            onTap: _pickDate,
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'التاريخ',
+                suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
+              ),
+              child: Text(dateText),
             ),
           ),
           const SizedBox(height: 12),
@@ -198,19 +190,8 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
             maxLength: 300,
             maxLines: 2,
             decoration: const InputDecoration(
-              labelText: 'ملاحظة (اختياري)',
+              labelText: 'ملاحظة اختيارية',
               counterText: '',
-            ),
-          ),
-          const SizedBox(height: 12),
-          InkWell(
-            onTap: _pickDate,
-            child: InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'تاريخ المصروف',
-                suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
-              ),
-              child: Text(dateText),
             ),
           ),
           const SizedBox(height: 24),
@@ -225,7 +206,7 @@ class _ExpenseFormScreenState extends State<ExpenseFormScreen> {
                       color: Colors.white,
                     ),
                   )
-                : Text(isEdit ? 'تحديث المصروف' : 'حفظ المصروف'),
+                : Text(isEdit ? 'تحديث المصروف' : 'إضافة المصروف'),
           ),
         ],
       ),

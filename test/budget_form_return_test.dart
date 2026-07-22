@@ -71,7 +71,7 @@ void main() {
     );
     await tester.enterText(find.byType(TextField).first, 'دفتر');
     await tester.enterText(find.byType(TextField).at(1), '20');
-    await tester.tap(find.text('حفظ المصروف'));
+    await tester.tap(find.text('إضافة المصروف'));
     await tester.pumpAndSettle();
     expect(await result.future, same(_result));
   });
