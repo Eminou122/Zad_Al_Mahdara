@@ -207,72 +207,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
     }
   }
 
-  Future<void> _removeRecurringOccurrence(TodayRecurringPurchase item) async {
-    if (_isOfflineCached ||
-        item.recurringPurchaseId.trim().isEmpty ||
-        item.status != 'purchased' ||
-        item.isVoided) {
-      return;
-    }
-    final key = _occurrenceKey(item);
-    if (_updatingRecurring.contains(key)) return;
-    await showDialog<bool>(
-      context: context,
-      builder: (_) => RecurringRemovalDialog(
-        title: 'إلغاء عملية الشراء',
-        body:
-            'سيتم إلغاء عملية الشراء المحددة وعكس أثرها من المصروفات، مع الاحتفاظ بسجلها المالي.',
-        details: [
-          item.name,
-          _fmtDate(item.occurrenceDate),
-          '${item.price.toStringAsFixed(2)} MRU',
-        ],
-        actionLabel: 'إلغاء العملية',
-        onSubmit: (reason) async {
-          if (_updatingRecurring.contains(key)) return;
-          final mutationVersion = ++_mutationGeneration;
-          final recurringVersion = ++_recurringGeneration;
-          if (mounted) {
-            setState(() => _updatingRecurring.add(key));
-          }
-          try {
-            final result = await _budget.removeRecurringPurchaseOccurrence(
-              recurringPurchaseId: item.recurringPurchaseId,
-              occurrenceDate: item.occurrenceDate,
-              reason: reason,
-            );
-            if (!mounted ||
-                mutationVersion != _mutationGeneration ||
-                recurringVersion != _recurringGeneration) {
-              return;
-            }
-            ++_loadGeneration;
-            setState(() {
-              _todayRecurring = result.todayItems;
-              _overview = result.budgetOverview;
-              _recurringStats = result.recurringStatistics;
-              _isOfflineCached = false;
-              _cachedAt = null;
-            });
-            if (result.removed) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'تم إلغاء عملية الشراء مع الاحتفاظ بسجلها المالي',
-                  ),
-                ),
-              );
-            }
-          } finally {
-            if (mounted) {
-              setState(() => _updatingRecurring.remove(key));
-            }
-          }
-        },
-      ),
-    );
-  }
-
   Future<void> _refreshRecurringStats(int recurringVersion) async {
     try {
       final stats = await _budget.getRecurringPurchaseOverview();
@@ -313,6 +247,72 @@ class _BudgetScreenState extends State<BudgetScreen> {
     if (voided && mounted) {
       _showError('تم إلغاء المصروف مع الاحتفاظ بسجله المالي');
     }
+  }
+
+  Future<void> _removeRecurringExpense(Expense expense) async {
+    if (_isOfflineCached || _updatingRecurring.contains(expense.id)) return;
+    final history = await _budget.getRecurringPurchaseHistory(limit: 50);
+    RecurringPurchaseHistoryItem? occurrence;
+    for (final item in history) {
+      if (item.expenseId == expense.id &&
+          item.status == 'purchased' &&
+          !item.isVoided) {
+        occurrence = item;
+        break;
+      }
+    }
+    if (occurrence == null || !mounted) return;
+    await showDialog<bool>(
+      context: context,
+      builder: (_) => RecurringRemovalDialog(
+        title: 'إلغاء عملية الشراء',
+        body:
+            'سيتم إلغاء عملية الشراء وعكس أثرها من المصروفات، مع الاحتفاظ بسجلها المالي.',
+        details: [
+          occurrence!.name,
+          _fmtDate(occurrence.occurrenceDate),
+          '${occurrence.price.toStringAsFixed(2)} MRU',
+        ],
+        actionLabel: 'إلغاء العملية',
+        onSubmit: (reason) async {
+          if (_updatingRecurring.contains(expense.id)) return;
+          final mutationVersion = ++_mutationGeneration;
+          final recurringVersion = ++_recurringGeneration;
+          if (mounted) setState(() => _updatingRecurring.add(expense.id));
+          try {
+            final result = await _budget.removeRecurringPurchaseOccurrence(
+              recurringPurchaseId: occurrence!.recurringPurchaseId,
+              occurrenceDate: occurrence.occurrenceDate,
+              reason: reason,
+            );
+            if (!mounted ||
+                mutationVersion != _mutationGeneration ||
+                recurringVersion != _recurringGeneration) {
+              return;
+            }
+            ++_loadGeneration;
+            setState(() {
+              _overview = result.budgetOverview;
+              _todayRecurring = result.todayItems;
+              _recurringStats = result.recurringStatistics;
+              _isOfflineCached = false;
+              _cachedAt = null;
+            });
+            if (result.removed) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'تم إلغاء عملية الشراء مع الاحتفاظ بسجلها المالي',
+                  ),
+                ),
+              );
+            }
+          } finally {
+            if (mounted) setState(() => _updatingRecurring.remove(expense.id));
+          }
+        },
+      ),
+    );
   }
 
   Future<bool?> _showVoidExpenseDialog(Expense expense) async {
@@ -669,19 +669,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         ),
                       ],
                     ),
-                    if (item.status == 'purchased' &&
-                        !item.isVoided &&
-                        item.recurringPurchaseId.trim().isNotEmpty)
-                      Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: TextButton.icon(
-                          onPressed: isUpdating
-                              ? null
-                              : () => _removeRecurringOccurrence(item),
-                          icon: const Icon(Icons.cancel_outlined, size: 18),
-                          label: const Text('إلغاء عملية الشراء'),
-                        ),
-                      ),
                   ],
                 ),
               );
@@ -848,23 +835,26 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     color: ZadTokens.danger,
                   ),
                 ),
-                if (exp.source == 'manual') ...[
+                if (exp.source == 'manual')
                   IconButton(
                     icon: const Icon(Icons.edit_outlined, size: 20),
                     tooltip: 'تعديل',
                     onPressed: () =>
                         _openOverviewRoute('/budget/expense/new', extra: exp),
                   ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.cancel_outlined,
-                      size: 20,
-                      color: ZadTokens.danger,
-                    ),
-                    tooltip: 'إلغاء المصروف',
-                    onPressed: () => _voidExpense(exp),
+                IconButton(
+                  icon: const Icon(
+                    Icons.cancel_outlined,
+                    size: 20,
+                    color: ZadTokens.danger,
                   ),
-                ],
+                  tooltip: exp.source == 'recurring_purchase'
+                      ? 'إلغاء عملية الشراء'
+                      : 'إلغاء المصروف',
+                  onPressed: () => exp.source == 'recurring_purchase'
+                      ? _removeRecurringExpense(exp)
+                      : _voidExpense(exp),
+                ),
               ],
             ),
           ),
