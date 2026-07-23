@@ -1,20 +1,24 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../features/teams/domain/team_models.dart';
 import '../../messaging/domain/team_messaging_models.dart';
 import '../../../services/auth_service.dart';
 import '../data/student_directory_service.dart';
 import '../domain/student_directory_models.dart';
+import '../domain/support_whatsapp.dart';
 
 class StudentDirectoryScreen extends StatefulWidget {
   final AuthService authService;
   final StudentDirectoryService? service;
+  final Future<bool> Function(Uri uri)? launchUrl;
   const StudentDirectoryScreen({
     super.key,
     required this.authService,
     this.service,
+    this.launchUrl,
   });
   @override
   State<StudentDirectoryScreen> createState() => _StudentDirectoryScreenState();
@@ -25,6 +29,23 @@ class _StudentDirectoryScreenState extends State<StudentDirectoryScreen> {
   List<AvailablePublicTeam> teams = [];
   bool loading = true;
   bool error = false;
+
+  Future<void> openSupport() async {
+    try {
+      final opener =
+          widget.launchUrl ??
+          (Uri uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
+      final opened = await opener(supportWhatsAppUri());
+      if (!opened && mounted) throw Exception();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر فتح واتساب، حاول مرة أخرى')),
+        );
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -90,9 +111,20 @@ class _StudentDirectoryScreenState extends State<StudentDirectoryScreen> {
                       : ListView.builder(
                           physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.all(ZadTokens.s4),
-                          itemCount: teams.length,
-                          itemBuilder: (_, i) =>
-                              _Card(teams[i], () => contact(teams[i])),
+                          itemCount: teams.length + 1,
+                          itemBuilder: (_, i) => i == 0
+                              ? SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: openSupport,
+                                    icon: const Icon(Icons.support_agent),
+                                    label: const Text('تواصل معنا للمساعدة'),
+                                  ),
+                                )
+                              : _Card(
+                                  teams[i - 1],
+                                  () => contact(teams[i - 1]),
+                                ),
                         ),
                 ),
         ),

@@ -60,6 +60,7 @@ void main() {
     );
     await t.pumpAndSettle();
     expect(find.text('الفرق المتاحة'), findsOneWidget);
+    expect(find.text('تواصل معنا للمساعدة'), findsOneWidget);
     expect(find.text('عدد الأعضاء: 3'), findsOneWidget);
     expect(find.text('تواصل مع مسؤول المجموعة'), findsOneWidget);
   });
@@ -99,14 +100,15 @@ void main() {
         routes: [
           GoRoute(
             path: '/',
-            builder: (_, __) => Directionality(
+            builder: (context, state) => Directionality(
               textDirection: TextDirection.rtl,
               child: StudentDirectoryScreen(authService: A(), service: s),
             ),
           ),
           GoRoute(
             path: '/messages/conversation/:id',
-        builder: (context, state) => Text('thread-${state.pathParameters['id']}'),
+            builder: (context, state) =>
+                Text('thread-${state.pathParameters['id']}'),
           ),
         ],
       );
@@ -151,5 +153,33 @@ void main() {
     await t.tap(find.text('إرسال'));
     await t.pump();
     expect(find.text('تعذر إرسال الرسالة، حاول مرة أخرى'), findsOneWidget);
+  });
+
+  testWidgets('support launch failure is safe', (t) async {
+    const team = AvailablePublicTeam(
+      teamId: 't',
+      name: 'فريق',
+      teamType: 'lunch',
+      note: null,
+      leaderDisplayName: null,
+      memberCount: 1,
+      isCurrentMember: false,
+    );
+    await t.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: StudentDirectoryScreen(
+            authService: A(),
+            service: S(const AvailablePublicTeamsResult([team])),
+            launchUrl: (_) async => false,
+          ),
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    await t.tap(find.text('تواصل معنا للمساعدة'));
+    await t.pump();
+    expect(find.text('تعذر فتح واتساب، حاول مرة أخرى'), findsOneWidget);
   });
 }
