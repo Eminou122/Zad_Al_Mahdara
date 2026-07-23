@@ -34,7 +34,7 @@ class _FakeAuthService extends AuthService {
           {'session_token': 'test-token', 'profile': _profileJson()};
     }
     if (function == 'complete_pin_reset') return {'ok': true};
-    if (function == 'request_pin_reset')
+    if (function == 'request_pin_reset') {
       return {
         'reset_request_id': 'request',
         'masked_name': 'م*** ع***',
@@ -42,6 +42,7 @@ class _FakeAuthService extends AuthService {
             .add(const Duration(minutes: 5))
             .toIso8601String(),
       };
+    }
     return {'session_token': 'test-token', 'profile': _profileJson()};
   }
 

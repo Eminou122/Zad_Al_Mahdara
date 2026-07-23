@@ -53,4 +53,70 @@ class TeamTurnService {
     final res = await _c.rpc('skip_missed_team_turn', params: params);
     return TeamTurnState.fromJson(Map<String, dynamic>.from(res as Map));
   }
+
+  Future<TeamTurnState> startDailyRole(String teamId) async {
+    final res = await _c.rpc(
+      'start_daily_role',
+      params: {'p_session_token': _token, 'p_team_id': teamId},
+    );
+    return TeamTurnState.fromJson(Map<String, dynamic>.from(res as Map));
+  }
+
+  Future<TeamTurnState> memberCompleteDailyRole(String turnId) async {
+    final res = await _c.rpc(
+      'member_complete_daily_role',
+      params: {'p_session_token': _token, 'p_turn_id': turnId},
+    );
+    return TeamTurnState.fromJson(Map<String, dynamic>.from(res as Map));
+  }
+
+  Future<TeamTurnState> leaderFallbackCompleteDailyRole(String turnId) async {
+    final res = await _c.rpc(
+      'leader_fallback_complete_daily_role',
+      params: {'p_session_token': _token, 'p_turn_id': turnId},
+    );
+    return TeamTurnState.fromJson(Map<String, dynamic>.from(res as Map));
+  }
+
+  Future<TeamTurnState> leaderFinalizeDailyRole(String turnId) async {
+    final res = await _c.rpc(
+      'leader_finalize_daily_role',
+      params: {'p_session_token': _token, 'p_turn_id': turnId},
+    );
+    return TeamTurnState.fromJson(Map<String, dynamic>.from(res as Map));
+  }
+
+  Future<DailyRoleWhatsAppLink> getDailyRoleWhatsAppLink(String turnId) async {
+    final res = await _c.rpc(
+      'get_daily_role_whatsapp_link',
+      params: {'p_session_token': _token, 'p_turn_id': turnId},
+    );
+    return DailyRoleWhatsAppLink.fromJson(
+      Map<String, dynamic>.from(res as Map),
+    );
+  }
+
+  /// No session token: reachable from the public, no-login confirmation page.
+  Future<PublicRoleConfirmation> getPublicRoleConfirmation(String token) async {
+    final res = await _c.rpc(
+      'get_daily_role_public_confirmation',
+      params: {'p_token': token},
+    );
+    return PublicRoleConfirmation.fromJson(
+      Map<String, dynamic>.from(res as Map),
+    );
+  }
+
+  /// No session token: reachable from the public, no-login confirmation page.
+  Future<PublicRoleConfirmation> completePublicRoleConfirmation(
+    String token,
+  ) async {
+    final res = await _c.rpc(
+      'complete_daily_role_public',
+      params: {'p_token': token},
+    );
+    return PublicRoleConfirmation.fromJson(
+      Map<String, dynamic>.from(res as Map),
+    );
+  }
 }

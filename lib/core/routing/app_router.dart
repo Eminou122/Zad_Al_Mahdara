@@ -23,6 +23,7 @@ import '../../features/teams/presentation/teams_screen.dart';
 import '../../features/teams/presentation/team_form_screen.dart';
 import '../../features/teams/presentation/team_detail_screen.dart';
 import '../../features/teams/presentation/add_team_member_screen.dart';
+import '../../features/teams/presentation/daily_role_public_confirm_screen.dart';
 import '../../features/teams/domain/team_models.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/admin/presentation/admin_screen.dart';
@@ -42,6 +43,7 @@ class AppRouter {
     '/register',
     '/forgot-pin',
     '/reset-pin',
+    '/confirm-role',
     '/',
   };
 
@@ -199,6 +201,12 @@ class AppRouter {
         builder: (_, state) => AddTeamMemberScreen(
           authService: authService,
           teamId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/confirm-role',
+        builder: (_, state) => DailyRolePublicConfirmScreen(
+          token: state.uri.queryParameters['token'],
         ),
       ),
       GoRoute(

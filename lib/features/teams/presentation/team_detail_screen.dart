@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/refresh/app_refresh_coordinator.dart';
 import '../../../core/routing/route_observer.dart';
 import '../../../core/theme/zad_tokens.dart';
@@ -10,6 +13,7 @@ import '../../../core/widgets/zad_animated_entry.dart';
 import '../../../core/widgets/zad_bottom_nav.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_confirm.dart';
+import '../../../core/widgets/zad_delayed_confirm.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_messaging_badge_scope.dart';
 import '../../../core/widgets/zad_section_header.dart';
@@ -21,6 +25,7 @@ import '../../budget/presentation/widgets/recurring_removal_dialog.dart';
 import '../data/team_service.dart';
 import '../data/team_shopping_service.dart';
 import '../data/team_turn_service.dart';
+import '../domain/daily_role_whatsapp.dart';
 import '../domain/team_models.dart';
 import '../domain/team_shopping_models.dart';
 import '../domain/team_turn_models.dart';
@@ -1216,18 +1221,12 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     );
   }
 
-  Future<void> _startTurn() async {
-    if (!(_shoppingOverview?.hasValidItems ?? false)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('أضف عنصرًا واحدًا على الأقل قبل مشاركة القائمة'),
-        ),
-      );
-      return;
-    }
+  // Gate 3: the daily role never depends on a purchase list — starting,
+  // notifying, confirming, and finishing today's role are all unconditional.
+  Future<void> _startDailyRole() async {
     setState(() => _turnLoading = true);
     try {
-      final ts = await _turnSvc.ensureTodayTurn(widget.teamId);
+      final ts = await _turnSvc.startDailyRole(widget.teamId);
       if (mounted) {
         setState(() {
           _turnState = ts;
@@ -1248,16 +1247,42 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     }
   }
 
-  Future<void> _completeTurn(String turnId) async {
-    if (!(_shoppingOverview?.hasValidItems ?? false)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('لا يمكن إكمال دور بقائمة تسوق فارغة')),
-      );
-      return;
-    }
+  Future<void> _memberCompleteDailyRole(String turnId) async {
     setState(() => _turnLoading = true);
     try {
-      final ts = await _turnSvc.completeTurn(turnId);
+      final ts = await _turnSvc.memberCompleteDailyRole(turnId);
+      if (mounted) {
+        setState(() {
+          _turnState = ts;
+          _turnLoading = false;
+        });
+        AppRefreshCoordinator.instance.invalidateMany({
+          AppRefreshScope.notifications,
+          AppRefreshScope.notificationBadge,
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _turnLoading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
+    }
+  }
+
+  Future<void> _leaderFallbackCompleteDailyRole(String turnId) async {
+    final ok = await zadDelayedConfirm(
+      context,
+      title: 'تأكيد إكمال الدور نيابةً عن العضو',
+      body:
+          'أنت تؤكد نيابةً عن العضو المكلف أنه أنهى تحضير دور اليوم، وليس '
+          'العضو نفسه من ضغط التأكيد. سيتم تسجيل مصدر التأكيد كقائد.',
+    );
+    if (!ok) return;
+    setState(() => _turnLoading = true);
+    try {
+      final ts = await _turnSvc.leaderFallbackCompleteDailyRole(turnId);
       if (mounted) {
         setState(() {
           _turnState = ts;
@@ -1270,6 +1295,67 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
+    }
+  }
+
+  Future<void> _leaderFinalizeDailyRole(String turnId) async {
+    final ok = await zadDelayedConfirm(
+      context,
+      title: 'تأكيد اكتمال دور اليوم',
+      body:
+          'هل أنت متأكد من اكتمال دور اليوم؟ سيتم تسجيل هذه العملية في سجل الأدوار.',
+    );
+    if (!ok) return;
+    setState(() => _turnLoading = true);
+    try {
+      final ts = await _turnSvc.leaderFinalizeDailyRole(turnId);
+      if (mounted) {
+        setState(() {
+          _turnState = ts;
+          _turnLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _turnLoading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
+    }
+  }
+
+  Future<void> _sendDailyRoleWhatsApp(String turnId) async {
+    try {
+      final link = await _turnSvc.getDailyRoleWhatsAppLink(turnId);
+      final confirmUrl =
+          '${Uri.base.origin}/#/confirm-role?token=${link.token}';
+      final message = dailyRoleWhatsAppMessage(
+        teamName: link.teamName,
+        teamType: link.teamType,
+        confirmationUrl: confirmUrl,
+      );
+      final launched = await launchUrl(
+        dailyRoleWhatsAppUri(phoneNumber: link.phoneNumber, message: message),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذر فتح واتساب. يمكنك إبلاغ العضو خارج التطبيق.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'تعذر إرسال رابط واتساب. يمكنك إبلاغ العضو خارج التطبيق.',
+            ),
+          ),
+        );
       }
     }
   }
@@ -1591,12 +1677,20 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                         state: _turnState,
                         loading: _turnLoading,
                         isMember: d.isMember,
-                        onStart: _shoppingOverview?.hasValidItems == true
-                            ? _startTurn
-                            : null,
-                        onComplete: _shoppingOverview?.hasValidItems == true
-                            ? _completeTurn
-                            : null,
+                        isAssignedMember:
+                            _turnState?.todayTurn != null &&
+                            d.members.any(
+                              (m) =>
+                                  m.memberId ==
+                                      _turnState!.todayTurn!.memberId &&
+                                  m.profileId != null &&
+                                  m.profileId == widget.authService.profile?.id,
+                            ),
+                        onStart: _startDailyRole,
+                        onMemberComplete: _memberCompleteDailyRole,
+                        onLeaderFallback: _leaderFallbackCompleteDailyRole,
+                        onLeaderFinalize: _leaderFinalizeDailyRole,
+                        onSendWhatsApp: _sendDailyRoleWhatsApp,
                         onSkipMissedTurn: _skipMissedTurn,
                       ),
                     ),
@@ -1691,22 +1785,69 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
   }
 }
 
-class _TurnCard extends StatelessWidget {
+class _TurnCard extends StatefulWidget {
   final TeamTurnState? state;
   final bool loading;
   final bool isMember;
+  final bool isAssignedMember;
   final VoidCallback? onStart;
-  final void Function(String)? onComplete;
+  final void Function(String)? onMemberComplete;
+  final void Function(String)? onLeaderFallback;
+  final void Function(String)? onLeaderFinalize;
+  final void Function(String)? onSendWhatsApp;
   final void Function(String, String?) onSkipMissedTurn;
 
   const _TurnCard({
     required this.state,
     required this.loading,
     required this.isMember,
+    required this.isAssignedMember,
     required this.onStart,
-    required this.onComplete,
+    required this.onMemberComplete,
+    required this.onLeaderFallback,
+    required this.onLeaderFinalize,
+    required this.onSendWhatsApp,
     required this.onSkipMissedTurn,
   });
+
+  @override
+  State<_TurnCard> createState() => _TurnCardState();
+}
+
+class _TurnCardState extends State<_TurnCard> {
+  // Ticks the elapsed-time label and the 20-minute fallback unlock while the
+  // card is on screen; no network calls, just a repaint.
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  bool _fallbackUnlocked(DateTime? startedAt) =>
+      startedAt != null &&
+      DateTime.now().difference(startedAt) >= const Duration(minutes: 20);
+
+  String _elapsedLabel(DateTime startedAt) {
+    final mins = DateTime.now().difference(startedAt).inMinutes;
+    if (mins < 1) return 'بدأ الآن';
+    return 'منذ ${ltrFragment('$mins')} دقيقة';
+  }
+
+  String _statusLabel(TurnEntry t) {
+    if (t.status == 'completed') return 'مكتمل';
+    if (t.memberCompletedAt != null) return 'بانتظار تأكيد القائد';
+    return 'بانتظار العضو';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1742,19 +1883,19 @@ class _TurnCard extends StatelessWidget {
             style: TextStyle(color: ZadTokens.textMuted, fontSize: 13),
           ),
           const Divider(height: 20),
-          if (!isMember)
+          if (!widget.isMember)
             const Text(
               'تفاصيل الأدوار تظهر لأعضاء الفريق فقط.',
               style: TextStyle(color: ZadTokens.textMuted),
             )
-          else if (loading)
+          else if (widget.loading)
             const Center(
               child: Padding(
                 padding: EdgeInsets.all(ZadTokens.s2),
                 child: CircularProgressIndicator(),
               ),
             )
-          else if (state == null)
+          else if (widget.state == null)
             const Text(
               'لم تتوفر بيانات الأدوار حالياً',
               style: TextStyle(color: ZadTokens.textMuted),
@@ -1766,8 +1907,65 @@ class _TurnCard extends StatelessWidget {
     );
   }
 
+  List<Widget> _pendingActions(TurnEntry today, TeamTurnState s) {
+    if (today.memberCompletedAt == null) {
+      return [
+        if (widget.isAssignedMember) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: widget.onMemberComplete == null
+                  ? null
+                  : () => widget.onMemberComplete!(today.id),
+              child: const Text('تم إكمال دور اليوم'),
+            ),
+          ),
+        ],
+        if (s.canManageTurns && today.isManualMember) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: widget.onSendWhatsApp == null
+                  ? null
+                  : () => widget.onSendWhatsApp!(today.id),
+              icon: const Icon(Icons.chat_outlined),
+              label: const Text('إرسال عبر واتساب'),
+            ),
+          ),
+        ],
+        if (s.canManageTurns && _fallbackUnlocked(today.startedAt)) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: widget.onLeaderFallback == null
+                  ? null
+                  : () => widget.onLeaderFallback!(today.id),
+              child: const Text('تأكيد إكمال الدور نيابةً عن العضو'),
+            ),
+          ),
+        ],
+      ];
+    }
+    if (!s.canManageTurns) return const [];
+    return [
+      const SizedBox(height: 10),
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: widget.onLeaderFinalize == null
+              ? null
+              : () => widget.onLeaderFinalize!(today.id),
+          child: const Text('اكتمل دور اليوم'),
+        ),
+      ),
+    ];
+  }
+
   Widget _body(BuildContext context) {
-    final s = state!;
+    final s = widget.state!;
     final today = s.todayTurn;
     final isBlocked = s.blockingPreviousTurn;
     final canSkipBlockedTurn =
@@ -1798,7 +1996,7 @@ class _TurnCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: onStart,
+                onPressed: widget.onStart,
                 child: const Text('بدء دور اليوم'),
               ),
             ),
@@ -1837,8 +2035,22 @@ class _TurnCard extends StatelessWidget {
                             fontSize: 16,
                             color: ZadTokens.primary,
                           ),
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          [
+                            teamTypeLabels[today.mealType] ??
+                                dailyRoleMealWord(today.mealType),
+                            _statusLabel(today),
+                            if (today.startedAt != null)
+                              _elapsedLabel(today.startedAt!),
+                          ].join(' · '),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: ZadTokens.textMuted,
+                          ),
                         ),
                       ],
                     ),
@@ -1861,18 +2073,7 @@ class _TurnCard extends StatelessWidget {
               ),
             ),
           ),
-          if (today.status == 'pending' && s.canManageTurns) ...[
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: onComplete == null
-                    ? null
-                    : () => onComplete!(today.id),
-                child: const Text('تم إنجاز الدور'),
-              ),
-            ),
-          ],
+          if (today.status == 'pending') ..._pendingActions(today, s),
         ],
         if (s.nextMember != null &&
             (today == null ||
@@ -2004,6 +2205,18 @@ class _TurnCard extends StatelessWidget {
                                   fontSize: 12,
                                 ),
                               ),
+                            if (h.status == 'completed' &&
+                                h.completionSource != null)
+                              Text(
+                                dailyRoleCompletionSourceLabels[h
+                                        .completionSource] ??
+                                    '',
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(
+                                  color: ZadTokens.textMuted,
+                                  fontSize: 11,
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -2027,7 +2240,7 @@ class _TurnCard extends StatelessWidget {
       ),
     );
     if (reason == null) return;
-    onSkipMissedTurn(turnId, reason);
+    widget.onSkipMissedTurn(turnId, reason);
   }
 }
 

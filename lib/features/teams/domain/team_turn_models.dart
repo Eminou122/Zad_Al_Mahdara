@@ -16,6 +16,23 @@ class TurnMemberRef {
   );
 }
 
+/// Meal type -> indefinite Arabic word ("غداء" not "الغداء"), used to build
+/// the leader/member daily-role sentences ("دورك اليوم في تحضير غداء ...").
+const dailyRoleMealWords = {
+  'breakfast': 'إفطار',
+  'lunch': 'غداء',
+  'dinner': 'عشاء',
+};
+
+String dailyRoleMealWord(String? teamType) =>
+    dailyRoleMealWords[teamType] ?? 'وجبة';
+
+const dailyRoleCompletionSourceLabels = {
+  'account_member': 'العضو',
+  'manual_link': 'رابط تأكيد العضو',
+  'leader_fallback': 'القائد نيابةً عن العضو',
+};
+
 class TurnEntry {
   final String id;
   final String turnDate;
@@ -29,6 +46,14 @@ class TurnEntry {
   final DateTime? skippedAt;
   final String? skippedBy;
   final String? skipReason;
+  final String? mealType;
+  final String memberKind;
+  final bool hasAccount;
+  final DateTime? memberCompletedAt;
+  final String? completionSource;
+  final String? memberCompletedByName;
+  final DateTime? finalizedAt;
+  final String? finalizedByName;
 
   const TurnEntry({
     required this.id,
@@ -43,7 +68,17 @@ class TurnEntry {
     this.skippedAt,
     this.skippedBy,
     this.skipReason,
+    this.mealType,
+    this.memberKind = 'account',
+    this.hasAccount = true,
+    this.memberCompletedAt,
+    this.completionSource,
+    this.memberCompletedByName,
+    this.finalizedAt,
+    this.finalizedByName,
   });
+
+  bool get isManualMember => memberKind == 'external';
 
   factory TurnEntry.fromJson(Map<String, dynamic> j) => TurnEntry(
     id: j['id'] as String,
@@ -58,7 +93,76 @@ class TurnEntry {
     skippedAt: _parseDateTime(j['skipped_at']),
     skippedBy: j['skipped_by'] as String?,
     skipReason: j['skip_reason'] as String?,
+    mealType: j['meal_type'] as String?,
+    memberKind: j['member_kind'] as String? ?? 'account',
+    hasAccount: j['has_account'] as bool? ?? true,
+    memberCompletedAt: _parseDateTime(j['member_completed_at']),
+    completionSource: j['completion_source'] as String?,
+    memberCompletedByName: j['member_completed_by_name'] as String?,
+    finalizedAt: _parseDateTime(j['finalized_at']),
+    finalizedByName: j['finalized_by_name'] as String?,
   );
+}
+
+class DailyRoleWhatsAppLink {
+  final String token;
+  final DateTime expiresAt;
+  final String phoneNumber;
+  final String memberName;
+  final String teamName;
+  final String teamType;
+  final String turnDate;
+
+  const DailyRoleWhatsAppLink({
+    required this.token,
+    required this.expiresAt,
+    required this.phoneNumber,
+    required this.memberName,
+    required this.teamName,
+    required this.teamType,
+    required this.turnDate,
+  });
+
+  factory DailyRoleWhatsAppLink.fromJson(Map<String, dynamic> j) =>
+      DailyRoleWhatsAppLink(
+        token: j['token'] as String,
+        expiresAt: DateTime.parse(j['expires_at'] as String),
+        phoneNumber: j['phone_number'] as String,
+        memberName: j['member_name'] as String,
+        teamName: j['team_name'] as String,
+        teamType: j['team_type'] as String,
+        turnDate: j['turn_date'] as String,
+      );
+}
+
+/// Result of the public (no-login) daily-role confirmation RPCs.
+/// [status] is one of: ready, used, expired, invalid, completed.
+class PublicRoleConfirmation {
+  final String status;
+  final String? memberName;
+  final String? teamName;
+  final String? teamType;
+  final String? turnDate;
+
+  const PublicRoleConfirmation({
+    required this.status,
+    this.memberName,
+    this.teamName,
+    this.teamType,
+    this.turnDate,
+  });
+
+  bool get isReady => status == 'ready';
+  bool get isCompleted => status == 'completed';
+
+  factory PublicRoleConfirmation.fromJson(Map<String, dynamic> j) =>
+      PublicRoleConfirmation(
+        status: j['status'] as String,
+        memberName: j['member_name'] as String?,
+        teamName: j['team_name'] as String?,
+        teamType: j['team_type'] as String?,
+        turnDate: j['turn_date'] as String?,
+      );
 }
 
 class TeamTurnState {

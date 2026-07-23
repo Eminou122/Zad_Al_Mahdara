@@ -288,6 +288,8 @@ class _FakeTurnService extends TeamTurnService {
   int skipMissedTurnCallCount = 0;
   int ensureTodayTurnCallCount = 0;
   int completeTurnCallCount = 0;
+  int startDailyRoleCallCount = 0;
+  int leaderFinalizeDailyRoleCallCount = 0;
   String? lastSkipTeamId;
   String? lastSkipTurnId;
   String? lastSkipReason;
@@ -312,6 +314,20 @@ class _FakeTurnService extends TeamTurnService {
   @override
   Future<TeamTurnState> completeTurn(String turnId) async {
     completeTurnCallCount++;
+    if (error != null) throw error!;
+    return state ?? _sampleTurnState();
+  }
+
+  @override
+  Future<TeamTurnState> startDailyRole(String teamId) async {
+    startDailyRoleCallCount++;
+    if (error != null) throw error!;
+    return state ?? _sampleTurnState();
+  }
+
+  @override
+  Future<TeamTurnState> leaderFinalizeDailyRole(String turnId) async {
+    leaderFinalizeDailyRoleCallCount++;
     if (error != null) throw error!;
     return state ?? _sampleTurnState();
   }
@@ -1729,7 +1745,7 @@ void main() {
     expect(find.text('حليب'), findsOneWidget);
   });
 
-  testWidgets('empty list disables turn dispatch', (tester) async {
+  testWidgets('empty list allows daily-role dispatch', (tester) async {
     final turnService = _FakeTurnService(state: _turnStateWithoutToday());
     await tester.pumpWidget(
       _buildTest(
@@ -1747,12 +1763,28 @@ void main() {
     final start = tester.widget<ElevatedButton>(
       find.widgetWithText(ElevatedButton, 'بدء دور اليوم'),
     );
-    expect(start.onPressed, isNull);
-    expect(turnService.ensureTodayTurnCallCount, 0);
+    expect(start.onPressed, isNotNull);
+    await tester.tap(find.widgetWithText(ElevatedButton, 'بدء دور اليوم'));
+    await tester.pumpAndSettle();
+    expect(turnService.startDailyRoleCallCount, 1);
   });
 
-  testWidgets('empty list disables turn completion', (tester) async {
-    final turnService = _FakeTurnService(state: _sampleTurnState());
+  testWidgets('empty list allows daily-role final completion', (tester) async {
+    final turnService = _FakeTurnService(
+      state: TeamTurnState(
+        canManageTurns: true,
+        todayTurn: TurnEntry(
+          id: 'turn-1',
+          turnDate: '2026-07-01',
+          status: 'pending',
+          memberId: 'mem-1',
+          displayName: 'محمد',
+          position: 1,
+          memberCompletedAt: DateTime(2026, 7, 1, 9),
+        ),
+        history: const [],
+      ),
+    );
     await tester.pumpWidget(
       _buildTest(
         _FakeAuthService(),
@@ -1766,13 +1798,12 @@ void main() {
     await tester.pumpAndSettle();
     await _scrollToTurnCard(tester);
     final complete = tester.widget<ElevatedButton>(
-      find.widgetWithText(ElevatedButton, 'تم إنجاز الدور'),
+      find.widgetWithText(ElevatedButton, 'اكتمل دور اليوم'),
     );
-    expect(complete.onPressed, isNull);
-    expect(turnService.completeTurnCallCount, 0);
+    expect(complete.onPressed, isNotNull);
   });
 
-  testWidgets('one valid item enables dispatch and dispatches once', (
+  testWidgets('shopping items do not change daily-role dispatch', (
     tester,
   ) async {
     final turnService = _FakeTurnService(state: _turnStateWithoutToday());
@@ -1793,10 +1824,10 @@ void main() {
     expect(tester.widget<ElevatedButton>(startFinder).onPressed, isNotNull);
     await tester.tap(startFinder);
     await tester.pumpAndSettle();
-    expect(turnService.ensureTodayTurnCallCount, 1);
+    expect(turnService.startDailyRoleCallCount, 1);
   });
 
-  testWidgets('adding first valid item enables dispatch immediately', (
+  testWidgets('adding a shopping item keeps daily-role dispatch available', (
     tester,
   ) async {
     final turnService = _FakeTurnService(state: _turnStateWithoutToday());
@@ -1830,7 +1861,9 @@ void main() {
     );
   });
 
-  testWidgets('removing final item disables dispatch again', (tester) async {
+  testWidgets('removing final item keeps daily-role dispatch available', (
+    tester,
+  ) async {
     final turnService = _FakeTurnService(state: _turnStateWithoutToday());
     final shoppingService = _FakeTeamShoppingService(
       overview: _sampleShoppingOverview(itemCount: 1, canEditList: true),
@@ -1859,7 +1892,7 @@ void main() {
             find.widgetWithText(ElevatedButton, 'بدء دور اليوم'),
           )
           .onPressed,
-      isNull,
+      isNotNull,
     );
     expect(find.text('لا يمكن إرسال تقرير فارغ'), findsOneWidget);
   });
