@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../features/teams/domain/team_models.dart';
+import '../../messaging/domain/team_messaging_models.dart';
 import '../../../services/auth_service.dart';
 import '../data/student_directory_service.dart';
 import '../domain/student_directory_models.dart';
@@ -52,13 +54,14 @@ class _StudentDirectoryScreenState extends State<StudentDirectoryScreen> {
   }
 
   Future<void> contact(AvailablePublicTeam t) async {
-    final ok = await showDialog<bool>(
+    final conversation = await showDialog<TeamConversationRef>(
       context: context,
       builder: (_) => _Contact(s, t),
     );
-    if (ok == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم إرسال رسالتك إلى مسؤول المجموعة')),
+    if (conversation != null && mounted) {
+      context.push(
+        '/messages/conversation/${conversation.id}',
+        extra: {'teamId': conversation.teamId, 'teamName': t.name},
       );
     }
   }
@@ -185,11 +188,11 @@ class _ContactState extends State<_Contact> {
     }
     setState(() => busy = true);
     try {
-      await widget.s.contactAvailableTeamLeader(
+      final conversation = await widget.s.contactAvailableTeamLeader(
         teamId: widget.t.teamId,
         body: b,
       );
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) Navigator.pop(context, conversation);
     } catch (_) {
       if (mounted) {
         setState(() {

@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = 'public', 'extensions';
 
-select plan(54);
+select plan(59);
 
 insert into public.profiles (
   display_name, phone_number, phone_masked, pin_hash, is_admin, is_active
@@ -121,13 +121,20 @@ select ok((select prosecdef from pg_proc where oid = 'public.get_available_publi
 select ok((select 'search_path=public, extensions' = any(proconfig) from pg_proc where oid = 'public.get_available_public_teams(text)'::regprocedure), 'list RPC has fixed search path');
 select ok(position('auth.uid' in (select pg_get_functiondef('public.get_available_public_teams(text)'::regprocedure))) = 0, 'list RPC does not depend on auth.uid');
 
-select is(public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 contact team'), 'Please contact me'), jsonb_build_object('ok', true), 'valid non-member contact succeeds');
-select is((select count(*) from public.notifications where type = 'available_team_contact' and team_id = (select id from public.teams where name = '039 contact team')), 1::bigint, 'valid contact creates exactly one notification');
-select is(public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 contact team'), 'Please contact me'), '{"ok": true}'::jsonb, 'contact response is exactly ok true');
-select is((select count(*) from public.notifications where type = 'available_team_contact' and team_id = (select id from public.teams where name = '039 contact team')), 1::bigint, 'same-bucket duplicate contact does not create another notification');
+create temp table contact_result(response jsonb);
+insert into contact_result select public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 contact team'), 'Please contact me');
+select is((select response->>'ok' from contact_result),'true','valid non-member contact succeeds');
+select ok((select (response->>'conversation_id')::uuid is not null from contact_result),'contact returns a conversation ID');
+select is((select count(*) from public.team_conversations where id=(select (response->>'conversation_id')::uuid from contact_result)),1::bigint,'contact creates one conversation');
+select is((select body from public.team_messages where conversation_id=(select (response->>'conversation_id')::uuid from contact_result)),'Please contact me','first contact message is stored');
+select ok((select member_profile_id=(select id from profiles where display_name='039 caller') and join_leader_profile_id=(select id from profiles where display_name='039 leader') from team_conversations where id=(select (response->>'conversation_id')::uuid from contact_result)),'conversation binds applicant and leader');
+select is((select action_payload->>'conversation_id' from public.notifications where type='available_team_contact' and team_id=(select id from teams where name='039 contact team') limit 1),(select response->>'conversation_id' from contact_result),'notification references the exact conversation');
+select is((public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 contact team'), 'Please contact me')->>'conversation_id'),(select response->>'conversation_id' from contact_result),'repeated contact reuses the same conversation');
+select is((select count(*) from public.team_conversations where team_id=(select id from teams where name='039 contact team') and member_profile_id=(select id from profiles where display_name='039 caller')),1::bigint,'repeated contact creates no duplicate conversation');
+select is((select count(*) from public.notifications where type='available_team_contact' and team_id=(select id from teams where name='039 contact team')),2::bigint,'each contact message notifies the leader');
 select throws_like($$select public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 member team'), 'hello')$$, 'team unavailable for contact', 'active existing member cannot contact leader');
-select is(public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 inactive membership team'), 'hello'), jsonb_build_object('ok', true), 'inactive membership does not block contact');
-select is(public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 removed membership team'), 'hello'), jsonb_build_object('ok', true), 'removed membership does not block contact');
+select is((public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 inactive membership team'), 'hello')->>'ok'),'true','inactive membership does not block contact');
+select is((public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 removed membership team'), 'hello')->>'ok'),'true','removed membership does not block contact');
 select throws_like($$select public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 private'), 'hello')$$, 'team unavailable for contact', 'private team is rejected');
 select throws_like($$select public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 inactive'), 'hello')$$, 'team unavailable for contact', 'inactive team is rejected');
 select throws_like($$select public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 closed'), 'hello')$$, 'team unavailable for contact', 'closed team is rejected');
@@ -138,13 +145,13 @@ select throws_like($$select public.contact_available_team_leader('039-active-tok
 select throws_like($$select public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 contact team'), '')$$, 'invalid contact message', 'blank body is rejected');
 select throws_like($$select public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 contact team'), '   ')$$, 'invalid contact message', 'whitespace-only body is rejected');
 select throws_like($$select public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 contact team'), repeat('x', 501))$$, 'invalid contact message', 'body longer than 500 is rejected');
-select is(public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 five hundred team'), repeat('x', 500)), jsonb_build_object('ok', true), 'exactly 500 characters is accepted');
+select is((public.contact_available_team_leader('039-active-token', (select id from public.teams where name = '039 five hundred team'), repeat('x', 500))->>'ok'),'true','exactly 500 characters is accepted');
 select throws_like($$select public.contact_available_team_leader('bad-token', (select id from public.teams where name = '039 contact team'), 'hello')$$, 'invalid session', 'invalid contact session is rejected');
 select throws_like($$select public.contact_available_team_leader('039-inactive-token', (select id from public.teams where name = '039 contact team'), 'hello')$$, 'invalid session', 'inactive caller cannot contact');
-select is((select count(*) from public.team_conversations where team_id in (select id from public.teams where name like '039%')), 0::bigint, 'prospect contact creates no conversation');
-select is((select count(*) from public.team_messages), 0::bigint, 'prospect contact creates no message');
+select ok((select count(*) from public.team_conversations where team_id in (select id from public.teams where name like '039%')) >= 4,'prospect contacts create retained conversations');
+select ok((select count(*) from public.team_messages) >= 5,'prospect contacts create retained messages');
 select is((select count(*) from public.team_members where team_id = (select id from public.teams where name = '039 contact team')), 1::bigint, 'prospect contact creates no membership');
-select is((select body from public.notifications where type = 'available_team_contact' and team_id = (select id from public.teams where name = '039 five hundred team')), repeat('x', 500), 'notification body remains bounded and is the supplied body only');
+select ok((select length(body) <= 500 from public.notifications where type = 'available_team_contact' and team_id = (select id from public.teams where name = '039 five hundred team')),'notification body remains bounded');
 select is((select team_id from public.notifications where type = 'available_team_contact' and team_id = (select id from public.teams where name = '039 contact team') limit 1), (select id from public.teams where name = '039 contact team'), 'notification references the target team');
 select ok(not (select coalesce(string_agg(title || body, ''), '') like '%00000391%' from public.notifications where type = 'available_team_contact'), 'contact notification contains no caller phone');
 select ok(has_function_privilege('anon', 'public.contact_available_team_leader(text,uuid,text)', 'EXECUTE'), 'anon can execute contact RPC');

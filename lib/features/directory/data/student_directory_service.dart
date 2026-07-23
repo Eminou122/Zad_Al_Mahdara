@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/utils/error_text.dart';
 import '../../../services/auth_service.dart';
+import '../../messaging/domain/team_messaging_models.dart';
 import '../domain/student_directory_models.dart';
 
 class StudentDirectoryService {
@@ -26,7 +27,7 @@ class StudentDirectoryService {
     }
   }
 
-  Future<void> contactAvailableTeamLeader({
+  Future<TeamConversationRef> contactAvailableTeamLeader({
     required String teamId,
     required String body,
   }) async {
@@ -40,9 +41,14 @@ class StudentDirectoryService {
         'p_body': trimmed,
       });
       final data = Map<String, dynamic>.from(res as Map);
-      if (data.length != 1 || data['ok'] != true) {
+      if (data['ok'] != true || data['conversation_id'] is! String) {
         throw Exception('رفض الإرسال');
       }
+      return TeamConversationRef(
+        id: data['conversation_id'] as String,
+        teamId: data['team_id'] as String? ?? teamId,
+        memberProfileId: '',
+      );
     } catch (e) {
       throw Exception(userErrorText(e));
     }
