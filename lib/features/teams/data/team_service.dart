@@ -64,6 +64,26 @@ class TeamService {
     return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
   }
 
+  Future<TeamDetail> createTeamWithMembers({
+    required String name,
+    required String teamType,
+    required bool isPublic,
+    required String status,
+    String? note,
+    required List<Map<String, dynamic>> members,
+  }) async {
+    final res = await rpc('create_team_with_members', {
+      'p_session_token': _token,
+      'p_name': name,
+      'p_team_type': teamType,
+      'p_is_public': isPublic,
+      'p_status': status,
+      'p_note': note,
+      'p_members': members,
+    });
+    return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
+  }
+
   Future<TeamDetail> updateTeamSettings({
     required String teamId,
     required String name,
@@ -153,6 +173,18 @@ class TeamService {
   @protected
   Future<dynamic> rpc(String name, Map<String, dynamic> params) =>
       _c.rpc(name, params: params);
+
+  Future<TeamDetail> reorderTeamMembers(
+    String teamId,
+    List<String> memberIds,
+  ) async {
+    final res = await rpc('reorder_team_members', {
+      'p_session_token': _token,
+      'p_team_id': teamId,
+      'p_member_ids': memberIds,
+    });
+    return TeamDetail.fromJson(Map<String, dynamic>.from(res as Map));
+  }
 
   Future<TeamDetail> deactivateTeamMember({
     required String teamId,

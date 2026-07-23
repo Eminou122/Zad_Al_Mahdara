@@ -992,6 +992,19 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
     }
   }
 
+  Future<void> _moveMember(int from, int to) async {
+    final members = List<TeamMember>.from(_detail!.members);
+    final moved = members.removeAt(from);
+    members.insert(to, moved);
+    await _applyMemberUpdate(
+      moved,
+      () => _svc.reorderTeamMembers(
+        widget.teamId,
+        members.map((m) => m.memberId).toList(),
+      ),
+    );
+  }
+
   Future<void> _deactivate(TeamMember m) async {
     final ok = await zadConfirm(
       context,
@@ -1646,6 +1659,14 @@ class _TeamDetailScreenState extends State<TeamDetailScreen> with RouteAware {
                                 onDeactivate: () => _deactivate(entry.value),
                                 onReactivate: () => _reactivate(entry.value),
                                 onRemove: () => _remove(entry.value),
+                                onUp: entry.key == 0
+                                    ? null
+                                    : () =>
+                                          _moveMember(entry.key, entry.key - 1),
+                                onDown: entry.key == d.members.length - 1
+                                    ? null
+                                    : () =>
+                                          _moveMember(entry.key, entry.key + 1),
                               ),
                             ],
                           ],
@@ -2169,6 +2190,8 @@ class _MemberTile extends StatelessWidget {
   final VoidCallback onDeactivate;
   final VoidCallback onReactivate;
   final VoidCallback onRemove;
+  final VoidCallback? onUp;
+  final VoidCallback? onDown;
   const _MemberTile({
     required this.displayPosition,
     required this.member,
@@ -2177,6 +2200,8 @@ class _MemberTile extends StatelessWidget {
     required this.onDeactivate,
     required this.onReactivate,
     required this.onRemove,
+    this.onUp,
+    this.onDown,
   });
 
   @override
@@ -2266,6 +2291,20 @@ class _MemberTile extends StatelessWidget {
           Expanded(
             child: member.isActive ? info : Opacity(opacity: 0.55, child: info),
           ),
+          if (canManage && member.isActive) ...[
+            IconButton(
+              tooltip: 'رفع',
+              visualDensity: VisualDensity.compact,
+              onPressed: onUp,
+              icon: const Icon(Icons.keyboard_arrow_up),
+            ),
+            IconButton(
+              tooltip: 'خفض',
+              visualDensity: VisualDensity.compact,
+              onPressed: onDown,
+              icon: const Icon(Icons.keyboard_arrow_down),
+            ),
+          ],
           if (busy)
             const Padding(
               padding: EdgeInsets.all(ZadTokens.s2),
