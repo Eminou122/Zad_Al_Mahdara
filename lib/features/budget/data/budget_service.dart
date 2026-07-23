@@ -155,6 +155,31 @@ class BudgetService {
     return result['voided'] as bool;
   }
 
+  Future<BudgetOverview> deleteExpenses(List<String> expenseIds) async =>
+      _overview(
+        await _client.rpc(
+          'delete_expenses',
+          params: {'p_session_token': _token, 'p_ids': expenseIds},
+        ),
+      );
+
+  Future<BudgetOverview> deleteRecurringPurchases(List<String> ids) async =>
+      _overview(
+        await _client.rpc(
+          'delete_recurring_purchases',
+          params: {'p_session_token': _token, 'p_ids': ids},
+        ),
+      );
+
+  Future<BudgetOverview> deleteRecurringPurchaseOccurrences(
+    List<String> ids,
+  ) async => _overview(
+    await _client.rpc(
+      'delete_recurring_purchase_occurrences',
+      params: {'p_session_token': _token, 'p_ids': ids},
+    ),
+  );
+
   Future<BudgetOverview> addSubscription({
     required String name,
     required double amount,

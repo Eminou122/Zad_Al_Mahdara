@@ -9,13 +9,14 @@ Widget _bootApp(AuthService s) {
   final router = GoRouter(
     initialLocation: '/account',
     routes: [
-      GoRoute(path: '/account', builder: (_, _) => AccountScreen(authService: s)),
+      GoRoute(
+        path: '/account',
+        builder: (_, _) => AccountScreen(authService: s),
+      ),
       GoRoute(path: '/home', builder: (_, _) => const Placeholder()),
     ],
   );
-  return MaterialApp.router(
-    routerConfig: router,
-  );
+  return MaterialApp.router(routerConfig: router);
 }
 
 void main() {
@@ -68,7 +69,9 @@ void main() {
     expect(find.text('الرمز الحالي يجب أن يكون 4 أرقام'), findsOneWidget);
   });
 
-  testWidgets('PIN validation: non-4-digit new PIN shows error', (tester) async {
+  testWidgets('PIN validation: non-4-digit new PIN shows error', (
+    tester,
+  ) async {
     await tester.pumpWidget(_bootApp(_FakeAuthService()));
     await tester.pumpAndSettle();
 
@@ -103,7 +106,11 @@ void main() {
     final pinFields = find.byType(TextField);
     for (int i = 1; i <= 3; i++) {
       final field = tester.widget<TextField>(pinFields.at(i));
-      expect(field.obscureText, isTrue, reason: 'PIN field $i should obscure text');
+      expect(
+        field.obscureText,
+        isTrue,
+        reason: 'PIN field $i should obscure text',
+      );
     }
   });
 

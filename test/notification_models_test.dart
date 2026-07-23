@@ -113,7 +113,10 @@ void main() {
         ],
         'unread_count': 3,
         'has_more': true,
-        'next_cursor': {'created_at': '2026-07-13T09:00:00.000Z', 'id': 'notif-9'},
+        'next_cursor': {
+          'created_at': '2026-07-13T09:00:00.000Z',
+          'id': 'notif-9',
+        },
       });
 
       expect(page.items, hasLength(1));

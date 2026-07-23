@@ -252,17 +252,12 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   Widget _buildList({required bool isMine, String? error}) {
-    final items = isMine
-        ? _mine.where((team) => !team.isArchived).toList()
-        : _public;
-    final archived = isMine
-        ? _mine.where((team) => team.isArchived).toList()
-        : const <TeamSummary>[];
+    final items = isMine ? _mine : _public;
     return LayoutBuilder(
       builder: (context, constraints) {
         final side = ((constraints.maxWidth - ZadTokens.contentMaxWidth) / 2)
             .clamp(ZadTokens.s3, double.infinity);
-        if (items.isEmpty && archived.isEmpty) {
+        if (items.isEmpty) {
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.symmetric(
@@ -303,24 +298,6 @@ class _TeamsScreenState extends State<TeamsScreen> {
                       context.push('/teams/${item.id}').then((_) => _load()),
                 ),
               ),
-            if (archived.isNotEmpty) ...[
-              const Padding(
-                padding: EdgeInsets.only(
-                  top: ZadTokens.s2,
-                  bottom: ZadTokens.s2,
-                ),
-                child: Text(
-                  'الفرق المؤرشفة',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-              for (final item in archived)
-                _TeamCard(
-                  team: item,
-                  onTap: () =>
-                      context.push('/teams/${item.id}').then((_) => _load()),
-                ),
-            ],
           ],
         );
       },

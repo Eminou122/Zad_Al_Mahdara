@@ -65,10 +65,8 @@ Widget _host(AuthService auth, _StubBudgetService service) {
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) => RecurringPurchasesScreen(
-          authService: auth,
-          budgetService: service,
-        ),
+        builder: (context, state) =>
+            RecurringPurchasesScreen(authService: auth, budgetService: service),
       ),
       GoRoute(
         path: '/budget/recurring/new',

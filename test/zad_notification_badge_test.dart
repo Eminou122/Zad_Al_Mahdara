@@ -48,9 +48,7 @@ void main() {
     expect(find.text('99+'), findsOneWidget);
   });
 
-  testWidgets('badge updates live when the controller changes', (
-    tester,
-  ) async {
+  testWidgets('badge updates live when the controller changes', (tester) async {
     final controller = NotificationBadgeController(
       NotificationService(AuthService()),
     );

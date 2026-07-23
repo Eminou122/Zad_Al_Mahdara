@@ -5,21 +5,19 @@ import 'package:zad_al_mahdara/services/auth_service.dart';
 import 'package:zad_al_mahdara/services/session_storage.dart';
 
 Map<String, dynamic> _profileJson() => {
-      'id': 'u1',
-      'display_name': 'سارة',
-      'phone_masked': '12****78',
-      'is_admin': false,
-      'is_active': true,
-    };
+  'id': 'u1',
+  'display_name': 'سارة',
+  'phone_masked': '12****78',
+  'is_admin': false,
+  'is_active': true,
+};
 
 class _FakeAuthService extends AuthService {
   Map<String, dynamic>? Function(String token)? onFetch;
   Object? throwing;
 
   @override
-  Future<Map<String, dynamic>?> fetchProfileBySessionToken(
-    String token,
-  ) async {
+  Future<Map<String, dynamic>?> fetchProfileBySessionToken(String token) async {
     if (throwing != null) throw throwing!;
     return onFetch?.call(token);
   }

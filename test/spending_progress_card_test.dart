@@ -45,7 +45,9 @@ void main() {
     expect(find.text('300.00 / 1000.00 MRU'), findsOneWidget);
   });
 
-  testWidgets('does not overflow at 320px viewport with large numbers', (tester) async {
+  testWidgets('does not overflow at 320px viewport with large numbers', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(320, 600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -88,5 +90,4 @@ void main() {
     expect(find.textContaining('MRU'), findsAtLeast(2));
     expect(find.textContaining('الوضع جيد'), findsOneWidget);
   });
-
 }

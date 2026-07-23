@@ -99,7 +99,9 @@ class NotificationsPage {
       NotificationsPage(
         items: (j['items'] as List? ?? [])
             .map(
-              (e) => NotificationItem.fromJson(Map<String, dynamic>.from(e as Map)),
+              (e) => NotificationItem.fromJson(
+                Map<String, dynamic>.from(e as Map),
+              ),
             )
             .toList(),
         unreadCount: (j['unread_count'] as num?)?.toInt() ?? 0,

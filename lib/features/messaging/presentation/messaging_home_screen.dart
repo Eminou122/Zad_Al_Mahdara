@@ -12,6 +12,7 @@ import '../../../core/widgets/zad_empty_state.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_logo_badge.dart';
 import '../../../core/widgets/zad_messaging_badge_scope.dart';
+import '../../../core/widgets/zad_permanent_delete_confirm.dart';
 import '../../../core/widgets/zad_nested_swipe_scope.dart';
 import '../../../services/auth_service.dart';
 import '../../teams/data/team_service.dart';
@@ -230,6 +231,40 @@ class _ConversationsTabState extends State<_ConversationsTab> {
   // current_user_role to read). Best-effort: defaults to the member copy
   // on failure.
   bool _isLeaderOfAnyTeam = false;
+  final Set<String> _selectedIds = {};
+
+  Future<void> _deleteSelected() async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty ||
+        !await zadPermanentDeleteConfirm(context, count: ids.length)) {
+      return;
+    }
+    try {
+      for (final id in ids) {
+        await widget.service.deleteConversation(id);
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _items = _items.where((item) => !ids.contains(item.id)).toList();
+        _selectedIds.clear();
+      });
+      ZadMessagingBadgeScope.maybeOf(context)?.refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
+    }
+  }
+
+  void _toggle(String id) => setState(
+    () => _selectedIds.contains(id)
+        ? _selectedIds.remove(id)
+        : _selectedIds.add(id),
+  );
 
   @override
   void initState() {
@@ -528,7 +563,12 @@ class _ConversationsTabState extends State<_ConversationsTab> {
           final item = _items[index];
           return _ConversationCard(
             item: item,
-            onTap: () => _openConversation(item),
+            selecting: _selectedIds.isNotEmpty,
+            selected: _selectedIds.contains(item.id),
+            onSelect: () => _toggle(item.id),
+            onTap: _selectedIds.isNotEmpty
+                ? () => _toggle(item.id)
+                : () => _openConversation(item),
           );
         },
       );
@@ -536,6 +576,34 @@ class _ConversationsTabState extends State<_ConversationsTab> {
 
     return Column(
       children: [
+        if (_selectedIds.isNotEmpty)
+          Row(
+            children: [
+              Text('تم تحديد ${_selectedIds.length}'),
+              const Spacer(),
+              TextButton(
+                onPressed: () => setState(() => _selectedIds.clear()),
+                child: const Text('إلغاء التحديد'),
+              ),
+              IconButton(
+                onPressed: _deleteSelected,
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          )
+        else
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: IconButton(
+              onPressed: _items.isEmpty
+                  ? null
+                  : () => setState(
+                      () => _selectedIds.addAll(_items.map((e) => e.id)),
+                    ),
+              icon: const Icon(Icons.checklist),
+              tooltip: 'تحديد',
+            ),
+          ),
         if (_refreshing) const LinearProgressIndicator(minHeight: 2),
         Expanded(
           child: RefreshIndicator(onRefresh: _load, child: content),
@@ -548,8 +616,17 @@ class _ConversationsTabState extends State<_ConversationsTab> {
 class _ConversationCard extends StatelessWidget {
   final TeamConversationSummary item;
   final VoidCallback onTap;
+  final bool selecting;
+  final bool selected;
+  final VoidCallback onSelect;
 
-  const _ConversationCard({required this.item, required this.onTap});
+  const _ConversationCard({
+    required this.item,
+    required this.onTap,
+    required this.selecting,
+    required this.selected,
+    required this.onSelect,
+  });
 
   static String _formatWhen(DateTime dt) {
     final local = dt.toLocal();
@@ -572,6 +649,8 @@ class _ConversationCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (selecting)
+                Checkbox(value: selected, onChanged: (_) => onSelect()),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

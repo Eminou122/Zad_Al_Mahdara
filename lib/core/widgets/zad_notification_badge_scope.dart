@@ -12,8 +12,7 @@ class ZadNotificationBadgeScope
     required super.child,
   }) : super(notifier: controller);
 
-  static NotificationBadgeController? maybeOf(BuildContext context) =>
-      context
-          .dependOnInheritedWidgetOfExactType<ZadNotificationBadgeScope>()
-          ?.notifier;
+  static NotificationBadgeController? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<ZadNotificationBadgeScope>()
+      ?.notifier;
 }

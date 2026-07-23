@@ -51,14 +51,19 @@ class NotificationService {
 
   Future<void> markAllRead() async {
     final token = _token;
-    await _c.rpc('mark_all_notifications_read', params: {'p_session_token': token});
+    await _c.rpc(
+      'mark_all_notifications_read',
+      params: {'p_session_token': token},
+    );
   }
 
-  Future<void> archiveNotification(String notificationId) async {
+  Future<int> deleteNotifications(List<String> notificationIds) async {
     final token = _token;
-    await _c.rpc(
-      'archive_notification',
-      params: {'p_session_token': token, 'p_notification_id': notificationId},
+    final res = await _c.rpc(
+      'delete_notifications',
+      params: {'p_session_token': token, 'p_ids': notificationIds},
     );
+    return (Map<String, dynamic>.from(res as Map)['unread_count'] as num)
+        .toInt();
   }
 }

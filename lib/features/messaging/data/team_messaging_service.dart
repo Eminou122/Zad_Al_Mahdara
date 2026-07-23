@@ -201,7 +201,9 @@ class TeamMessagingService {
         'p_limit': limit,
       };
       final res = await _c.rpc('get_conversation_updates', params: params);
-      return ConversationUpdates.fromJson(Map<String, dynamic>.from(res as Map));
+      return ConversationUpdates.fromJson(
+        Map<String, dynamic>.from(res as Map),
+      );
     });
   }
 
@@ -259,6 +261,33 @@ class TeamMessagingService {
       );
     });
   }
+
+  Future<void> deleteAnnouncements(List<String> announcementIds) =>
+      _run(() async {
+        await _c.rpc(
+          'delete_team_announcements',
+          params: {'p_session_token': _token, 'p_ids': announcementIds},
+        );
+      });
+
+  Future<void> deleteMessages(String conversationId, List<String> messageIds) =>
+      _run(() async {
+        await _c.rpc(
+          'delete_team_messages',
+          params: {
+            'p_session_token': _token,
+            'p_conversation_id': conversationId,
+            'p_ids': messageIds,
+          },
+        );
+      });
+
+  Future<void> deleteConversation(String conversationId) => _run(() async {
+    await _c.rpc(
+      'delete_team_conversation',
+      params: {'p_session_token': _token, 'p_conversation_id': conversationId},
+    );
+  });
 
   // Dedupe concurrent calls: this is refreshed from many places (login,
   // resume, every send/read/create) so overlapping refreshes should share

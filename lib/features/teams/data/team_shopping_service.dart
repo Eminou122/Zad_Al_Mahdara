@@ -8,8 +8,7 @@ class TeamShoppingService {
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   static TeamShoppingOverview _overview(dynamic result) =>
-      TeamShoppingOverview.fromJson(
-          Map<String, dynamic>.from(result as Map));
+      TeamShoppingOverview.fromJson(Map<String, dynamic>.from(result as Map));
 
   Future<TeamShoppingOverview> getShoppingList({
     required String sessionToken,
@@ -37,16 +36,19 @@ class TeamShoppingService {
     double? quantityValue,
     String? quantityUnit,
   }) async {
-    final res = await _c.rpc('add_team_shopping_item', params: {
-      'p_session_token': sessionToken,
-      'p_team_id': teamId,
-      'p_name': name,
-      'p_quantity_note': quantityNote,
-      'p_is_required': isRequired,
-      'p_price': price,
-      'p_quantity_value': quantityValue,
-      'p_quantity_unit': quantityUnit,
-    });
+    final res = await _c.rpc(
+      'add_team_shopping_item',
+      params: {
+        'p_session_token': sessionToken,
+        'p_team_id': teamId,
+        'p_name': name,
+        'p_quantity_note': quantityNote,
+        'p_is_required': isRequired,
+        'p_price': price,
+        'p_quantity_value': quantityValue,
+        'p_quantity_unit': quantityUnit,
+      },
+    );
     return _overview(res);
   }
 
@@ -61,17 +63,20 @@ class TeamShoppingService {
     double? quantityValue,
     String? quantityUnit,
   }) async {
-    final res = await _c.rpc('update_team_shopping_item', params: {
-      'p_session_token': sessionToken,
-      'p_team_id': teamId,
-      'p_item_id': itemId,
-      'p_name': name,
-      'p_quantity_note': quantityNote,
-      'p_is_required': isRequired,
-      'p_price': price,
-      'p_quantity_value': quantityValue,
-      'p_quantity_unit': quantityUnit,
-    });
+    final res = await _c.rpc(
+      'update_team_shopping_item',
+      params: {
+        'p_session_token': sessionToken,
+        'p_team_id': teamId,
+        'p_item_id': itemId,
+        'p_name': name,
+        'p_quantity_note': quantityNote,
+        'p_is_required': isRequired,
+        'p_price': price,
+        'p_quantity_value': quantityValue,
+        'p_quantity_unit': quantityUnit,
+      },
+    );
     return _overview(res);
   }
 
@@ -80,11 +85,14 @@ class TeamShoppingService {
     required String teamId,
     required String itemId,
   }) async {
-    final res = await _c.rpc('deactivate_team_shopping_item', params: {
-      'p_session_token': sessionToken,
-      'p_team_id': teamId,
-      'p_item_id': itemId,
-    });
+    final res = await _c.rpc(
+      'deactivate_team_shopping_item',
+      params: {
+        'p_session_token': sessionToken,
+        'p_team_id': teamId,
+        'p_item_id': itemId,
+      },
+    );
     return _overview(res);
   }
 

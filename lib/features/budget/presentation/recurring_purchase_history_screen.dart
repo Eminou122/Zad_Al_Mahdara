@@ -4,11 +4,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
 import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_info_banner.dart';
+import '../../../core/widgets/zad_permanent_delete_confirm.dart';
 import '../../../core/widgets/zad_scaffold.dart';
+import '../../../core/widgets/zad_section_header.dart';
 import '../../../services/auth_service.dart';
 import '../data/budget_service.dart';
 import '../domain/budget_models.dart';
-import 'widgets/recurring_removal_dialog.dart';
 
 class RecurringPurchaseHistoryScreen extends StatefulWidget {
   final AuthService authService;
@@ -29,7 +30,9 @@ class _RecurringPurchaseHistoryScreenState
     extends State<RecurringPurchaseHistoryScreen> {
   late final BudgetService _budget;
   List<RecurringPurchaseHistoryItem> _items = [];
-  final Set<String> _removing = {};
+  final Set<String> _selectedIds = {};
+  bool _selectionMode = false;
+  bool _deleting = false;
   bool _loading = true;
   String? _error;
 
@@ -59,45 +62,34 @@ class _RecurringPurchaseHistoryScreenState
     }
   }
 
-  Future<void> _remove(RecurringPurchaseHistoryItem item) async {
-    if (_removing.contains(item.occurrenceId)) return;
-    await showDialog<bool>(
-      context: context,
-      builder: (_) => RecurringRemovalDialog(
-        title: 'إلغاء عملية الشراء',
-        body:
-            'سيتم إلغاء عملية الشراء المحددة وعكس أثرها من المصروفات، مع الاحتفاظ بسجلها المالي.',
-        details: [
-          item.name,
-          _date(item.occurrenceDate),
-          '${item.price.toStringAsFixed(2)} MRU',
-        ],
-        actionLabel: 'إلغاء عملية الشراء',
-        onSubmit: (reason) async {
-          if (_removing.contains(item.occurrenceId)) return;
-          setState(() => _removing.add(item.occurrenceId));
-          try {
-            final result = await _budget.removeRecurringPurchaseOccurrence(
-              recurringPurchaseId: item.recurringPurchaseId,
-              occurrenceDate: item.occurrenceDate,
-              reason: reason,
-            );
-            if (!mounted) return;
-            setState(() => _items = result.history);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'تم إلغاء عملية الشراء مع الاحتفاظ بسجلها المالي',
-                ),
-              ),
-            );
-          } finally {
-            if (mounted) setState(() => _removing.remove(item.occurrenceId));
-          }
-        },
-      ),
-    );
+  Future<void> _delete(List<String> ids) async {
+    if (ids.isEmpty || _deleting) return;
+    if (!await zadPermanentDeleteConfirm(context, count: ids.length)) return;
+    setState(() => _deleting = true);
+    try {
+      await _budget.deleteRecurringPurchaseOccurrences(ids);
+      if (!mounted) return;
+      setState(() {
+        _items.removeWhere((item) => ids.contains(item.occurrenceId));
+        _selectedIds.removeAll(ids);
+        _selectionMode = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_arabicError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
   }
+
+  void _toggle(String id) => setState(
+    () => _selectedIds.contains(id)
+        ? _selectedIds.remove(id)
+        : _selectedIds.add(id),
+  );
 
   @override
   Widget build(BuildContext context) => ZadScaffold(
@@ -116,6 +108,51 @@ class _RecurringPurchaseHistoryScreenState
                     style: TextStyle(color: ZadTokens.textMuted),
                   ),
                 ),
+              if (_items.isNotEmpty) ...[
+                const ZadSectionHeader('سجل المشتريات'),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Wrap(
+                    spacing: ZadTokens.s2,
+                    runSpacing: ZadTokens.s1,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (!_selectionMode)
+                        TextButton(
+                          onPressed: () =>
+                              setState(() => _selectionMode = true),
+                          child: const Text('تحديد'),
+                        )
+                      else ...[
+                        TextButton(
+                          onPressed: () => setState(
+                            () => _selectedIds.addAll(
+                              _items.map((item) => item.occurrenceId),
+                            ),
+                          ),
+                          child: const Text('تحديد الكل'),
+                        ),
+                        TextButton(
+                          onPressed: () => setState(() {
+                            _selectedIds.clear();
+                            _selectionMode = false;
+                          }),
+                          child: const Text('إلغاء التحديد'),
+                        ),
+                        if (_selectedIds.isNotEmpty) ...[
+                          Text('تم تحديد ${_selectedIds.length}'),
+                          TextButton(
+                            onPressed: _deleting
+                                ? null
+                                : () => _delete(_selectedIds.toList()),
+                            child: const Text('حذف المحدد'),
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
+                ),
+              ],
               for (final item in _items)
                 ZadCard(
                   margin: const EdgeInsets.only(bottom: ZadTokens.s2),
@@ -134,18 +171,26 @@ class _RecurringPurchaseHistoryScreenState
                         _status(item),
                         style: const TextStyle(color: ZadTokens.textMuted),
                       ),
-                      if (item.status == 'purchased' && !item.isVoided)
+                      if (_selectionMode)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Checkbox(
+                            value: _selectedIds.contains(item.occurrenceId),
+                            onChanged: (_) => _toggle(item.occurrenceId),
+                          ),
+                        )
+                      else
                         Align(
                           alignment: AlignmentDirectional.centerStart,
                           child: TextButton.icon(
-                            onPressed: _removing.contains(item.occurrenceId)
+                            onPressed: _deleting
                                 ? null
-                                : () => _remove(item),
+                                : () => _delete([item.occurrenceId]),
                             icon: const Icon(
-                              Icons.cancel_outlined,
+                              Icons.delete_outline,
                               color: ZadTokens.danger,
                             ),
-                            label: const Text('إلغاء عملية الشراء'),
+                            label: const Text('حذف نهائياً'),
                           ),
                         ),
                     ],
@@ -155,11 +200,8 @@ class _RecurringPurchaseHistoryScreenState
           ),
   );
 
-  static String _status(RecurringPurchaseHistoryItem item) => item.isVoided
-      ? 'ملغاة'
-      : item.status == 'skipped'
-      ? 'تم التخطي'
-      : 'تم الشراء';
+  static String _status(RecurringPurchaseHistoryItem item) =>
+      item.status == 'skipped' ? 'تم التخطي' : 'تم الشراء';
   static String _date(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   static String _arabicError(Object e) => e is PostgrestException

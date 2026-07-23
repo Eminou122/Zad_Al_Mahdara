@@ -43,8 +43,8 @@ class BudgetQuickActionCard extends StatelessWidget {
                 color: muted
                     ? ZadTokens.textMuted
                     : filled
-                        ? ZadTokens.goldDark
-                        : ZadTokens.primary,
+                    ? ZadTokens.goldDark
+                    : ZadTokens.primary,
               ),
             ),
           ),

@@ -25,24 +25,30 @@ class BudgetCachePayload {
     'recurringStats': recurringStats.toJson(),
   };
 
-  factory BudgetCachePayload.fromJson(Map<String, dynamic> j) =>
-      BudgetCachePayload(
-        cachedAt: DateTime.parse(j['cachedAt'] as String),
-        overview: BudgetOverview.fromJson(
-          Map<String, dynamic>.from(j['overview'] as Map),
-        ),
-        todayRecurring: (j['todayRecurring'] as List)
-            .map((e) =>
-                TodayRecurringPurchase.fromJson(Map<String, dynamic>.from(e as Map)))
-            .toList(),
-        recurringItems: (j['recurringItems'] as List)
-            .map((e) =>
-                RecurringPurchase.fromJson(Map<String, dynamic>.from(e as Map)))
-            .toList(),
-        recurringStats: RecurringPurchaseOverview.fromJson(
-          Map<String, dynamic>.from(j['recurringStats'] as Map),
-        ),
-      );
+  factory BudgetCachePayload.fromJson(
+    Map<String, dynamic> j,
+  ) => BudgetCachePayload(
+    cachedAt: DateTime.parse(j['cachedAt'] as String),
+    overview: BudgetOverview.fromJson(
+      Map<String, dynamic>.from(j['overview'] as Map),
+    ),
+    todayRecurring: (j['todayRecurring'] as List)
+        .map(
+          (e) => TodayRecurringPurchase.fromJson(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
+        .toList(),
+    recurringItems: (j['recurringItems'] as List)
+        .map(
+          (e) =>
+              RecurringPurchase.fromJson(Map<String, dynamic>.from(e as Map)),
+        )
+        .toList(),
+    recurringStats: RecurringPurchaseOverview.fromJson(
+      Map<String, dynamic>.from(j['recurringStats'] as Map),
+    ),
+  );
 }
 
 class BudgetCacheService {

@@ -14,8 +14,7 @@ void main() {
     isActive: true,
   );
 
-  Widget host(Widget child) =>
-      MaterialApp(home: Scaffold(body: child));
+  Widget host(Widget child) => MaterialApp(home: Scaffold(body: child));
 
   testWidgets('shows empty state with manage button when no items', (
     tester,

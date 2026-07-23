@@ -67,9 +67,10 @@ class AdminService {
   Future<List<AdminPinResetRequest>> listActivePinResetRequests() async {
     final pending = await _listPinResetRequests('pending');
     final issued = await _listPinResetRequests('code_issued');
-    return [...pending, ...issued]
-      ..sort((a, b) => (b.createdAt ?? DateTime(0))
-          .compareTo(a.createdAt ?? DateTime(0)));
+    return [...pending, ...issued]..sort(
+      (a, b) =>
+          (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)),
+    );
   }
 
   Future<AdminIssuedPinResetCode> issuePinResetCode(String requestId) async {
@@ -77,7 +78,9 @@ class AdminService {
       'admin_issue_pin_reset_code',
       params: {'p_session_token': _token, 'p_request_id': requestId},
     );
-    return AdminIssuedPinResetCode.fromJson(Map<String, dynamic>.from(r as Map));
+    return AdminIssuedPinResetCode.fromJson(
+      Map<String, dynamic>.from(r as Map),
+    );
   }
 
   Future<void> cancelPinResetRequest(String requestId) async {
@@ -87,14 +90,15 @@ class AdminService {
     );
   }
 
-  Future<List<AdminPinResetRequest>> _listPinResetRequests(String status) async {
+  Future<List<AdminPinResetRequest>> _listPinResetRequests(
+    String status,
+  ) async {
     final r = await _client.rpc(
       'admin_list_pin_reset_requests',
       params: {'p_session_token': _token, 'p_status': status},
     );
     return (r as List)
-        .map((e) =>
-            AdminPinResetRequest.fromJson(Map<String, dynamic>.from(e)))
+        .map((e) => AdminPinResetRequest.fromJson(Map<String, dynamic>.from(e)))
         .toList();
   }
 }

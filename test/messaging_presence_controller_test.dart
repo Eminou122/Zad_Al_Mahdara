@@ -50,8 +50,7 @@ void main() {
 
   test('no overlapping heartbeat calls', () async {
     final auth = _FakeAuthService();
-    final service = _FakeMessagingService()
-      ..pending = Completer<void>();
+    final service = _FakeMessagingService()..pending = Completer<void>();
     final controller = MessagingPresenceController(
       auth,
       service,

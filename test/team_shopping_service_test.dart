@@ -3,15 +3,14 @@ import 'package:zad_al_mahdara/features/teams/domain/team_shopping_models.dart';
 import 'package:zad_al_mahdara/features/teams/data/team_shopping_service.dart';
 
 TeamShoppingOverview _sampleOverview() => TeamShoppingOverview(
-      turnDate: null,
-      responsibleMember: null,
-      canMark: true,
-      canEditList: true,
-      items: const [],
-    );
+  turnDate: null,
+  responsibleMember: null,
+  canMark: true,
+  canEditList: true,
+  items: const [],
+);
 
 class _FakeTeamShoppingService extends TeamShoppingService {
-
   String? lastRpc;
   Map<String, dynamic>? lastParams;
   TeamShoppingOverview? returnValue;
@@ -28,7 +27,9 @@ class _FakeTeamShoppingService extends TeamShoppingService {
     lastParams = {
       'p_session_token': sessionToken,
       'p_team_id': teamId,
-      if (date != null) 'p_date': '${date.year.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+      if (date != null)
+        'p_date':
+            '${date.year.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
     };
     return returnValue ?? _sampleOverview();
   }
@@ -176,8 +177,10 @@ void main() {
       service = _FakeTeamShoppingService();
       service.returnValue = TeamShoppingOverview(
         turnDate: DateTime(2026, 7, 5),
-        responsibleMember:
-            TeamShoppingResponsibleMember(id: 'mem-1', displayName: 'محمد'),
+        responsibleMember: TeamShoppingResponsibleMember(
+          id: 'mem-1',
+          displayName: 'محمد',
+        ),
         canMark: true,
         canEditList: false,
         items: [
@@ -233,17 +236,19 @@ void main() {
       expect(result.items.length, 1);
     });
 
-    test('addItem defaults isRequired to true and quantityNote to null',
-        () async {
-      await service.addItem(
-        sessionToken: 'token-1',
-        teamId: 'team-1',
-        name: 'ماء',
-      );
+    test(
+      'addItem defaults isRequired to true and quantityNote to null',
+      () async {
+        await service.addItem(
+          sessionToken: 'token-1',
+          teamId: 'team-1',
+          name: 'ماء',
+        );
 
-      expect(service.lastParams!['p_is_required'], true);
-      expect(service.lastParams!['p_quantity_note'], isNull);
-    });
+        expect(service.lastParams!['p_is_required'], true);
+        expect(service.lastParams!['p_quantity_note'], isNull);
+      },
+    );
 
     test('addItem forwards p_price when price provided', () async {
       await service.addItem(
@@ -266,19 +271,21 @@ void main() {
       expect(service.lastParams!['p_price'], isNull);
     });
 
-    test('addItem forwards p_quantity_value and p_quantity_unit when provided',
-        () async {
-      await service.addItem(
-        sessionToken: 'token-1',
-        teamId: 'team-1',
-        name: 'أرز',
-        quantityValue: 2.0,
-        quantityUnit: 'kg',
-      );
+    test(
+      'addItem forwards p_quantity_value and p_quantity_unit when provided',
+      () async {
+        await service.addItem(
+          sessionToken: 'token-1',
+          teamId: 'team-1',
+          name: 'أرز',
+          quantityValue: 2.0,
+          quantityUnit: 'kg',
+        );
 
-      expect(service.lastParams!['p_quantity_value'], 2.0);
-      expect(service.lastParams!['p_quantity_unit'], 'kg');
-    });
+        expect(service.lastParams!['p_quantity_value'], 2.0);
+        expect(service.lastParams!['p_quantity_unit'], 'kg');
+      },
+    );
 
     test('addItem forwards null quantity fields when omitted', () async {
       await service.addItem(
@@ -333,20 +340,21 @@ void main() {
     });
 
     test(
-        'updateItem forwards p_quantity_value and p_quantity_unit when provided',
-        () async {
-      await service.updateItem(
-        sessionToken: 'token-1',
-        teamId: 'team-1',
-        itemId: 'item-1',
-        name: 'خبز طازج',
-        quantityValue: 10.0,
-        quantityUnit: 'mru_value',
-      );
+      'updateItem forwards p_quantity_value and p_quantity_unit when provided',
+      () async {
+        await service.updateItem(
+          sessionToken: 'token-1',
+          teamId: 'team-1',
+          itemId: 'item-1',
+          name: 'خبز طازج',
+          quantityValue: 10.0,
+          quantityUnit: 'mru_value',
+        );
 
-      expect(service.lastParams!['p_quantity_value'], 10.0);
-      expect(service.lastParams!['p_quantity_unit'], 'mru_value');
-    });
+        expect(service.lastParams!['p_quantity_value'], 10.0);
+        expect(service.lastParams!['p_quantity_unit'], 'mru_value');
+      },
+    );
 
     test('updateItem forwards null quantity fields when omitted', () async {
       await service.updateItem(

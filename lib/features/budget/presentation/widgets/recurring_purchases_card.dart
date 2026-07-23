@@ -143,32 +143,28 @@ class RecurringPurchasesCard extends StatelessWidget {
     );
   }
 
-  static Widget _statRow(String label, double value, {Color? color}) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: ZadTokens.textMuted,
-                ),
-              ),
-            ),
-            Text(
-              '${value.toStringAsFixed(2)} MRU',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: color,
-              ),
-            ),
-          ],
+  static Widget _statRow(String label, double value, {Color? color}) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: ZadTokens.textMuted),
+          ),
         ),
-      );
+        Text(
+          '${value.toStringAsFixed(2)} MRU',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            color: color,
+          ),
+        ),
+      ],
+    ),
+  );
 
   static String _freqLabel(RecurringPurchase item) {
     if (item.frequency == 'daily') return 'كل يوم';

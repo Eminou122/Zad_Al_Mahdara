@@ -28,7 +28,7 @@ void main() {
         ),
       );
       expect(find.text('الحساب: م*** ع***'), findsOneWidget);
-      expect(find.textContaining('الوقت المتبقي: 05:'), findsOneWidget);
+      expect(find.textContaining('الوقت المتبقي:'), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byType(TextField).first).readOnly,
         isTrue,

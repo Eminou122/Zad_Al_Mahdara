@@ -153,13 +153,14 @@ class _FakeNotificationService extends NotificationService {
   }
 
   @override
-  Future<void> archiveNotification(String notificationId) async {
+  Future<int> deleteNotifications(List<String> notificationIds) async {
     archiveCallCount++;
-    lastArchivedId = notificationId;
+    lastArchivedId = notificationIds.first;
     firstPageItems = firstPageItems
-        .where((item) => item.id != notificationId)
+        .where((item) => !notificationIds.contains(item.id))
         .toList();
     unreadCount = firstPageItems.where((item) => !item.isRead).length;
+    return unreadCount;
   }
 }
 
@@ -487,8 +488,8 @@ void main() {
     await tester.pumpWidget(_buildApp(service: svc));
     await tester.pumpAndSettle();
 
-    final button = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, 'تحديد الكل كمقروء'),
+    final button = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.done_all),
     );
     expect(button.onPressed, isNull);
   });
@@ -503,17 +504,17 @@ void main() {
     await tester.pumpWidget(_buildApp(service: svc));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('تحديد الكل كمقروء'));
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.done_all));
     await tester.pumpAndSettle();
 
     expect(svc.markAllReadCallCount, 1);
-    final button = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, 'تحديد الكل كمقروء'),
+    final button = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.done_all),
     );
     expect(button.onPressed, isNull);
   });
 
-  testWidgets('archiving a notification removes it and shows a snackbar', (
+  testWidgets('permanent deletion removes a notification after the delay', (
     tester,
   ) async {
     final svc = _FakeNotificationService()
@@ -521,14 +522,26 @@ void main() {
     await tester.pumpWidget(_buildApp(service: svc));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.archive_outlined).first);
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.pump();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'حذف نهائياً'),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.pump(const Duration(seconds: 3));
+    await tester.tap(find.widgetWithText(FilledButton, 'حذف نهائياً'));
     await tester.pumpAndSettle();
 
     expect(svc.archiveCallCount, 1);
     expect(svc.lastArchivedId, 'n1');
     expect(find.text('عنوان n1'), findsNothing);
     expect(find.text('عنوان n2'), findsOneWidget);
-    expect(find.text('تم أرشفة الإشعار'), findsOneWidget);
   });
 
   testWidgets('load more on scroll uses the compound cursor', (tester) async {

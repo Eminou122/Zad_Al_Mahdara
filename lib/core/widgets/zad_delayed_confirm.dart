@@ -12,6 +12,8 @@ Future<bool> zadDelayedConfirm(
   String confirmLabel = 'موافق',
   String cancelLabel = 'إلغاء',
   int delaySeconds = 3,
+  Future<void> Function()? onConfirm,
+  String Function(Object error)? errorText,
 }) async {
   final ok = await showDialog<bool>(
     context: context,
@@ -22,6 +24,8 @@ Future<bool> zadDelayedConfirm(
       confirmLabel: confirmLabel,
       cancelLabel: cancelLabel,
       delaySeconds: delaySeconds,
+      onConfirm: onConfirm,
+      errorText: errorText,
     ),
   );
   return ok ?? false;
@@ -33,6 +37,8 @@ class _DelayedConfirmDialog extends StatefulWidget {
   final String confirmLabel;
   final String cancelLabel;
   final int delaySeconds;
+  final Future<void> Function()? onConfirm;
+  final String Function(Object error)? errorText;
 
   const _DelayedConfirmDialog({
     required this.title,
@@ -40,6 +46,8 @@ class _DelayedConfirmDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.cancelLabel,
     required this.delaySeconds,
+    this.onConfirm,
+    this.errorText,
   });
 
   @override
@@ -50,6 +58,7 @@ class _DelayedConfirmDialogState extends State<_DelayedConfirmDialog> {
   late int _remaining = widget.delaySeconds;
   Timer? _timer;
   bool _submitting = false;
+  String? _error;
 
   @override
   void initState() {
@@ -85,6 +94,10 @@ class _DelayedConfirmDialogState extends State<_DelayedConfirmDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(widget.body),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(_error!, style: const TextStyle(color: Colors.red)),
+          ],
           if (!ready) ...[
             const SizedBox(height: 12),
             Center(
@@ -107,10 +120,22 @@ class _DelayedConfirmDialogState extends State<_DelayedConfirmDialog> {
         FilledButton(
           onPressed: (!ready || _submitting)
               ? null
-              : () {
+              : () async {
                   if (_submitting) return;
                   setState(() => _submitting = true);
-                  Navigator.pop(context, true);
+                  try {
+                    await widget.onConfirm?.call();
+                    if (context.mounted) Navigator.pop(context, true);
+                  } catch (error) {
+                    if (mounted) {
+                      setState(() {
+                        _submitting = false;
+                        _error =
+                            widget.errorText?.call(error) ??
+                            'حدث خطأ — حاول مرة أخرى';
+                      });
+                    }
+                  }
                 },
           child: Text(widget.confirmLabel),
         ),

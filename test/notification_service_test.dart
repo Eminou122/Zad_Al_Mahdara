@@ -62,12 +62,10 @@ class _RecordingNotificationService extends NotificationService {
   }
 
   @override
-  Future<void> archiveNotification(String notificationId) async {
-    lastRpc = 'archive_notification';
-    lastParams = {
-      'p_session_token': 'test-token',
-      'p_notification_id': notificationId,
-    };
+  Future<int> deleteNotifications(List<String> notificationIds) async {
+    lastRpc = 'delete_notifications';
+    lastParams = {'p_session_token': 'test-token', 'p_ids': notificationIds};
+    return 0;
   }
 }
 
@@ -93,9 +91,9 @@ void main() {
       await expectLater(svc.markAllRead(), throwsException);
     });
 
-    test('archiveNotification throws without a session token', () async {
+    test('deleteNotifications throws without a session token', () async {
       final svc = NotificationService(_UnauthAuthService());
-      await expectLater(svc.archiveNotification('n1'), throwsException);
+      await expectLater(svc.deleteNotifications(['n1']), throwsException);
     });
   });
 
@@ -113,7 +111,11 @@ void main() {
     test('later page sends compound cursor p_before + p_before_id', () async {
       final svc = _RecordingNotificationService();
       final before = DateTime.utc(2026, 7, 13, 10);
-      await svc.getNotifications(limit: 25, before: before, beforeId: 'notif-9');
+      await svc.getNotifications(
+        limit: 25,
+        before: before,
+        beforeId: 'notif-9',
+      );
       expect(svc.lastParams!['p_before'], before.toIso8601String());
       expect(svc.lastParams!['p_before_id'], 'notif-9');
     });
@@ -137,12 +139,15 @@ void main() {
       expect(svc.lastRpc, 'mark_all_notifications_read');
     });
 
-    test('archiveNotification calls archive_notification with the id', () async {
-      final svc = _RecordingNotificationService();
-      await svc.archiveNotification('notif-1');
-      expect(svc.lastRpc, 'archive_notification');
-      expect(svc.lastParams!['p_notification_id'], 'notif-1');
-    });
+    test(
+      'archiveNotification calls archive_notification with the id',
+      () async {
+        final svc = _RecordingNotificationService();
+        await svc.deleteNotifications(['notif-1']);
+        expect(svc.lastRpc, 'delete_notifications');
+        expect(svc.lastParams!['p_ids'], ['notif-1']);
+      },
+    );
 
     test('getUnreadCount calls get_my_notification_unread_count', () async {
       final svc = _RecordingNotificationService();

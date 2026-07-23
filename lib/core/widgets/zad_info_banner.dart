@@ -8,7 +8,11 @@ class ZadInfoBanner extends StatelessWidget {
   final String message;
   final ZadBannerKind kind;
 
-  const ZadInfoBanner(this.message, {super.key, this.kind = ZadBannerKind.info});
+  const ZadInfoBanner(
+    this.message, {
+    super.key,
+    this.kind = ZadBannerKind.info,
+  });
 
   static const _colors = {
     ZadBannerKind.info: ZadTokens.primary,
@@ -39,7 +43,9 @@ class ZadInfoBanner extends StatelessWidget {
         children: [
           Icon(_icons[kind], color: c, size: 20),
           const SizedBox(width: ZadTokens.s2 + 2),
-          Expanded(child: Text(message, style: TextStyle(color: c))),
+          Expanded(
+            child: Text(message, style: TextStyle(color: c)),
+          ),
         ],
       ),
     );

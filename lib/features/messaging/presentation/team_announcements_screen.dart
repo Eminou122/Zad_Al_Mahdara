@@ -10,6 +10,7 @@ import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_empty_state.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_messaging_badge_scope.dart';
+import '../../../core/widgets/zad_permanent_delete_confirm.dart';
 import '../../../services/auth_service.dart';
 import '../../teams/data/team_service.dart';
 import '../../teams/domain/team_models.dart';
@@ -75,6 +76,8 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
   int _requestGeneration = 0;
   String? _error;
   final Set<String> _markingRead = {};
+  final Set<String> _selectedIds = {};
+  final Set<String> _leaderTeamIds = {};
   bool _canMessageLeader = false;
   Timer? _pollTimer;
   VoidCallback? _unsubscribeRefresh;
@@ -229,6 +232,7 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
         }
         _error = null;
       });
+      unawaited(_loadDeleteEligibility(_items));
     } else if (_hasLoadedOnce) {
       setState(() => _refreshing = true);
     }
@@ -373,6 +377,60 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
     ZadMessagingBadgeScope.maybeOf(context)?.refresh();
   }
 
+  bool get _canDelete =>
+      widget.isLeader || (widget.authService.profile?.isAdmin ?? false);
+
+  bool _canDeleteItem(TeamAnnouncement item) =>
+      _canDelete || _leaderTeamIds.contains(item.teamId);
+
+  Future<void> _loadDeleteEligibility(Iterable<TeamAnnouncement> items) async {
+    final me = widget.authService.profile?.id;
+    if (me == null || widget.authService.profile?.isAdmin == true) return;
+    for (final teamId in items.map((item) => item.teamId).toSet()) {
+      if (_leaderTeamIds.contains(teamId)) continue;
+      try {
+        final detail = await _teamSvc.getTeamDetail(teamId);
+        final leader = detail.members.any(
+          (member) =>
+              member.profileId == me &&
+              member.role == 'leader' &&
+              member.isActive,
+        );
+        if (leader && mounted) setState(() => _leaderTeamIds.add(teamId));
+      } catch (_) {}
+    }
+  }
+
+  void _toggle(String id) => setState(
+    () => _selectedIds.contains(id)
+        ? _selectedIds.remove(id)
+        : _selectedIds.add(id),
+  );
+
+  Future<void> _deleteSelected() async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty ||
+        !await zadPermanentDeleteConfirm(context, count: ids.length)) {
+      return;
+    }
+    try {
+      await _svc.deleteAnnouncements(ids);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _items = _items.where((item) => !ids.contains(item.id)).toList();
+        _selectedIds.clear();
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
+    }
+  }
+
   Future<void> _openMessageLeaderComposer(TeamAnnouncement item) async {
     if (!_canMessageLeader) return;
     final result = await showDialog<SentTeamMessage>(
@@ -408,6 +466,32 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.teamName ?? 'الإعلانات'),
+        actions: (_canDelete || _leaderTeamIds.isNotEmpty)
+            ? [
+                if (_selectedIds.isNotEmpty) ...[
+                  TextButton(
+                    onPressed: () => setState(() => _selectedIds.clear()),
+                    child: const Text('إلغاء التحديد'),
+                  ),
+                  IconButton(
+                    onPressed: _deleteSelected,
+                    icon: const Icon(Icons.delete_outline),
+                    tooltip: 'حذف المحدد',
+                  ),
+                ] else
+                  IconButton(
+                    onPressed: _items.isEmpty
+                        ? null
+                        : () => setState(
+                            () => _selectedIds.addAll(
+                              _items.where(_canDeleteItem).map((e) => e.id),
+                            ),
+                          ),
+                    icon: const Icon(Icons.checklist),
+                    tooltip: 'تحديد',
+                  ),
+              ]
+            : null,
         bottom: _refreshing
             ? const PreferredSize(
                 preferredSize: Size.fromHeight(2),
@@ -496,7 +580,13 @@ class _TeamAnnouncementsScreenState extends State<TeamAnnouncementsScreen> {
             onMessageLeader: _canMessageLeader
                 ? () => _openMessageLeaderComposer(item)
                 : null,
-            onTap: () => _markRead(item),
+            selecting: _selectedIds.isNotEmpty,
+            selected: _selectedIds.contains(item.id),
+            canDelete: _canDeleteItem(item),
+            onSelect: () => _toggle(item.id),
+            onTap: _selectedIds.isNotEmpty
+                ? () => _toggle(item.id)
+                : () => _markRead(item),
           );
         },
       );
@@ -515,6 +605,10 @@ class _AnnouncementCard extends StatelessWidget {
   final bool showTeamName;
   final VoidCallback? onMessageLeader;
   final VoidCallback onTap;
+  final bool selecting;
+  final bool selected;
+  final bool canDelete;
+  final VoidCallback onSelect;
 
   const _AnnouncementCard({
     required this.item,
@@ -522,6 +616,10 @@ class _AnnouncementCard extends StatelessWidget {
     required this.showTeamName,
     this.onMessageLeader,
     required this.onTap,
+    required this.selecting,
+    required this.selected,
+    required this.canDelete,
+    required this.onSelect,
   });
 
   static String _formatWhen(DateTime dt) {
@@ -558,7 +656,15 @@ class _AnnouncementCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (busy)
+                  if (selecting)
+                    Checkbox(value: selected, onChanged: (_) => onSelect())
+                  else if (canDelete)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: 'حذف نهائياً',
+                      onPressed: onSelect,
+                    )
+                  else if (busy)
                     const SizedBox(
                       width: 14,
                       height: 14,

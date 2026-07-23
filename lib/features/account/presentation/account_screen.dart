@@ -60,13 +60,15 @@ class _AccountScreenState extends State<AccountScreen> {
     try {
       await widget.authService.updateProfileName(name);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم تحديث الاسم')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('تم تحديث الاسم')));
       context.go('/home');
     } on PostgrestException {
       if (mounted) {
-        setState(() => _nameError = 'تعذر تحديث الاسم — الرجاء المحاولة لاحقًا');
+        setState(
+          () => _nameError = 'تعذر تحديث الاسم — الرجاء المحاولة لاحقًا',
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -108,9 +110,9 @@ class _AccountScreenState extends State<AccountScreen> {
         _newPinCtrl.clear();
         _confirmPinCtrl.clear();
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم تغيير الرمز السري')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('تم تغيير الرمز السري')));
         context.go('/home');
       } else {
         setState(() {
@@ -159,10 +161,7 @@ class _AccountScreenState extends State<AccountScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'الاسم الظاهر',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('الاسم الظاهر', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: ZadTokens.s4),
           if (_nameError != null)
             ZadInfoBanner(_nameError!, kind: ZadBannerKind.danger),

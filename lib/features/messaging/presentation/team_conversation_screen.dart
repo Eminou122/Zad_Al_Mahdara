@@ -7,6 +7,7 @@ import '../../../core/utils/error_text.dart';
 import '../../../core/utils/ltr_fragment.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_messaging_badge_scope.dart';
+import '../../../core/widgets/zad_permanent_delete_confirm.dart';
 import '../../../services/auth_service.dart';
 import '../data/team_messaging_service.dart';
 import '../domain/team_messaging_models.dart';
@@ -97,6 +98,7 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
   bool _roleTrusted = false;
   TeamMessageCursor? _newestCursor;
   ConversationLiveState? _liveState;
+  final Set<String> _selectedMessageIds = {};
 
   String? get _myProfileId => widget.authService.profile?.id;
   String? get _myDisplayName => widget.authService.profile?.displayName;
@@ -104,6 +106,42 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
   bool get _canCompose =>
       _roleTrusted &&
       (_role == 'leader' || (_role == 'member' && _teamId != null));
+
+  void _toggleMessage(String id) => setState(
+    () => _selectedMessageIds.contains(id)
+        ? _selectedMessageIds.remove(id)
+        : _selectedMessageIds.add(id),
+  );
+
+  Future<void> _deleteSelectedMessages() async {
+    final ids = _selectedMessageIds.toList();
+    if (ids.isEmpty ||
+        !await zadPermanentDeleteConfirm(context, count: ids.length)) {
+      return;
+    }
+    try {
+      await _svc.deleteMessages(widget.conversationId, ids);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _messages = _messages
+            .where((message) => !ids.contains(message.id))
+            .toList();
+        _selectedMessageIds.clear();
+      });
+      AppRefreshCoordinator.instance.invalidateMany({
+        AppRefreshScope.messages,
+        AppRefreshScope.messagingBadge,
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -551,6 +589,31 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(_teamName ?? 'المحادثة', overflow: TextOverflow.ellipsis),
+        actions: _selectedMessageIds.isNotEmpty
+            ? [
+                TextButton(
+                  onPressed: () => setState(() => _selectedMessageIds.clear()),
+                  child: const Text('إلغاء التحديد'),
+                ),
+                IconButton(
+                  onPressed: _deleteSelectedMessages,
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'حذف المحدد',
+                ),
+              ]
+            : [
+                IconButton(
+                  onPressed: () => setState(
+                    () => _selectedMessageIds.addAll(
+                      _messages
+                          .where((m) => m.isSentBy(_myProfileId))
+                          .map((m) => m.id),
+                    ),
+                  ),
+                  icon: const Icon(Icons.checklist),
+                  tooltip: 'تحديد',
+                ),
+              ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(kToolbarHeight - 32),
           child: Column(
@@ -688,6 +751,9 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
                           return _MessageBubble(
                             message: m,
                             isMine: m.isSentBy(_myProfileId),
+                            selecting: _selectedMessageIds.isNotEmpty,
+                            selected: _selectedMessageIds.contains(m.id),
+                            onSelect: () => _toggleMessage(m.id),
                           );
                         },
                       ),
@@ -790,8 +856,17 @@ class _TeamConversationScreenState extends State<TeamConversationScreen>
 class _MessageBubble extends StatelessWidget {
   final TeamMessage message;
   final bool isMine;
+  final bool selecting;
+  final bool selected;
+  final VoidCallback onSelect;
 
-  const _MessageBubble({required this.message, required this.isMine});
+  const _MessageBubble({
+    required this.message,
+    required this.isMine,
+    required this.selecting,
+    required this.selected,
+    required this.onSelect,
+  });
 
   static String _formatWhen(DateTime dt) {
     final local = dt.toLocal();
@@ -803,44 +878,57 @@ class _MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        margin: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
-        padding: const EdgeInsets.symmetric(
-          horizontal: ZadTokens.s3,
-          vertical: ZadTokens.s2,
-        ),
-        decoration: BoxDecoration(
-          color: isMine
-              ? ZadTokens.primary.withValues(alpha: 0.14)
-              : ZadTokens.surfaceContainer,
-          borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!isMine)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Text(
-                  message.senderName,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: ZadTokens.textMuted,
+      child: GestureDetector(
+        onLongPress: isMine ? onSelect : null,
+        onTap: selecting && isMine ? onSelect : null,
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.78,
+          ),
+          margin: const EdgeInsets.symmetric(vertical: ZadTokens.s1),
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZadTokens.s3,
+            vertical: ZadTokens.s2,
+          ),
+          decoration: BoxDecoration(
+            color: isMine
+                ? ZadTokens.primary.withValues(alpha: 0.14)
+                : ZadTokens.surfaceContainer,
+            borderRadius: BorderRadius.circular(ZadTokens.radiusMd),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!isMine)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    message.senderName,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: ZadTokens.textMuted,
+                    ),
                   ),
                 ),
+              Row(
+                children: [
+                  if (selecting && isMine)
+                    Checkbox(value: selected, onChanged: (_) => onSelect()),
+                  Expanded(child: Text(message.body, softWrap: true)),
+                ],
               ),
-            Text(message.body, softWrap: true),
-            const SizedBox(height: 2),
-            Text(
-              ltrFragment(_formatWhen(message.createdAt)),
-              style: const TextStyle(fontSize: 10, color: ZadTokens.textMuted),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                ltrFragment(_formatWhen(message.createdAt)),
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: ZadTokens.textMuted,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

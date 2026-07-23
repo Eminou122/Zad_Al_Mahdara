@@ -146,9 +146,7 @@ void main() {
     expect(pinFocus.hasFocus, isTrue);
   });
 
-  testWidgets('Enter on final registration field submits once', (
-    tester,
-  ) async {
+  testWidgets('Enter on final registration field submits once', (tester) async {
     final pending = Completer<void>();
     final service = _AuthStub(registerPending: pending);
     await _pump(tester, RegisterScreen(authService: service));

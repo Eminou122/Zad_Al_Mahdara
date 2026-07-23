@@ -9,7 +9,7 @@ void main() {
       expect(AuthHelpers.validatePhone('12345678'), isTrue);
     });
     test('rejects wrong length', () {
-      expect(AuthHelpers.validatePhone('1234567'), isFalse);   // 7
+      expect(AuthHelpers.validatePhone('1234567'), isFalse); // 7
       expect(AuthHelpers.validatePhone('123456789'), isFalse); // 9
       expect(AuthHelpers.validatePhone(''), isFalse);
     });
@@ -27,7 +27,7 @@ void main() {
       expect(AuthHelpers.validatePin('9999'), isTrue);
     });
     test('rejects wrong length', () {
-      expect(AuthHelpers.validatePin('123'), isFalse);   // 3
+      expect(AuthHelpers.validatePin('123'), isFalse); // 3
       expect(AuthHelpers.validatePin('12345'), isFalse); // 5
       expect(AuthHelpers.validatePin(''), isFalse);
     });
@@ -48,5 +48,4 @@ void main() {
       expect(AuthHelpers.maskPhone(''), equals(''));
     });
   });
-
 }

@@ -53,6 +53,8 @@ class _FakeMessagingService extends TeamMessagingService {
   int announcementCalls = 0;
   int readCalls = 0;
   int createCalls = 0;
+  int deleteCalls = 0;
+  Object? deleteError;
   int sendCalls = 0;
   String? lastTeamId;
   String? lastSentTeamId;
@@ -88,6 +90,12 @@ class _FakeMessagingService extends TeamMessagingService {
   @override
   Future<void> markAnnouncementRead(String announcementId) async {
     readCalls++;
+  }
+
+  @override
+  Future<void> deleteAnnouncements(List<String> announcementIds) async {
+    deleteCalls++;
+    if (deleteError != null) throw deleteError!;
   }
 
   @override
@@ -271,6 +279,26 @@ void main() {
     await tester.pumpWidget(_listApp(service));
     await tester.pumpAndSettle();
     expect(find.text('إعلان جديد'), findsNothing);
+  });
+
+  testWidgets('leader selects and permanently deletes announcements', (
+    tester,
+  ) async {
+    final service = _FakeMessagingService()
+      ..first = [_announcement('1'), _announcement('2')];
+    await tester.pumpWidget(_listApp(service, leader: true));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.delete_outline), findsNWidgets(2));
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.tap(find.widgetWithText(FilledButton, 'حذف نهائياً'));
+    await tester.pumpAndSettle();
+    expect(service.deleteCalls, 1);
+    expect(find.text('إعلان 1'), findsNothing);
+    expect(find.text('إعلان 2'), findsOneWidget);
   });
 
   testWidgets(

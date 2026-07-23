@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/zad_tokens.dart';
@@ -9,6 +8,7 @@ import '../../../core/widgets/zad_card.dart';
 import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_scaffold.dart';
 import '../../../core/widgets/zad_section_header.dart';
+import '../../../core/widgets/zad_permanent_delete_confirm.dart';
 import '../../../services/auth_service.dart';
 import '../data/budget_cache_service.dart';
 import '../data/budget_service.dart';
@@ -40,6 +40,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
   List<TodayRecurringPurchase> _todayRecurring = [];
   List<RecurringPurchase> _recurringItems = [];
   RecurringPurchaseOverview? _recurringStats;
+  final Set<String> _selectedExpenseIds = {};
+  bool _expenseSelectionMode = false;
+  bool _deletingExpenses = false;
   bool _isLoading = true;
   String? _error;
   bool _isOfflineCached = false;
@@ -237,18 +240,35 @@ class _BudgetScreenState extends State<BudgetScreen> {
   String _dateKey(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
-  Future<void> _voidExpense(Expense expense) async {
-    if (_isOfflineCached) {
-      _onOfflineAction();
-      return;
-    }
-    final voided = await _showVoidExpenseDialog(expense);
-    if (voided == null) return;
-    if (voided) await _refreshOverview(++_mutationGeneration);
-    if (voided && mounted) {
-      _showError('تم إلغاء المصروف مع الاحتفاظ بسجله المالي');
+  Future<void> _deleteExpenses(List<String> ids) async {
+    if (ids.isEmpty || _deletingExpenses) return;
+    if (!await zadPermanentDeleteConfirm(context, count: ids.length)) return;
+    setState(() => _deletingExpenses = true);
+    try {
+      final overview = await _budget.deleteExpenses(ids);
+      if (!mounted) return;
+      setState(() {
+        _overview = overview;
+        _selectedExpenseIds.clear();
+        _expenseSelectionMode = false;
+        _isOfflineCached = false;
+        _cachedAt = null;
+      });
+    } catch (e) {
+      if (mounted) _showError(_arabicError(e));
+    } finally {
+      if (mounted) setState(() => _deletingExpenses = false);
     }
   }
+
+  Future<void> _deleteSelectedExpenses() =>
+      _deleteExpenses(_selectedExpenseIds.toList());
+
+  void _toggleExpense(String id) => setState(
+    () => _selectedExpenseIds.contains(id)
+        ? _selectedExpenseIds.remove(id)
+        : _selectedExpenseIds.add(id),
+  );
 
   Future<void> _removeRecurringExpense(Expense expense) async {
     if (_isOfflineCached || _updatingRecurring.contains(expense.id)) return;
@@ -313,97 +333,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
           }
         },
       ),
-    );
-  }
-
-  Future<bool?> _showVoidExpenseDialog(Expense expense) async {
-    final controller = TextEditingController();
-    return showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        var submitting = false;
-        String? error;
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final reason = controller.text.trim();
-            final valid = reason.isNotEmpty && reason.length <= 300;
-            Future<void> submit() async {
-              if (submitting || !valid) return;
-              setDialogState(() => submitting = true);
-              try {
-                final voided = await _budget.voidExpense(expense.id, reason);
-                if (dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop(voided);
-                }
-              } catch (_) {
-                if (dialogContext.mounted) {
-                  setDialogState(() {
-                    submitting = false;
-                    error = 'تعذر إلغاء المصروف. حاول مرة أخرى.';
-                  });
-                }
-              }
-            }
-
-            return Directionality(
-              textDirection: TextDirection.rtl,
-              child: AlertDialog(
-                title: const Text('إلغاء المصروف'),
-                content: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(expense.itemName),
-                      const SizedBox(height: ZadTokens.s2),
-                      const Text(
-                        'سيتم إلغاء هذا المصروف واستبعاده من الحسابات، مع الاحتفاظ بسجله المالي.',
-                      ),
-                      const SizedBox(height: ZadTokens.s3),
-                      TextField(
-                        key: const Key('void-expense-reason'),
-                        controller: controller,
-                        enabled: !submitting,
-                        maxLines: 3,
-                        maxLength: 300,
-                        maxLengthEnforcement: MaxLengthEnforcement.none,
-                        onChanged: (_) => setDialogState(() => error = null),
-                        decoration: const InputDecoration(
-                          labelText: 'سبب الإلغاء',
-                        ),
-                      ),
-                      if (error != null)
-                        Text(
-                          error!,
-                          style: const TextStyle(color: ZadTokens.danger),
-                        ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: submitting
-                        ? null
-                        : () => Navigator.of(dialogContext).pop(),
-                    child: const Text('رجوع'),
-                  ),
-                  FilledButton(
-                    onPressed: submitting || !valid ? null : submit,
-                    child: submitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('إلغاء المصروف'),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
     );
   }
 
@@ -779,6 +708,49 @@ class _BudgetScreenState extends State<BudgetScreen> {
       if (ov.recentExpenses.isNotEmpty) ...[
         // Stitch title. "التقارير" button rejected: no reports feature.
         const ZadSectionHeader('آخر المصروفات'),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: Wrap(
+            spacing: ZadTokens.s2,
+            runSpacing: ZadTokens.s1,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (!_expenseSelectionMode)
+                TextButton(
+                  onPressed: () => setState(() => _expenseSelectionMode = true),
+                  child: const Text('تحديد'),
+                )
+              else ...[
+                TextButton(
+                  onPressed: () => setState(
+                    () => _selectedExpenseIds.addAll(
+                      ov.recentExpenses
+                          .where((e) => e.source == 'manual')
+                          .map((e) => e.id),
+                    ),
+                  ),
+                  child: const Text('تحديد الكل'),
+                ),
+                TextButton(
+                  onPressed: () => setState(() {
+                    _selectedExpenseIds.clear();
+                    _expenseSelectionMode = false;
+                  }),
+                  child: const Text('إلغاء التحديد'),
+                ),
+                if (_selectedExpenseIds.isNotEmpty) ...[
+                  Text('تم تحديد ${_selectedExpenseIds.length}'),
+                  TextButton(
+                    onPressed: _deletingExpenses
+                        ? null
+                        : _deleteSelectedExpenses,
+                    child: const Text('حذف المحدد'),
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
         for (final exp in ov.recentExpenses)
           ZadCard(
             margin: const EdgeInsets.only(bottom: ZadTokens.s2),
@@ -836,26 +808,36 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     color: ZadTokens.danger,
                   ),
                 ),
-                if (exp.source == 'manual')
+                if (_expenseSelectionMode && exp.source == 'manual')
+                  Checkbox(
+                    value: _selectedExpenseIds.contains(exp.id),
+                    onChanged: (_) => _toggleExpense(exp.id),
+                  )
+                else if (exp.source == 'manual')
                   IconButton(
                     icon: const Icon(Icons.edit_outlined, size: 20),
                     tooltip: 'تعديل',
                     onPressed: () =>
                         _openOverviewRoute('/budget/expense/new', extra: exp),
                   ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.cancel_outlined,
-                    size: 20,
-                    color: ZadTokens.danger,
+                if (exp.source == 'manual')
+                  IconButton(
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      size: 20,
+                      color: ZadTokens.danger,
+                    ),
+                    tooltip: 'حذف نهائياً',
+                    onPressed: _deletingExpenses
+                        ? null
+                        : () => _deleteExpenses([exp.id]),
                   ),
-                  tooltip: exp.source == 'recurring_purchase'
-                      ? 'إلغاء عملية الشراء'
-                      : 'إلغاء المصروف',
-                  onPressed: () => exp.source == 'recurring_purchase'
-                      ? _removeRecurringExpense(exp)
-                      : _voidExpense(exp),
-                ),
+                if (exp.source == 'recurring_purchase')
+                  IconButton(
+                    icon: const Icon(Icons.cancel_outlined, size: 20),
+                    tooltip: 'إلغاء عملية الشراء',
+                    onPressed: () => _removeRecurringExpense(exp),
+                  ),
               ],
             ),
           ),

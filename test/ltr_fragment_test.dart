@@ -6,11 +6,21 @@ void main() {
   final pdi = String.fromCharCode(0x2069);
 
   test('ltrFragment wraps a number+unit value in LRI/PDI isolates', () {
-    expect(ltrFragment('10 MRU'), '$lri' '10 MRU' '$pdi');
+    expect(
+      ltrFragment('10 MRU'),
+      '$lri'
+      '10 MRU'
+      '$pdi',
+    );
   });
 
   test('ltrFragment wraps an Arabic-unit value in LRI/PDI isolates', () {
-    expect(ltrFragment('2 كغ'), '$lri' '2 كغ' '$pdi');
+    expect(
+      ltrFragment('2 كغ'),
+      '$lri'
+      '2 كغ'
+      '$pdi',
+    );
   });
 
   test('ltrFragment does not alter the wrapped value itself', () {

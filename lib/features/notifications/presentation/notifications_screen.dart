@@ -14,6 +14,7 @@ import '../../../core/widgets/zad_info_banner.dart';
 import '../../../core/widgets/zad_logo_badge.dart';
 import '../../../core/widgets/zad_messaging_badge_scope.dart';
 import '../../../core/widgets/zad_notification_badge_scope.dart';
+import '../../../core/widgets/zad_permanent_delete_confirm.dart';
 import '../../../services/auth_service.dart';
 import '../data/notification_service.dart';
 import '../domain/notification_models.dart';
@@ -67,6 +68,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   VoidCallback? _unsubscribeForeground;
   ModalRoute<dynamic>? _observedRoute;
   final Set<String> _busyIds = {};
+  final Set<String> _selectedIds = {};
   String? _error;
 
   @override
@@ -406,35 +408,35 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     }
   }
 
-  Future<void> _archive(NotificationItem item) async {
-    if (_busyIds.contains(item.id)) return;
-    setState(() => _busyIds.add(item.id));
+  Future<void> _deleteSelected() async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty ||
+        !await zadPermanentDeleteConfirm(context, count: ids.length)) {
+      return;
+    }
     try {
-      await _svc.archiveNotification(item.id);
+      final unread = await _svc.deleteNotifications(ids);
       if (!mounted) return;
       setState(() {
-        _items = _items.where((it) => it.id != item.id).toList();
-        _busyIds.remove(item.id);
-        if (item.isUnread) {
-          _unreadCount = _unreadCount > 0 ? _unreadCount - 1 : 0;
-        }
+        _items = _items.where((it) => !ids.contains(it.id)).toList();
+        _selectedIds.clear();
+        _unreadCount = unread;
       });
       _pushBadge(_unreadCount);
       AppRefreshCoordinator.instance.invalidate(
         AppRefreshScope.notificationBadge,
       );
-      unawaited(_refresh(silent: true));
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('تم أرشفة الإشعار')));
     } catch (e) {
       if (!mounted) return;
-      setState(() => _busyIds.remove(item.id));
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(userErrorText(e))));
     }
   }
+
+  void _toggleSelection(String id) => setState(() {
+    _selectedIds.contains(id) ? _selectedIds.remove(id) : _selectedIds.add(id);
+  });
 
   Future<void> _onTapItem(NotificationItem item) async {
     if (item.isUnread) {
@@ -604,8 +606,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
           return _NotificationCard(
             item: item,
             busy: _busyIds.contains(item.id),
-            onTap: () => _onTapItem(item),
-            onArchive: () => _archive(item),
+            selected: _selectedIds.contains(item.id),
+            selecting: _selectedIds.isNotEmpty,
+            onTap: _selectedIds.isNotEmpty
+                ? () => _toggleSelection(item.id)
+                : () => _onTapItem(item),
+            onSelect: () => _toggleSelection(item.id),
           );
         },
       );
@@ -637,15 +643,35 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               )
             : null,
         actions: [
-          TextButton(
-            onPressed: (_unreadCount > 0 && !_markingAllRead)
-                ? _markAllRead
-                : null,
-            child: const Text(
-              'تحديد الكل كمقروء',
-              style: TextStyle(fontSize: 12),
+          if (_selectedIds.isNotEmpty) ...[
+            IconButton(
+              onPressed: () => setState(() => _selectedIds.clear()),
+              icon: const Icon(Icons.close),
+              tooltip: 'إلغاء التحديد',
             ),
-          ),
+            IconButton(
+              onPressed: _deleteSelected,
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'حذف المحدد',
+            ),
+          ] else ...[
+            IconButton(
+              onPressed: _items.isEmpty
+                  ? null
+                  : () => setState(
+                      () => _selectedIds.addAll(_items.map((e) => e.id)),
+                    ),
+              icon: const Icon(Icons.checklist),
+              tooltip: 'تحديد',
+            ),
+            IconButton(
+              onPressed: (_unreadCount > 0 && !_markingAllRead)
+                  ? _markAllRead
+                  : null,
+              icon: const Icon(Icons.done_all),
+              tooltip: 'تحديد الكل كمقروء',
+            ),
+          ],
         ],
       ),
       bottomNavigationBar: const ZadBottomNav(current: ZadTab.notifications),
@@ -657,14 +683,18 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 class _NotificationCard extends StatelessWidget {
   final NotificationItem item;
   final bool busy;
+  final bool selecting;
+  final bool selected;
   final VoidCallback onTap;
-  final VoidCallback onArchive;
+  final VoidCallback onSelect;
 
   const _NotificationCard({
     required this.item,
     required this.busy,
+    required this.selecting,
+    required this.selected,
     required this.onTap,
-    required this.onArchive,
+    required this.onSelect,
   });
 
   static IconData _iconForType(String type) => switch (type) {
@@ -761,7 +791,9 @@ class _NotificationCard extends StatelessWidget {
                   ],
                 ),
               ),
-              busy
+              selecting
+                  ? Checkbox(value: selected, onChanged: (_) => onSelect())
+                  : busy
                   ? const Padding(
                       padding: EdgeInsets.all(ZadTokens.s2),
                       child: SizedBox(
@@ -771,9 +803,9 @@ class _NotificationCard extends StatelessWidget {
                       ),
                     )
                   : IconButton(
-                      tooltip: 'أرشفة',
-                      icon: const Icon(Icons.archive_outlined, size: 20),
-                      onPressed: onArchive,
+                      tooltip: 'حذف نهائياً',
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                      onPressed: onSelect,
                       color: ZadTokens.textMuted,
                     ),
             ],

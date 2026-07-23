@@ -201,9 +201,18 @@ void main() {
       expect(restored.actualRecurringTotal, original.actualRecurringTotal);
       expect(restored.skippedRecurringTotal, original.skippedRecurringTotal);
       expect(restored.skippedRecurringCount, original.skippedRecurringCount);
-      expect(restored.todayRecurringExpectedTotal, original.todayRecurringExpectedTotal);
-      expect(restored.todayRecurringPurchasedTotal, original.todayRecurringPurchasedTotal);
-      expect(restored.todayRecurringSkippedCount, original.todayRecurringSkippedCount);
+      expect(
+        restored.todayRecurringExpectedTotal,
+        original.todayRecurringExpectedTotal,
+      );
+      expect(
+        restored.todayRecurringPurchasedTotal,
+        original.todayRecurringPurchasedTotal,
+      );
+      expect(
+        restored.todayRecurringSkippedCount,
+        original.todayRecurringSkippedCount,
+      );
     });
 
     test('AppSubscription roundtrip', () {
@@ -364,22 +373,25 @@ void main() {
       expect(restored.isActive, original.isActive);
     });
 
-    test('RecurringPurchase roundtrip with null intervalDays/reminderTime/note', () {
-      final original = RecurringPurchase(
-        id: 'rp-2',
-        name: 'خبز',
-        price: 50,
-        frequency: 'daily',
-        startDate: DateTime(2026, 7, 1),
-        endDate: DateTime(2026, 7, 30),
-        isActive: true,
-      );
-      final json = original.toJson();
-      final restored = RecurringPurchase.fromJson(json);
-      expect(restored.intervalDays, isNull);
-      expect(restored.reminderTime, isNull);
-      expect(restored.note, isNull);
-    });
+    test(
+      'RecurringPurchase roundtrip with null intervalDays/reminderTime/note',
+      () {
+        final original = RecurringPurchase(
+          id: 'rp-2',
+          name: 'خبز',
+          price: 50,
+          frequency: 'daily',
+          startDate: DateTime(2026, 7, 1),
+          endDate: DateTime(2026, 7, 30),
+          isActive: true,
+        );
+        final json = original.toJson();
+        final restored = RecurringPurchase.fromJson(json);
+        expect(restored.intervalDays, isNull);
+        expect(restored.reminderTime, isNull);
+        expect(restored.note, isNull);
+      },
+    );
 
     test('TodayRecurringPurchase roundtrip', () {
       final original = TodayRecurringPurchase(
