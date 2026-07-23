@@ -109,7 +109,19 @@ class AppRouter {
       ),
       GoRoute(
         path: '/reset-pin',
-        builder: (_, _) => ResetPinScreen(authService: authService),
+        builder: (_, state) {
+          final extra = state.extra;
+          if (extra is! Map ||
+              extra['phone'] is! String ||
+              extra['request'] is! PinResetRequest) {
+            return ForgotPinScreen(authService: authService);
+          }
+          return ResetPinScreen(
+            authService: authService,
+            phone: extra['phone'] as String,
+            request: extra['request'] as PinResetRequest,
+          );
+        },
       ),
       GoRoute(
         path: '/home',

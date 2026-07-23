@@ -146,27 +146,34 @@ class AuthService extends ChangeNotifier {
     _applyAuthResult(json);
   }
 
-  Future<void> requestPinReset(String phone) async {
+  Future<PinResetRequest> requestPinReset(String phone) async {
     requireSupabase();
-    await callAuthRpc('request_pin_reset', {
+    final result = await callAuthRpc('request_pin_reset', {
       'p_phone_number': _validPhone(phone),
     });
+    return PinResetRequest.fromJson(Map<String, dynamic>.from(result as Map));
   }
 
   Future<bool> completePinReset(
-    String phone,
-    String code,
+    String resetRequestId,
+    String verificationCode,
     String newPin,
+    String newPinConfirmation,
   ) async {
     requireSupabase();
     final result = await callAuthRpc('complete_pin_reset', {
-      'p_phone_number': _validPhone(phone),
-      'p_code': code,
+      'p_reset_request_id': resetRequestId,
+      'p_verification_code': verificationCode,
       'p_new_pin': newPin,
+      'p_new_pin_confirmation': newPinConfirmation,
     });
-    final json = Map<String, dynamic>.from(result as Map);
-    return json['ok'] == true;
+    return Map<String, dynamic>.from(result as Map)['ok'] == true;
   }
+
+  Future<void> cancelPinReset(String resetRequestId) async => callAuthRpc(
+    'cancel_pin_reset_request',
+    {'p_reset_request_id': resetRequestId},
+  );
 
   Future<void> updateProfileName(String name) async {
     requireSupabase();
@@ -252,4 +259,19 @@ class AuthService extends ChangeNotifier {
     _profile = p;
     notifyListeners();
   }
+}
+
+class PinResetRequest {
+  final String id, maskedName;
+  final DateTime expiresAt;
+  const PinResetRequest({
+    required this.id,
+    required this.maskedName,
+    required this.expiresAt,
+  });
+  factory PinResetRequest.fromJson(Map<String, dynamic> j) => PinResetRequest(
+    id: j['reset_request_id'] as String,
+    maskedName: j['masked_name'] as String? ?? '***',
+    expiresAt: DateTime.parse(j['expires_at'] as String),
+  );
 }

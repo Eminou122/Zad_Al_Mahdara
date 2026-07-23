@@ -47,13 +47,15 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
     });
 
     try {
-      await widget.authService.requestPinReset(phone);
+      final request = await widget.authService.requestPinReset(phone);
       if (!mounted) {
         return;
       }
-      setState(() => _message = _genericSuccess);
+      context.push('/reset-pin', extra: {'phone': phone, 'request': request});
     } on PostgrestException {
-      if (mounted) setState(() => _message = _genericSuccess);
+      if (mounted) {
+        setState(() => _message = _genericSuccess);
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'حدث خطأ — تحقق من اتصالك بالإنترنت');
@@ -118,7 +120,7 @@ class _ForgotPinScreenState extends State<ForgotPinScreen> {
                                 ),
                               )
                             : const Icon(Icons.lock_reset_outlined),
-                        label: const Text('إرسال الطلب'),
+                        label: const Text('طلب رمز التحقق'),
                       ),
                       const SizedBox(height: ZadTokens.s2),
                       TextButton(

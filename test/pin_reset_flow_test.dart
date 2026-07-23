@@ -1,144 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zad_al_mahdara/core/widgets/mauritanian_phone_field.dart';
-import 'package:zad_al_mahdara/features/auth/presentation/forgot_pin_screen.dart';
 import 'package:zad_al_mahdara/features/auth/presentation/reset_pin_screen.dart';
 import 'package:zad_al_mahdara/services/auth_service.dart';
 
 void main() {
-  testWidgets('forgot PIN always shows generic success', (tester) async {
-    final service = _FakeAuthService();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Directionality(
-          textDirection: TextDirection.rtl,
-          child: ForgotPinScreen(authService: service),
-        ),
-      ),
-    );
-
-    await tester.enterText(find.byType(TextField), '49413435');
-    await tester.tap(find.text('إرسال الطلب'));
-    await tester.pumpAndSettle();
-
-    expect(service.requestedPhone, '49413435');
-    expect(
-      find.text('إذا كان هذا الرقم موجودًا، فقد تم إرسال طلبك إلى الإدارة.'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('reset PIN validates inputs locally', (tester) async {
-    await tester.pumpWidget(
-      MediaQuery(
-        data: const MediaQueryData(size: Size(320, 640)),
-        child: MaterialApp(
-          home: Directionality(
-            textDirection: TextDirection.rtl,
-            child: ResetPinScreen(authService: _FakeAuthService()),
+  testWidgets(
+    'locked phone, masked name, and five minute countdown render at 320px',
+    (tester) async {
+      final request = PinResetRequest(
+        id: 'request-a',
+        maskedName: 'م*** ع***',
+        expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+      );
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(size: Size(320, 800)),
+          child: MaterialApp(
+            home: Directionality(
+              textDirection: TextDirection.rtl,
+              child: ResetPinScreen(
+                authService: _FakeAuthService(),
+                phone: '49413435',
+                request: request,
+              ),
+            ),
           ),
         ),
-      ),
-    );
-
-    await tester.tap(find.text('تغيير الرمز السري'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('أدخل رقم هاتف صحيحًا مكونًا من 8 أرقام'), findsOneWidget);
-  });
-
-  testWidgets('reset PIN shows generic failure and keeps code LTR', (
-    tester,
-  ) async {
-    final service = _FakeAuthService(completeOk: false);
-    await tester.pumpWidget(
-      MediaQuery(
-        data: const MediaQueryData(size: Size(320, 640)),
-        child: MaterialApp(
-          home: Directionality(
-            textDirection: TextDirection.rtl,
-            child: ResetPinScreen(authService: service),
-          ),
-        ),
-      ),
-    );
-
-    final fields = find.byType(TextField);
-    final phoneField = tester.widget<TextField>(
-      find.descendant(
-        of: find.byType(MauritanianPhoneField),
-        matching: find.byType(TextField),
-      ),
-    );
-    expect(phoneField.textDirection, TextDirection.ltr);
-    expect(
-      tester
-          .widget<Directionality>(
-            find
-                .ancestor(
-                  of: find.byType(ResetPinScreen),
-                  matching: find.byType(Directionality),
-                )
-                .first,
-          )
-          .textDirection,
-      TextDirection.rtl,
-    );
-    await tester.enterText(fields.at(0), '49413435');
-    await tester.enterText(fields.at(1), '12345678');
-    await tester.enterText(fields.at(2), '2468');
-    await tester.enterText(fields.at(3), '2468');
-    expect(
-      tester.widget<TextField>(fields.at(0)).controller!.text,
-      '49 41 34 35',
-    );
-    await tester.tap(find.text('تغيير الرمز السري'));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('رمز إعادة التعيين غير صحيح أو منتهي الصلاحية.'),
-      findsOneWidget,
-    );
-    expect(service.completedPhone, '49413435');
-    expect(tester.takeException(), isNull);
-    _expectNearestTextDirection(
-      tester,
-      find.text('12345678'),
-      TextDirection.ltr,
-    );
-  });
-}
-
-void _expectNearestTextDirection(
-  WidgetTester tester,
-  Finder finder,
-  TextDirection direction,
-) {
-  for (final element in finder.evaluate()) {
-    final widget = element.findAncestorWidgetOfExactType<Directionality>();
-    expect(widget?.textDirection, direction);
-  }
+      );
+      expect(find.text('الحساب: م*** ع***'), findsOneWidget);
+      expect(find.textContaining('الوقت المتبقي: 05:'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField).first).readOnly,
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _FakeAuthService extends AuthService {
-  final bool completeOk;
-  String? requestedPhone;
-  String? completedPhone;
-
-  _FakeAuthService({this.completeOk = true});
-
-  @override
-  Future<void> requestPinReset(String phone) async {
-    requestedPhone = phone;
-  }
-
   @override
   Future<bool> completePinReset(
-    String phone,
+    String id,
     String code,
-    String newPin,
-  ) async {
-    completedPhone = phone;
-    return completeOk;
-  }
+    String pin,
+    String confirmation,
+  ) async => false;
 }

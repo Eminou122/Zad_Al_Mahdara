@@ -127,7 +127,7 @@ void main() {
     await _pump(tester, ForgotPinScreen(authService: service));
     _expectPhoneFieldLtr(tester);
     await tester.enterText(find.byType(TextField), '12-34-56-78');
-    await tester.tap(find.text('إرسال الطلب'));
+    await tester.tap(find.text('طلب رمز التحقق'));
     await tester.pump();
     expect(service.resetPhone, '12345678');
     expect(tester.takeException(), isNull);
@@ -195,5 +195,12 @@ class _PhoneAuthService extends AuthService {
       registerPhone = phone;
 
   @override
-  Future<void> requestPinReset(String phone) async => resetPhone = phone;
+  Future<PinResetRequest> requestPinReset(String phone) async {
+    resetPhone = phone;
+    return PinResetRequest(
+      id: 'request',
+      maskedName: 'م*** ع***',
+      expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+    );
+  }
 }

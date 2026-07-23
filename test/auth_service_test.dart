@@ -33,9 +33,16 @@ class _FakeAuthService extends AuthService {
       return loginResult ??
           {'session_token': 'test-token', 'profile': _profileJson()};
     }
-    return function == 'complete_pin_reset'
-        ? {'ok': true}
-        : {'session_token': 'test-token', 'profile': _profileJson()};
+    if (function == 'complete_pin_reset') return {'ok': true};
+    if (function == 'request_pin_reset')
+      return {
+        'reset_request_id': 'request',
+        'masked_name': 'م*** ع***',
+        'expires_at': DateTime.now()
+            .add(const Duration(minutes: 5))
+            .toIso8601String(),
+      };
+    return {'session_token': 'test-token', 'profile': _profileJson()};
   }
 
   @override
@@ -149,11 +156,18 @@ void main() {
       await auth.register('Name', '12 34-56 78', '1234');
       await auth.login('12 34 56 78', '1234');
       await auth.requestPinReset('12-34-56-78');
-      await auth.completePinReset('12 34-56 78', '12345678', '4321');
+      await auth.completePinReset('request-id', '12345678', '4321', '4321');
 
-      for (final call in auth.calls) {
+      for (final call in auth.calls.where(
+        (call) => call['function'] != 'complete_pin_reset',
+      )) {
         expect(call['params']['p_phone_number'], '12345678');
       }
+      final reset = auth.calls.singleWhere(
+        (call) => call['function'] == 'complete_pin_reset',
+      )['params'];
+      expect(reset.containsKey('p_phone_number'), isFalse);
+      expect(reset['p_reset_request_id'], 'request-id');
     });
 
     test('rejects invalid phone before an RPC call', () async {
